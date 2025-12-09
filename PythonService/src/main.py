@@ -6,15 +6,17 @@ import asyncio
 import os
 import uuid
 import struct
+import math
 import io
 import wave
+import webrtcvad
+import regex as re
 from datetime import datetime
 from collections import defaultdict
 from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 from asyncio import Queue, Semaphore
 import uvicorn
-import webrtcvad
 
 from fastapi import (
     FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query
@@ -25,7 +27,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from dotenv import load_dotenv, find_dotenv
 from redis.asyncio import Redis
-
+from src.core.azure_stt import AzureTranscriber
 from src.core.session import get_db, AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache import get_redis_client, close_redis_client
@@ -43,15 +45,12 @@ logger = logging.getLogger(__name__)
 
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 
-MIN_BUFFER_SIZE_TO_PROCESS = 3200
+SILENCE_THRESHOLD = 60
+MIN_BUFFER_SIZE_TO_PROCESS = 3200 
 MAX_TEXT_CACHE_LENGTH = 300
-VAD_MODE = 2
-FRAME_DURATION_MS = 20
-SAMPLE_RATE = 16000
-FRAME_SIZE_BYTES = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000) * 2
 
-vad = webrtcvad.Vad(VAD_MODE)
-process_semaphore = Semaphore(3)
+VAD = webrtcvad.Vad(2)
+PROCESS_SEMAPHORE = Semaphore(3)
 
 HALLUCINATION_FILTERS = [
     "you", "you.", "you?", "thank you", "thank you.", "bye", "bye.", 
@@ -67,6 +66,7 @@ try:
         PUBLIC_KEY = serialization.load_pem_public_key(
             f.read(), backend=default_backend()
         )
+    logger.info("Public key loaded successfully.")
 except Exception as e:
     logger.critical(f"Could not load public_key.pem: {e}")
 
@@ -90,64 +90,69 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections = defaultdict(list)
 
-    async def connect(self, websocket: WebSocket, room_id: str, user_id: str, native_lang: str = "vi"):
+    async def connect(self, websocket: WebSocket, room_id: str, user_id: str = None, native_lang: str = None):
         await websocket.accept()
-        meta = {
-            "ws": websocket,
-            "user_id": user_id,
-            "native_lang": native_lang
-        }
+        meta = {"ws": websocket, "user_id": user_id, "native_lang": (native_lang or "vi")}
         self.active_connections[room_id].append(meta)
+        logger.info(f"✅ WS CONNECTED: Room={room_id} | User={user_id} | Total={len(self.active_connections[room_id])}")
 
     def disconnect(self, websocket: WebSocket, room_id: str):
         if room_id in self.active_connections:
-            self.active_connections[room_id] = [
-                m for m in self.active_connections[room_id] if m["ws"] != websocket
-            ]
+            to_remove = [m for m in self.active_connections[room_id] if m["ws"] is websocket]
+            for m in to_remove:
+                self.active_connections[room_id].remove(m)
+            logger.info(f"❌ WS DISCONNECTED: Room={room_id}")
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
 
-    async def broadcast_signal(self, message: dict, room_id: str, exclude_ws: WebSocket = None):
-        if room_id not in self.active_connections: return
-        data = json.dumps(message)
-        to_remove = []
-        for meta in self.active_connections[room_id]:
-            conn = meta["ws"]
-            if conn is exclude_ws: continue
-            try:
-                await conn.send_text(data)
-            except Exception:
-                to_remove.append(meta)
-        
-        for dead in to_remove:
-            self.disconnect(dead["ws"], room_id)
+    async def broadcast_except(self, message: dict, room_id: str, exclude_ws: WebSocket):
+        if room_id in self.active_connections:
+            data = json.dumps(message)
+            to_remove = []
+            for meta in self.active_connections[room_id]:
+                conn = meta["ws"]
+                if conn is exclude_ws:
+                    continue
+                try:
+                    await conn.send_text(data)
+                except Exception as e:
+                    logger.error(f"⚠️ Broadcast fail, removing stale connection: {e}")
+                    to_remove.append(meta)
+            for dead in to_remove:
+                self.disconnect(dead["ws"], room_id)
 
-    async def broadcast_subtitle(self, message: dict, room_id: str, exclude_user_id: str = None):
+    async def broadcast_subtitle(self, message: dict, room_id: str, exclude_ws: WebSocket = None):
         if room_id not in self.active_connections: return
-        
         to_remove = []
-        original_lang = message.get("originalLang", "en").lower()
-        
         for meta in self.active_connections[room_id]:
-            if meta["user_id"] == exclude_user_id: continue
-            
             conn = meta["ws"]
-            recipient_native = meta.get("native_lang", "vi").lower()
-            
-            payload = dict(message)
-            if recipient_native.startswith(original_lang):
-                payload["translated"] = "" 
-            
+            if conn is exclude_ws:
+                continue
             try:
-                await conn.send_text(json.dumps(payload))
-            except Exception:
-                to_remove.append(meta)
+                user_native = meta.get("native_lang", "vi")
+                payload = dict(message)
                 
+                if user_native and payload.get("originalLang") and user_native.lower().startswith(payload["originalLang"].lower()):
+                    payload["translated"] = ""
+                
+                await conn.send_text(json.dumps(payload))
+            except Exception as e:
+                logger.error(f"⚠️ Broadcast_subtitle fail, removing stale connection: {e}")
+                to_remove.append(meta)
         for dead in to_remove:
             self.disconnect(dead["ws"], room_id)
 
-manager = ConnectionManager()
+# Separate managers for Signal and Audio to avoid cross-talk
+signal_manager = ConnectionManager()
+audio_manager = ConnectionManager()
+
 user_text_cache: Dict[str, str] = defaultdict(str)
+
+def frame_bytes_from_pcm(pcm_bytes: bytes, sample_rate=16000, frame_ms=20):
+    samples = int(sample_rate * frame_ms / 1000)
+    bytes_per_frame = samples * 2
+    for i in range(0, len(pcm_bytes), bytes_per_frame):
+        yield pcm_bytes[i:i+bytes_per_frame]
 
 def create_wav_bytes(pcm_data: bytes, sample_rate=16000, channels=1, sampwidth=2) -> bytes:
     io_buf = io.BytesIO()
@@ -159,14 +164,16 @@ def create_wav_bytes(pcm_data: bytes, sample_rate=16000, channels=1, sampwidth=2
     return io_buf.getvalue()
 
 def split_by_script_and_punctuation(text: str) -> List[str]:
-    import regex as re
     parts = []
     buf = ""
     last_kind = None
     for ch in text:
-        if '\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf': kind = 'cjk'
-        elif ch.isspace() or re.match(r'[.,!?;:]', ch): kind = 'punct'
-        else: kind = 'latin'
+        if '\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf':
+            kind = 'cjk'
+        elif ch.isspace() or re.match(r'[.,!?;:]', ch):
+            kind = 'punct'
+        else:
+            kind = 'latin'
         
         if last_kind is None:
             buf = ch
@@ -177,213 +184,330 @@ def split_by_script_and_punctuation(text: str) -> List[str]:
             parts.append(buf)
             buf = ch
             last_kind = kind
-    if buf: parts.append(buf)
+    if buf:
+        parts.append(buf)
     return parts
-
-def frame_generator(audio_bytes: bytes):
-    offset = 0
-    while offset + FRAME_SIZE_BYTES <= len(audio_bytes):
-        yield audio_bytes[offset:offset + FRAME_SIZE_BYTES]
-        offset += FRAME_SIZE_BYTES
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     redis = await get_redis_client()
+    logger.info("Redis client initialized.")
     try:
         get_translator(redis)
-    except Exception:
-        pass
+        logger.info("Translator singleton initialized & warmed up.")
+    except Exception as e:
+        logger.error(f"Translator warmup warning: {e}")
     yield
     await close_redis_client()
+    logger.info("Redis client closed.")
 
 app = FastAPI(lifespan=lifespan)
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
-        key = PUBLIC_KEY if PUBLIC_KEY else ""
-        options = {"verify_signature": False} if not PUBLIC_KEY else {"verify_exp": True}
-        return jwt.decode(token, key, algorithms=["RS256"], issuer="LinguaMonkey.com", options=options)
+        if not PUBLIC_KEY:
+            return jwt.decode(token, options={"verify_signature": False})
+        return jwt.decode(
+            token,
+            PUBLIC_KEY,
+            algorithms=["RS256"],
+            issuer="LinguaMonkey.com",
+            options={"verify_exp": True, "verify_aud": False}
+        )
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 async def validate_websocket_token(websocket: WebSocket, token: str) -> str:
-    if not token: return None
+    if not token:
+        return None
     try:
         key = PUBLIC_KEY if PUBLIC_KEY else ""
-        options = {"verify_signature": False} if not PUBLIC_KEY else {"verify_exp": True, "verify_aud": False, "verify_iss": True}
-        decoded = jwt.decode(token, key, algorithms=["RS256"], issuer="LinguaMonkey.com", options=options)
-        return decoded.get("sub")
-    except Exception:
+        options = {"verify_signature": False} if PUBLIC_KEY is None else {
+            "verify_exp": True, "verify_aud": False, "verify_iss": True
+        }
+        decoded_token = jwt.decode(token, key, algorithms=["RS256"], issuer="LinguaMonkey.com", options=options)
+        return decoded_token.get("sub")
+    except Exception as e:
+        logger.warning(f"WS Auth failed: {e}")
         return None
 
 @internal_router.post("/invalidate-cache")
 async def invalidate_user_cache(request: CacheInvalidationRequest, redis: Redis = Depends(get_redis_client)):
-    await redis.delete(f"user_profile:{request.user_id}")
-    return {"status": "success"}
+    try:
+        await redis.delete(f"user_profile:{request.user_id}")
+        return {"status": "success"}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Redis error")
 
 @internal_router.post("/trigger-hf-ingest")
 async def trigger_hf_ingest():
     task = ingest_huggingface_task.delay()
-    return {"status": "task_sent", "task_id": str(task.id)}
+    return {"status": "Hugging Face ingestion task sent to worker", "task_id": str(task.id)}
 
 @protected_router.post("/translate")
 async def translate(request: TranslationRequest, redis: Redis = Depends(get_redis_client)):
-    translator = get_translator(redis)
-    res, lang = await translator.translate(request.text, request.source_lang, request.target_lang)
-    return {"code": 200, "result": {"translated_text": res, "detected_lang": lang}}
+    try:
+        translator = get_translator(redis)
+        translated_text, detected_lang = await translator.translate(request.text, request.source_lang, request.target_lang)
+        return {"code": 200, "result": {"translated_text": translated_text, "detected_lang": detected_lang}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @protected_router.post("/chat-ai")
-async def chat(request: ChatRequest, user: dict = Depends(verify_token), db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis_client)):
-    user_id = user.get("sub")
-    profile = await get_user_profile(user_id, db, redis)
-    res, err = await chat_with_ai(request.message, request.history, "en", profile)
-    if err: raise HTTPException(status_code=500, detail=err)
-    return {"reply": res}
+async def chat(
+    request: ChatRequest,
+    user: dict = Depends(verify_token),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis_client)
+):
+    try:
+        user_id = user.get("sub")
+        user_profile = await get_user_profile(user_id, db, redis)
+        response, error = await chat_with_ai(request.message, request.history, "en", user_profile)
+        if error: raise HTTPException(status_code=500, detail=error)
+        return {"reply": response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.websocket("/signal")
-async def signal_endpoint(websocket: WebSocket, token: str = Query(...), roomId: str = Query(...)):
+@protected_router.post("/tts")
+async def text_to_speech_endpoint(text: str, language: str, redis: Redis = Depends(get_redis_client)):
+    audio_bytes, error = await generate_tts(text, language, redis)
+    if error: raise HTTPException(status_code=500, detail=error)
+    return {"audio_base64": base64.b64encode(audio_bytes).decode('utf-8')}
+
+@app.websocket("/voice")
+async def voice_stream(websocket: WebSocket, token: str = Query(...)):
+    await websocket.accept()
     user_id = await validate_websocket_token(websocket, token)
     if not user_id:
         await websocket.close(code=1008)
         return
-    
-    room_id = str(roomId).strip().lower()
-    await manager.connect(websocket, room_id, user_id, "vi") 
+    try:
+        while True:
+            data = await websocket.receive()
+            msg = json.loads(data)
+            audio_chunk = base64.b64decode(msg.get("audio_chunk", "")) if msg.get("audio_chunk") else b""
+            if audio_chunk:
+                wav_data = create_wav_bytes(audio_chunk)
+                text, detected_lang, error = await asyncio.to_thread(speech_to_text, wav_data, "en")
+                
+                response = {"seq": msg.get("seq", 0)}
+                if error: response["error"] = error
+                else: response["text"] = text
+                await websocket.send_text(json.dumps(response))
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"Voice WS Error: {e}")
 
+@app.websocket("/chat-stream")
+async def chat_stream(websocket: WebSocket, token: str = Query(...)):
+    await websocket.accept()
+    user_id_str = await validate_websocket_token(websocket, token)
+    if not user_id_str:
+        await websocket.close(code=1008)
+        return
+
+    db_session = AsyncSessionLocal()
+    redis = await get_redis_client()
+    try:
+        user_profile = await get_user_profile(user_id_str, db_session, redis)
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+            if msg.get("type") == "chat_request":
+                raw_prompt = msg.get("prompt", "")
+                history = msg.get("history", [])
+                room_id_str = msg.get("roomId")
+                if not room_id_str or not raw_prompt: continue
+                
+                try:
+                    room_uuid = uuid.UUID(room_id_str)
+                    user_uuid = uuid.UUID(user_id_str)
+                    user_msg_db = ChatMessage(chat_message_id=uuid.uuid4(), content=raw_prompt, room_id=room_uuid, sender_id=user_uuid, message_type=MessageType.TEXT.value, sent_at=datetime.utcnow())
+                    db_session.add(user_msg_db)
+                    await db_session.commit()
+                except Exception:
+                    await db_session.rollback()
+
+                full_ai_response = ""
+                async for chunk in chat_with_ai_stream(raw_prompt, history, user_profile):
+                    full_ai_response += chunk
+                    await websocket.send_text(json.dumps({"type": "chat_response_chunk", "content": chunk, "roomId": room_id_str}))
+                await websocket.send_text(json.dumps({"type": "chat_response_complete", "roomId": room_id_str}))
+                
+                if full_ai_response.strip():
+                    try:
+                        ai_msg_db = ChatMessage(chat_message_id=uuid.uuid4(), content=full_ai_response, room_id=room_uuid, sender_id=AI_BOT_ID, message_type=MessageType.TEXT.value, sent_at=datetime.utcnow())
+                        db_session.add(ai_msg_db)
+                        await db_session.commit()
+                    except Exception:
+                        await db_session.rollback()
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"Chat WS Error: {e}")
+    finally:
+        await db_session.close()
+
+# --- SỬA PATH: "/signal" (Bỏ /ws/py/ vì Gateway đã strip) ---
+@app.websocket("/signal")
+async def signaling_endpoint(
+    websocket: WebSocket,
+    token: str = Query(...),
+    roomId: str = Query(...)
+):
+    normalized_room_id = str(roomId).strip().lower()
+    user_id = await validate_websocket_token(websocket, token)
+    if not user_id:
+        await websocket.close(code=1008)
+        return
+
+    await signal_manager.connect(websocket, normalized_room_id, user_id=user_id)
     try:
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
-            msg_type = msg.get("type")
             
-            if msg_type == "webrtc_signal":
+            # Chỉ xử lý WebRTC signals
+            if msg.get("type") in ["webrtc_signal", "JOIN_ROOM", "offer", "answer", "ice_candidate"]:
                 msg["senderId"] = user_id
-                await manager.broadcast_signal(msg, room_id, exclude_ws=websocket)
-            elif msg_type == "JOIN_ROOM":
-                join_msg = {"type": "webrtc_signal", "senderId": user_id, "payload": {"type": "JOIN_ROOM"}}
-                await manager.broadcast_signal(join_msg, room_id, exclude_ws=websocket)
-            elif msg_type == "PING":
-                pass
+                # Fix: JOIN_ROOM cần payload chuẩn
+                if msg.get("type") == "JOIN_ROOM":
+                    join_msg = {"type": "webrtc_signal", "senderId": user_id, "payload": {"type": "JOIN_ROOM"}}
+                    await signal_manager.broadcast_except(join_msg, normalized_room_id, websocket)
+                else:
+                    await signal_manager.broadcast_except(msg, normalized_room_id, websocket)
+                
     except WebSocketDisconnect:
-        manager.disconnect(websocket, room_id)
+        signal_manager.disconnect(websocket, normalized_room_id)
     except Exception as e:
-        logger.error(f"Signal WS Error: {e}")
-        manager.disconnect(websocket, room_id)
+        logger.error(f"Signaling Error: {e}")
+        signal_manager.disconnect(websocket, normalized_room_id)
 
 @app.websocket("/subtitles-audio")
-async def subtitles_audio_endpoint(
-    websocket: WebSocket, 
-    token: str = Query(...), 
-    roomId: str = Query(...), 
-    nativeLang: str = Query("vi"), 
-    spokenLang: str = Query("auto")
+async def audio_endpoint(
+    websocket: WebSocket,
+    token: str = Query(...),
+    roomId: str = Query(...),
+    nativeLang: str = Query(None),
+    spokenLang: str = Query(None)
 ):
+    normalized_room_id = str(roomId).strip().lower()
     user_id = await validate_websocket_token(websocket, token)
     if not user_id:
         await websocket.close(code=1008)
         return
 
-    room_id = str(roomId).strip().lower()
-    await manager.connect(websocket, room_id, user_id, nativeLang)
-
+    await audio_manager.connect(websocket, normalized_room_id, user_id=user_id, native_lang=nativeLang)
+    
+    # Dependencies
     redis = await get_redis_client()
     translator = get_translator(redis)
-    buffer_key = f"{room_id}_{user_id}"
-    audio_queue = Queue()
+    buffer_key = f"{normalized_room_id}_{user_id}"
 
-    async def process_buffer_logic(pcm_bytes: bytes, cache_text: str):
-        async with process_semaphore:
-            wav_data = create_wav_bytes(pcm_bytes)
-            stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, wav_data, spokenLang)
+    # Fallback config
+    user_native_lang = nativeLang or "vi"
+    # Azure cần mã ngôn ngữ chuẩn (ví dụ: en-US, vi-VN)
+    target_spoken_lang = "en-US" if (not spokenLang or spokenLang == 'en') else "vi-VN" 
+    if spokenLang == 'vi': target_spoken_lang = 'vi-VN'
 
-            clean = stt_text.strip().lower() if stt_text else ""
-            if not clean or clean in HALLUCINATION_FILTERS or len(clean) < 2:
-                return
+    # --- CALLBACKS XỬ LÝ KẾT QUẢ TỪ AZURE ---
 
-            if len(clean.split()) < 3: detected_lang = spokenLang
+    async def handle_interim_result(text: str):
+        """Xử lý kết quả tạm thời (Hiển thị ngay lập tức, KHÔNG dịch)"""
+        await audio_manager.broadcast_subtitle({
+            "type": "subtitle",
+            "status": "processing",
+            "original": text,
+            "originalFull": user_text_cache[buffer_key] + " " + text, # Hiển thị ngữ cảnh
+            "originalLang": spokenLang,
+            "translated": "", # Không dịch lúc đang nói để giảm lag
+            "senderId": user_id
+        }, normalized_room_id, exclude_user_id=user_id)
+
+    async def handle_final_result(text: str):
+        """Xử lý kết quả cuối cùng (Dịch bằng Redis/Gemini)"""
+        clean_text = text.strip()
+        if not clean_text: return
+
+        # Cập nhật cache hội thoại để giữ ngữ cảnh
+        current_full = user_text_cache[buffer_key]
+        new_full = (current_full + " " + clean_text).strip()
+        user_text_cache[buffer_key] = new_full
+
+        # Reset cache nếu quá dài
+        if len(new_full) > 200: 
+            user_text_cache[buffer_key] = ""
+
+        # Gửi sự kiện "Processing" lần cuối cho câu hoàn chỉnh
+        await audio_manager.broadcast_subtitle({
+            "type": "subtitle",
+            "status": "processing",
+            "original": clean_text,
+            "originalFull": new_full,
+            "originalLang": spokenLang,
+            "translated": "...", # Đang dịch...
+            "senderId": user_id
+        }, normalized_room_id, exclude_user_id=user_id)
+
+        # --- LOGIC DỊCH (GIỮ LẠI REDIS/GEMINI) ---
+        # Đây là chỗ kết hợp sức mạnh: Azure nghe chuẩn -> Gemini dịch hay
+        try:
+            # Dịch nguyên câu (Contextual Translation)
+            translated_text, _ = await translator.translate(clean_text, spokenLang, user_native_lang)
             
-            new_full = (cache_text + " " + stt_text.strip()) if cache_text else stt_text.strip()
-            user_text_cache[buffer_key] = new_full
-
-            await manager.broadcast_subtitle({
-                "type": "subtitle",
-                "status": "processing",
-                "original": stt_text.strip(),
-                "originalFull": new_full,
-                "originalLang": detected_lang,
-                "translated": "",
-                "senderId": user_id
-            }, room_id, exclude_user_id=user_id)
-
-            parts = split_by_script_and_punctuation(new_full)
-            trans_parts = []
-            for p in parts:
-                t_res, _ = await translator.translate(p, detected_lang, nativeLang)
-                trans_parts.append(t_res)
-            
-            final_trans = "".join(trans_parts)
-
-            await manager.broadcast_subtitle({
+            await audio_manager.broadcast_subtitle({
                 "type": "subtitle",
                 "status": "complete",
-                "original": stt_text.strip(),
+                "original": clean_text,
                 "originalFull": new_full,
-                "originalLang": detected_lang,
-                "translated": final_trans,
+                "originalLang": spokenLang,
+                "translated": translated_text,
                 "senderId": user_id
-            }, room_id, exclude_user_id=user_id)
+            }, normalized_room_id, exclude_user_id=user_id)
+            
+        except Exception as e:
+            logger.error(f"Translation logic error: {e}")
 
-            if any(x in stt_text for x in ".?!") or len(new_full) > 150:
-                user_text_cache[buffer_key] = ""
-
-    async def vad_worker():
-        frames = []
-        silence_frames = 0
-        is_speech_mode = False
-        
-        while True:
-            chunk = await audio_queue.get()
-            if chunk is None: break
-
-            for frame in frame_generator(chunk):
-                is_speech = vad.is_speech(frame, SAMPLE_RATE)
-                
-                if is_speech:
-                    is_speech_mode = True
-                    frames.append(frame)
-                    silence_frames = 0
-                else:
-                    if is_speech_mode:
-                        frames.append(frame)
-                        silence_frames += 1
-                        if silence_frames > 15: 
-                            full_bytes = b"".join(frames)
-                            if len(full_bytes) > MIN_BUFFER_SIZE_TO_PROCESS:
-                                asyncio.create_task(process_buffer_logic(full_bytes, user_text_cache[buffer_key]))
-                            frames = []
-                            is_speech_mode = False
-                            silence_frames = 0
-
-    worker = asyncio.create_task(vad_worker())
+    # --- KHỞI TẠO AZURE STREAMING ---
+    # Map ngôn ngữ app -> ngôn ngữ Azure
+    azure_lang_code = "vi-VN" if "vi" in str(spokenLang) else "en-US"
+    
+    transcriber = AzureTranscriber(
+        callback_final=handle_final_result,
+        callback_interim=handle_interim_result,
+        language=azure_lang_code
+    )
+    
+    transcriber.start()
+    logger.info(f"🎙️ Azure Stream Started for User {user_id} [{azure_lang_code}]")
 
     try:
         while True:
+            # Nhận audio chunk từ WebSocket và đẩy thẳng vào Azure
             msg = await websocket.receive()
+            
             if "bytes" in msg and msg["bytes"]:
-                await audio_queue.put(msg["bytes"])
+                # Đẩy bytes vào Azure PushStream (Non-blocking)
+                transcriber.write_stream(msg["bytes"])
+                
             elif "text" in msg:
-                 # Handle pure text/meta if needed
-                 pass
-    except Exception:
-        manager.disconnect(websocket, room_id)
+                # Handle control messages (Mute, etc.)
+                pass
+                
+    except WebSocketDisconnect:
+        audio_manager.disconnect(websocket, normalized_room_id)
+    except Exception as e:
+        logger.error(f"Audio Error: {e}")
+        audio_manager.disconnect(websocket, normalized_room_id)
     finally:
-        await audio_queue.put(None)
-        await worker
-        if buffer_key in user_text_cache: del user_text_cache[buffer_key]
+        transcriber.stop()
+        logger.info(f"🛑 Azure Stream Stopped for User {user_id}")
 
-app.include_router(protected_router, tags=["Protected"])
-app.include_router(internal_router, tags=["Internal"])
+app.include_router(protected_router, tags=["Protected API"])
+app.include_router(internal_router, tags=["Internal API"])
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))

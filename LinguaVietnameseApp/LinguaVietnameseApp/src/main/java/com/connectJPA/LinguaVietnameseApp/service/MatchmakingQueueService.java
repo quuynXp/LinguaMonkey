@@ -26,12 +26,11 @@ public class MatchmakingQueueService {
     public static class MatchResult {
         private UUID partnerId;
         private int score;
-        private UUID roomId; 
-        private String roomName; 
+        private UUID roomId;
+        private String roomName;
     }
 
     private final Map<UUID, QueueItem> waitingUsers = new ConcurrentHashMap<>();
-    
     private final Map<UUID, MatchResult> pendingMatches = new ConcurrentHashMap<>();
 
     private static final int SCORE_LANGUAGE_EXCHANGE = 50;
@@ -40,15 +39,14 @@ public class MatchmakingQueueService {
     private static final int SCORE_DEMOGRAPHICS = 15;
 
     private static final int INITIAL_THRESHOLD = 30;
-    private static final int MIN_THRESHOLD = 5;
+    private static final int MIN_THRESHOLD = 1;
     private static final int REDUCTION_INTERVAL_SECONDS = 15;
     private static final int REDUCTION_STEP = 10;
 
     public void addToQueue(UUID userId, CallPreferencesRequest prefs) {
-        waitingUsers.computeIfAbsent(userId, k -> new QueueItem(userId, prefs, Instant.now()));
-        if (waitingUsers.containsKey(userId)) {
-            waitingUsers.get(userId).setPreferences(prefs);
-        }
+        // Clear any stale pending matches when re-joining queue
+        pendingMatches.remove(userId);
+        waitingUsers.compute(userId, (k, v) -> new QueueItem(userId, prefs, Instant.now()));
     }
 
     public void removeFromQueue(UUID userId) {
@@ -77,34 +75,65 @@ public class MatchmakingQueueService {
     }
 
     public void notifyPartner(UUID partnerId, MatchResult result) {
+        // Utility method to manually set a match if needed
         pendingMatches.put(partnerId, result);
         waitingUsers.remove(partnerId);
     }
 
+    /**
+     * Core atomic matching logic.
+     * 1. Checks if current user was already matched by someone else (Passive).
+     * 2. Tries to find and atomically claim a partner (Active).
+     */
     public MatchResult findMatch(UUID currentUserId) {
+        MatchResult passiveMatch = pendingMatches.remove(currentUserId);
+        if (passiveMatch != null) {
+            waitingUsers.remove(currentUserId); // Ensure we are out of queue
+            return passiveMatch;
+        }
+
         QueueItem currentUser = waitingUsers.get(currentUserId);
         if (currentUser == null) return null;
 
         int currentThreshold = getCurrentCriteriaThreshold(currentUserId);
 
-        Optional<MatchResult> bestMatch = waitingUsers.values().stream()
+        Optional<QueueItem> bestMatch = waitingUsers.values().stream()
                 .filter(candidate -> !candidate.getUserId().equals(currentUserId))
                 .map(candidate -> {
                     int score = calculateCompatibilityScore(currentUser.getPreferences(), candidate.getPreferences());
-                    return new MatchResult(candidate.getUserId(), score, null, null);
+                    return new AbstractMap.SimpleEntry<>(candidate, score);
                 })
-                .filter(result -> result.getScore() >= currentThreshold)
-                .sorted((r1, r2) -> {
-                    int scoreCompare = Integer.compare(r2.getScore(), r1.getScore());
+                .filter(entry -> entry.getValue() >= currentThreshold)
+                .sorted((e1, e2) -> {
+                    int scoreCompare = Integer.compare(e2.getValue(), e1.getValue());
                     if (scoreCompare != 0) return scoreCompare;
                     
-                    long wait1 = getSecondsWaited(r1.getPartnerId());
-                    long wait2 = getSecondsWaited(r2.getPartnerId());
+                    long wait1 = getSecondsWaited(e1.getKey().getUserId());
+                    long wait2 = getSecondsWaited(e2.getKey().getUserId());
                     return Long.compare(wait2, wait1);
                 })
+                .map(AbstractMap.SimpleEntry::getKey)
                 .findFirst();
 
-        return bestMatch.orElse(null);
+        if (bestMatch.isPresent()) {
+            QueueItem partner = bestMatch.get();
+            UUID partnerId = partner.getUserId();
+
+            if (waitingUsers.remove(partnerId) != null) {
+                waitingUsers.remove(currentUserId);
+
+                UUID roomId = UUID.randomUUID();
+                String roomName = "Room-" + roomId.toString().substring(0, 8);
+                int score = calculateCompatibilityScore(currentUser.getPreferences(), partner.getPreferences());
+
+                MatchResult partnerResult = new MatchResult(currentUserId, score, roomId, roomName);
+                pendingMatches.put(partnerId, partnerResult);
+
+                return new MatchResult(partnerId, score, roomId, roomName);
+            }
+        }
+
+        return null;
     }
 
     private int calculateCompatibilityScore(CallPreferencesRequest p1, CallPreferencesRequest p2) {
@@ -121,7 +150,7 @@ public class MatchmakingQueueService {
 
         List<String> sharedInterests = new ArrayList<>(safeList(p1.getInterests()));
         sharedInterests.retainAll(safeList(p2.getInterests()));
-        score += (sharedInterests.size() * SCORE_INTERESTS); 
+        score += (sharedInterests.size() * SCORE_INTERESTS);
 
         if (safeEquals(p1.getProficiency(), p2.getProficiency())) {
             score += SCORE_PROFICIENCY;

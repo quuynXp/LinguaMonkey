@@ -123,8 +123,10 @@ services:
       - REDIS_HOST=redis
       - GOOGLE_APPLICATION_CREDENTIALS=/app/config/service-account-key.json
       - GRPC_PORT=50051
+      - AZURE_SPEECH_KEY=7CK8VzxiMbfR1PdEYlreoeM1fSYP8T34GfwakmGfqXr8XgvB9UJQJQQJ99BKAC3pKaRXJ3w3AAAYACOG93o3
+      - AZURE_SPEECH_REGION=eastasia
       - JAVA_GRPC_ADDRESS=linguavietnameseapp:9090 
-      - HF_HOME=/app/hf_cache # [NEW] Cấu hình đường dẫn cache
+      - HF_HOME=/app/hf_cache
     volumes:
       - ./PythonService:/app
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/public_key.pem:/app/public_key.pem:ro
