@@ -5,7 +5,6 @@ import {
   Animated,
   FlatList,
   Modal,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,7 +14,6 @@ import {
   Platform,
   Switch
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMemorizations } from "../../hooks/useMemorizations";
 import { useReminders } from "../../hooks/useReminders";
@@ -42,7 +40,6 @@ const NotesScreen = ({ navigation, route }: any) => {
   const [isReminderEnabled, setIsReminderEnabled] = useState(false);
   const [reminderHour, setReminderHour] = useState("09");
   const [reminderMinute, setReminderMinute] = useState("00");
-  // const [showTimePicker, setShowTimePicker] = useState(false); // Unused variable removed
   const [reminderRepeat, setReminderRepeat] = useState<Enums.RepeatType>(Enums.RepeatType.DAILY);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -52,18 +49,17 @@ const NotesScreen = ({ navigation, route }: any) => {
     useUserMemorizations,
     useCreateMemorization,
     useDeleteMemorization,
-    useToggleFavorite,
+    useUpdateMemorization, // Dùng update thay vì toggleFavorite để kiểm soát payload
   } = useMemorizations();
 
   const { useCreateReminder } = useReminders();
   const { mutate: createReminder, isPending: isCreatingReminder } = useCreateReminder();
 
-  // Handle pre-fill from course details
+  // --- LOGIC 1: Pre-fill ---
   useEffect(() => {
     if (prefillContent) {
       setNewNote(prefillContent);
       setShowAddModal(true);
-      // Auto-enable reminder mode for study reminders
       setIsReminderEnabled(true);
     }
   }, [prefillContent]);
@@ -83,7 +79,7 @@ const NotesScreen = ({ navigation, route }: any) => {
 
   const { mutate: createMemorization, isPending: isCreatingNote } = useCreateMemorization();
   const { mutate: deleteMemorization } = useDeleteMemorization();
-  const { mutate: toggleFavorite } = useToggleFavorite();
+  const { mutate: updateMemorization } = useUpdateMemorization();
 
   const notesList = useMemo(() => {
     let list = (memorizationsPage?.data as MemorizationResponse[]) || [];
@@ -97,11 +93,7 @@ const NotesScreen = ({ navigation, route }: any) => {
   }, [memorizationsPage, showFavoritesOnly, searchQuery, searchParams.keyword]);
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
   }, [fadeAnim]);
 
   const mapNoteTypeToContentType = (type: string): Enums.ContentType => {
@@ -112,24 +104,27 @@ const NotesScreen = ({ navigation, route }: any) => {
     }
   };
 
+  // --- LOGIC 2: FIX CREATE NOTE (UUID Null Handling) ---
   const handleAddNote = () => {
     if (!newNote.trim()) return;
 
-    // FIX: Ensure user exists before sending
+    // Safety check: User ID bắt buộc phải có
     if (!user?.userId) {
-      Alert.alert("Error", "User session invalid. Please relogin.");
+      Alert.alert("Error", "User session missing. Please restart app.");
       return;
     }
 
-    // FIX: contentId logic. Backend UUID expects strict null, not "" or undefined
-    const cleanContentId = (courseId && typeof courseId === 'string' && courseId.length > 0) ? courseId : null;
+    // CRITICAL FIX: UUID fields must be null, NEVER empty string ""
+    const safeContentId = (courseId && typeof courseId === 'string' && courseId.length > 0)
+      ? courseId
+      : null;
 
     const notePayload: MemorizationRequest = {
+      userId: user.userId,                // UUID Check OK
       contentType: mapNoteTypeToContentType(selectedNoteType),
-      contentId: cleanContentId,
+      contentId: safeContentId,           // UUID Check OK (null or valid UUID)
       noteText: newNote.trim(),
       isFavorite: false,
-      userId: user.userId, // Guaranteed valid due to check above
     };
 
     createMemorization(notePayload, {
@@ -141,9 +136,30 @@ const NotesScreen = ({ navigation, route }: any) => {
         }
       },
       onError: (err) => {
-        console.error("Create note error:", err);
+        console.error("Create Note Error:", err);
         Alert.alert("Error", t("common.error"));
       }
+    });
+  };
+
+  // --- LOGIC 3: FIX TOGGLE FAVORITE (Clean DTO) ---
+  const handleToggleFavorite = (item: MemorizationResponse) => {
+    // Chúng ta không gửi nguyên object `item` vì nó chứa createdAt, updatedAt...
+    // Backend chỉ nhận `MemorizationRequest`
+
+    const cleanPayload: MemorizationRequest = {
+      userId: item.userId,
+      contentType: item.contentType,
+      contentId: item.contentId || null, // Ensure null strictness
+      noteText: item.noteText,
+      isFavorite: !item.isFavorite // Toggle logic
+    };
+
+    updateMemorization({
+      id: item.memorizationId,
+      req: cleanPayload
+    }, {
+      onError: () => Alert.alert("Error", "Failed to update favorite status")
     });
   };
 
@@ -203,7 +219,7 @@ const NotesScreen = ({ navigation, route }: any) => {
       <Text style={styles.noteText}>{item.noteText}</Text>
       <View style={styles.noteFooter}>
         <TouchableOpacity
-          onPress={() => toggleFavorite({ id: item.memorizationId, currentReq: item as any })}
+          onPress={() => handleToggleFavorite(item)}
           style={styles.iconBtn}
         >
           <Icon name={item.isFavorite ? "star" : "star-border"} size={20} color={item.isFavorite ? "#F59E0B" : "#9CA3AF"} />
@@ -315,8 +331,6 @@ const NotesScreen = ({ navigation, route }: any) => {
               {isReminderEnabled && (
                 <View style={styles.reminderControls}>
                   <Text style={styles.labelSmall}>{t("notes.time") ?? "Select Time"}</Text>
-
-                  {/* UX Optimized Time Picker (Two scroll lists simulated by buttons) */}
                   <View style={styles.timePickerContainer}>
                     <TouchableOpacity
                       style={styles.timeBox}
@@ -334,7 +348,7 @@ const NotesScreen = ({ navigation, route }: any) => {
                       style={styles.timeBox}
                       onPress={() => {
                         const m = parseInt(reminderMinute);
-                        const next = m >= 55 ? 0 : m + 5; // Jump by 5 mins for better UX
+                        const next = m >= 55 ? 0 : m + 5;
                         setReminderMinute(next.toString().padStart(2, '0'));
                       }}
                     >

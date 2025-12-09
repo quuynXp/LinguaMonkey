@@ -34,17 +34,22 @@ const LoginScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  /* COMMENTED_OUT_GOOGLE_LOGIN_START
   const googleAuthConfig = {
     androidClientId: GOOGLE_CLIENT_ID_ANDROID,
     scopes: ['profile', 'email'],
   };
-
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest(googleAuthConfig);
+  COMMENTED_OUT_GOOGLE_LOGIN_END */
+  const [googleRequest, googleResponse, googlePromptAsync] = [null, null, () => { }]; // Placeholder to maintain structure
 
+  /* COMMENTED_OUT_FACEBOOK_LOGIN_START
   const [fbRequest, fbResponse, fbPromptAsync] = Facebook.useAuthRequest({
     clientId: FACEBOOK_CLIENT_ID,
     scopes: ['public_profile', 'email'],
   });
+  COMMENTED_OUT_FACEBOOK_LOGIN_END */
+  const [fbRequest, fbResponse, fbPromptAsync] = [null, null, () => { }]; // Placeholder to maintain structure
 
   useEffect(() => {
     Animated.parallel([
@@ -53,6 +58,7 @@ const LoginScreen = ({ navigation }) => {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
+  /* COMMENTED_OUT_GOOGLE_EFFECT_START
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { id_token } = googleResponse.params;
@@ -61,7 +67,9 @@ const LoginScreen = ({ navigation }) => {
       safeShowError(t("googleLoginCancelledOrFailed"));
     }
   }, [googleResponse]);
+  COMMENTED_OUT_GOOGLE_EFFECT_END */
 
+  /* COMMENTED_OUT_FACEBOOK_EFFECT_START
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { access_token } = fbResponse.params;
@@ -70,6 +78,7 @@ const LoginScreen = ({ navigation }) => {
       safeShowError(t("facebookLoginCancelledOrFailed"));
     }
   }, [fbResponse]);
+  COMMENTED_OUT_FACEBOOK_EFFECT_END */
 
   const safeShowError = (error) => {
     let message = t("anErrorOccurred");
@@ -288,24 +297,28 @@ const LoginScreen = ({ navigation }) => {
               <Text style={styles.dividerText}>{t('orContinueWith')}</Text>
               <View style={styles.dividerLine} />
             </View>
+            {/* COMMENTED_OUT_GOOGLE_BUTTON_START */}
             {Platform.OS !== 'ios' && (
               <TouchableOpacity
                 style={[styles.socialButton, (isLoading || !googleRequest) && styles.loginButtonDisabled]}
-                onPress={() => !isLoading && googlePromptAsync()}
-                disabled={isLoading || !googleRequest}
+                onPress={() => { /* googlePromptAsync() */ }}
+                disabled={true}
               >
                 <Image source={require('../../assets/icons/google-icon.png')} style={{ width: 20, height: 20 }} />
                 <Text style={styles.socialButtonText}>{t('loginWithGoogle')}</Text>
               </TouchableOpacity>
             )}
+            {/* COMMENTED_OUT_GOOGLE_BUTTON_END */}
+            {/* COMMENTED_OUT_FACEBOOK_BUTTON_START */}
             <TouchableOpacity
               style={[styles.socialButton, (isLoading || !fbRequest) && styles.loginButtonDisabled, Platform.OS === 'ios' && { marginTop: Platform.OS !== 'ios' ? 16 : 0 }]}
-              onPress={() => !isLoading && fbPromptAsync()}
-              disabled={isLoading || !fbRequest}
+              onPress={() => { /* fbPromptAsync() */ }}
+              disabled={true}
             >
               <Icon name="facebook" size={20} color="#1877F2" />
               <Text style={styles.socialButtonText}>{t('loginWithFacebook')}</Text>
             </TouchableOpacity>
+            {/* COMMENTED_OUT_FACEBOOK_BUTTON_END */}
           </>
         )}
         <View style={styles.footer}>

@@ -8,8 +8,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "image": "latest",
-        "ndk": "26.1.10909125"
+        "image": "latest"
       },
       "env": {
         "APP_VARIANT": "development"
@@ -18,8 +17,7 @@
     "staging": {
       "distribution": "internal",
       "android": {
-        "image": "latest",
-        "ndk": "26.1.10909125"
+        "image": "latest"
       },
       "env": {
         "APP_VARIANT": "staging"
@@ -30,8 +28,7 @@
       "distribution": "store",
       "android": {
         "buildType": "app-bundle",
-        "image": "latest",
-        "ndk": "26.1.10909125"
+        "image": "latest"
       },
       "env": {
         "APP_VARIANT": "production"
