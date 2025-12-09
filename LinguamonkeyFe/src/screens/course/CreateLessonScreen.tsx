@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
     Alert, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Image
@@ -77,11 +77,8 @@ const MediaPreviewItem = ({ url, onDelete, style, containerStyle }: any) => {
     if (!url) return null;
 
     const isImageFile = (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) != null || url.includes('googleusercontent'));
-
     const isActualVideo = isVideoFile(url);
-
     const isFinalImage = isImageFile || (url.includes('drive.google.com') && url.includes('id=') && !isActualVideo);
-
     const player = useVideoPlayer(!isFinalImage ? url : null, (p) => { p.loop = false; });
 
     return (
@@ -120,8 +117,19 @@ const CreateLessonScreen = () => {
     const isEditMode = !!lessonId;
     const { data: lessonData } = useLesson(sanitizeId(lessonId));
 
-    const { data: questionsData } = useAllQuestions(
-        isEditMode ? { lessonId: sanitizeId(lessonId)!, size: 100 } : {}
+    const questionsQueryParams = useMemo(() => {
+        // Luôn trả về object có lessonId, nếu lessonId null thì là chuỗi rỗng
+        // Enabled flag sẽ chặn việc fetch
+        return {
+            lessonId: sanitizeId(lessonId) || "",
+            size: 100
+        };
+    }, [lessonId]);
+
+    // FIX: Truyền thêm tham số enabled: isEditMode
+    const { data: questionsData, isLoading: isLoadingQuestions } = useAllQuestions(
+        questionsQueryParams,
+        isEditMode // Chỉ fetch khi đang ở chế độ Edit
     );
 
     const { data: versionsData } = useCourseVersions(courseId, !targetVersionId);
@@ -130,7 +138,6 @@ const CreateLessonScreen = () => {
         if (!targetVersionId && versionsData && versionsData.length > 0) {
             const draft = versionsData.find((v: any) => v.status === VersionStatus.DRAFT);
             if (draft) {
-                console.log("Auto-detected Draft Version ID:", draft.versionId);
                 setTargetVersionId(draft.versionId);
             }
         }
@@ -161,7 +168,7 @@ const CreateLessonScreen = () => {
 
     useEffect(() => {
         if (isEditMode && questionsData && questionsData.data) {
-            console.log("Questions Loaded:", questionsData.data.length);
+            console.log("Questions Loaded in Screen:", questionsData.data.length);
             const mapped = questionsData.data.map((q: LessonQuestionResponse) => {
                 let options = { A: '', B: '', C: '', D: '' };
                 let pairs = [{ key: '', value: '' }];
@@ -188,7 +195,8 @@ const CreateLessonScreen = () => {
                     mediaUrl: q.mediaUrl || ''
                 };
             });
-            setQuestions(mapped);
+            // Chỉ set questions nếu mảng hiện tại rỗng (initial load) để tránh overwrite thay đổi của user
+            setQuestions(prev => prev.length === 0 ? mapped : prev);
         }
     }, [isEditMode, questionsData]);
 
@@ -287,8 +295,6 @@ const CreateLessonScreen = () => {
                 versionId: sanitizeId(targetVersionId),
                 questions: questionsPayload
             };
-
-            console.log("PAYLOAD SENDING:", JSON.stringify(payload, null, 2));
 
             if (isEditMode && lessonId) {
                 await updateLessonMutation.mutateAsync({ id: lessonId, req: payload });
@@ -443,6 +449,7 @@ const CreateLessonScreen = () => {
                             <Ionicons name="add" size={24} color="#FFF" />
                         </TouchableOpacity>
                     </View>
+                    {isLoadingQuestions && <ActivityIndicator color="#4ECDC4" />}
                     {questions.map((q, i) => (
                         <View key={i} style={styles.questionCard}>
                             <View style={styles.rowBetween}>

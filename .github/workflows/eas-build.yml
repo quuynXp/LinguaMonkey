@@ -33,6 +33,12 @@ jobs:
         # Bổ sung để tạo lại thư mục 'android' (chứa gradlew) sau khi checkout
         run: npx expo prebuild --platform android --no-install
 
+      - name: 🧹 Clean up duplicate icon files
+        # Xóa các file WEBP được tạo bởi prebuild để tránh lỗi "Duplicate resources"
+        run: |
+          echo "✨ Cleaning up duplicate icon files (removing .webp)..."
+          find ./android/app/src/main/res -name "*.webp" -delete
+
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
@@ -50,7 +56,7 @@ jobs:
             ${{ runner.os }}-gradle-fe-
             
       - name: 🧹 Clean up large components (Pre-build)
-        # Dọn dẹp mạnh mẽ các công cụ lớn để giải phóng không gian trước khi build Gradle
+        # Sửa lỗi NDK: Không xóa /usr/local/lib/android/sdk/
         run: |
           echo "✨ Freeing up disk space by removing large tools..."
           sudo rm -rf /usr/share/dotnet/

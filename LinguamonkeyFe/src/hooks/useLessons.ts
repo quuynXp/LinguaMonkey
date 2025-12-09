@@ -252,12 +252,10 @@ export const useLessons = () => {
   // === 2. QUESTIONS (LessonQuestionController) ===
   // ==========================================
 
-  const useAllQuestions = (params?: { lessonId?: string; languageCode?: string; page?: number; size?: number }) => {
-    // Chỉ kích hoạt query khi có lessonId trong params. 
-    // Nếu không có lessonId, nó sẽ fetch TẤT CẢ questions (endpoint không có tham số) 
-    // nhưng chúng ta muốn chặn điều này trừ khi có mục đích rõ ràng.
-    const shouldBeEnabled = !!params?.lessonId || Object.keys(params || {}).length === 0;
-
+  const useAllQuestions = (
+    params?: { lessonId?: string; languageCode?: string; page?: number; size?: number },
+    enabled: boolean = true
+  ) => {
     return useQuery({
       queryKey: lessonKeys.questions.list(params),
       queryFn: async () => {
@@ -272,7 +270,7 @@ export const useLessons = () => {
         );
         return mapPageResponse(data.result, params?.page || 0, params?.size || 20);
       },
-      enabled: shouldBeEnabled, // FIX: Chỉ chạy khi có lessonId hoặc không có params nào khác
+      enabled: enabled,
     });
   };
 

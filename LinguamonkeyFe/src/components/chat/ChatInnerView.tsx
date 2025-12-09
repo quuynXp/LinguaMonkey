@@ -97,12 +97,15 @@ const ChatLanguageSelector = ({
     selectedLanguage,
     onSelectLanguage,
     availableLanguages,
+    isAutoTranslateOn,
+    onToggleAuto
 }: {
     selectedLanguage: LanguageOption;
     onSelectLanguage: (lang: LanguageOption) => void;
     availableLanguages: LanguageOption[];
+    isAutoTranslateOn: boolean;
+    onToggleAuto: () => void;
 }) => {
-    const { t } = useTranslation();
     const [isExpanded, setIsExpanded] = useState(false);
     const canExpand = availableLanguages.length > 1;
 
@@ -110,6 +113,16 @@ const ChatLanguageSelector = ({
 
     return (
         <View style={styles.languageSelectorContainer}>
+            {/* Nút bật/tắt Auto Translate riêng biệt hoặc tích hợp */}
+            <TouchableOpacity
+                style={[styles.autoSwitch, isAutoTranslateOn && styles.autoSwitchActive]}
+                onPress={onToggleAuto}
+            >
+                <Text style={[styles.autoText, isAutoTranslateOn && { color: '#FFF' }]}>
+                    {isAutoTranslateOn ? "Auto: ON" : "Auto: OFF"}
+                </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
                 style={[styles.selectedLanguageButton, !canExpand && { paddingRight: 8 }]}
                 onPress={() => canExpand && setIsExpanded(!isExpanded)}
@@ -164,9 +177,9 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const chatSettings = useAppStore(state => state.chatSettings);
     const setChatSettings = useAppStore(state => state.setChatSettings);
     const nativeLanguage = useAppStore(state => state.nativeLanguage);
-    const autoTranslate = chatSettings.autoTranslate;
 
-    // Fallback to native language if target not set
+    // Trạng thái Auto Translate lấy từ Store
+    const autoTranslate = chatSettings.autoTranslate;
     const translationTargetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
 
     const currentUserId = user?.userId;
@@ -194,10 +207,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const uniqueLangs = new Set<string>();
         if (nativeLanguage) uniqueLangs.add(nativeLanguage);
         if (user?.languages) user.languages.forEach(l => uniqueLangs.add(l));
-
-        // Ensure current target is available
         if (translationTargetLang) uniqueLangs.add(translationTargetLang);
-
         return Array.from(uniqueLangs).map(getLanguageOption);
     }, [user?.languages, nativeLanguage, translationTargetLang, getLanguageOption]);
 
@@ -205,9 +215,18 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         availableLanguages.find(l => l.code === translationTargetLang) || getLanguageOption(translationTargetLang),
         [availableLanguages, translationTargetLang, getLanguageOption]);
 
+    // Handle Logic: Khi chọn ngôn ngữ -> Bật luôn Auto Translate
     const handleSelectLanguage = (lang: LanguageOption) => {
-        setChatSettings({ targetLanguage: lang.code });
+        setChatSettings({
+            targetLanguage: lang.code,
+            autoTranslate: true // <-- QUAN TRỌNG: Tự động bật tính năng dịch ngầm
+        });
         setMessagesToggleState({});
+        showToast({ message: `${t('chat.auto_translate_on')} ${lang.name}`, type: 'success' });
+    };
+
+    const handleToggleAuto = () => {
+        setChatSettings({ autoTranslate: !autoTranslate });
     };
 
     const membersMap = useMemo(() => {
@@ -236,14 +255,19 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
 
             const dbTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
+            // Dịch ngầm (Eager) từ Store
             const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
 
             const finalTranslation = localTrans || eagerTrans || dbTrans;
+
+            // Logic hiển thị: Nếu Auto bật VÀ có bản dịch -> Hiển thị luôn
             const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
             const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
 
+            // QUAN TRỌNG: showTranslation = true nếu autoTranslate ON và có kết quả eagerTrans
             const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!eagerTrans);
+
             const senderProfile = msg.senderProfile || membersMap[senderId];
 
             return {
@@ -327,6 +351,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const localTrans = localTranslations[id]?.[translationTargetLang];
             const hasTranslation = !!(localTrans || eagerTrans);
 
+            // Nếu đang Auto Translate và đã có dịch -> bấm nút sẽ ẩn dịch (về gốc)
             if (autoTranslate && hasTranslation) {
                 setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
             } else {
@@ -348,6 +373,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         let displayText = item.text;
         let isTranslatedView = false;
 
+        // Ưu tiên hiển thị theo Toggle thủ công trước
         const eagerTrans = eagerTranslations[item.id]?.[translationTargetLang];
         const localTrans = localTranslations[item.id]?.[translationTargetLang];
         const dbTrans = item.translatedLang === translationTargetLang ? item.translatedText : null;
@@ -360,6 +386,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             displayText = item.text;
             isTranslatedView = false;
         } else if (autoTranslate && availableTranslation) {
+            // Nếu không có toggle thủ công, và Auto ON -> Hiển thị dịch
             displayText = availableTranslation;
             isTranslatedView = true;
         }
@@ -415,6 +442,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     selectedLanguage={selectedLanguageOption}
                     onSelectLanguage={handleSelectLanguage}
                     availableLanguages={availableLanguages}
+                    isAutoTranslateOn={autoTranslate}
+                    onToggleAuto={handleToggleAuto}
                 />
             </View>
 
@@ -446,10 +475,31 @@ const styles = createScaledSheet({
         backgroundColor: 'transparent',
         flexDirection: 'row',
         justifyContent: 'flex-end',
+        alignItems: 'center',
     },
     languageSelectorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
         position: 'relative',
         zIndex: 50,
+    },
+    autoSwitch: {
+        backgroundColor: 'rgba(255,255,255,0.8)',
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        borderRadius: 16,
+        marginRight: 8,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    autoSwitchActive: {
+        backgroundColor: '#3B82F6',
+        borderColor: '#3B82F6',
+    },
+    autoText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#6B7280',
     },
     selectedLanguageButton: {
         flexDirection: 'row',

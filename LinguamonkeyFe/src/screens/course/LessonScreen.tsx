@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert, Platform
+  ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
-import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
+import { useAudioRecorder, RecordingPresets } from 'expo-audio';
 import { useLessons } from "../../hooks/useLessons";
 import { useSkillLessons } from "../../hooks/useSkillLessons";
 import { useUserStore } from "../../stores/UserStore";
@@ -15,7 +15,6 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import { UniversalQuestionView } from "../../components/learn/SkillComponents";
 import { LessonInputArea } from "../../components/learn/LessonInputArea";
 
-// Helper check đáp án
 const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean => {
   if (!question.correctOption) return false;
   const normalize = (str: any) => String(str || "").trim().toLowerCase().replace(/\s+/g, ' ');
@@ -70,16 +69,11 @@ const LessonScreen = ({ navigation, route }: any) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
 
-  // Lock đảm bảo luồng start/stop không bị xung đột
-  const recordingLock = useRef<Promise<void> | null>(null);
-  // Ref lưu URI để đảm bảo luôn lấy được giá trị kể cả khi recorder bị reset
-  const audioUriRef = useRef<string | null>(null);
-
   const [isRetryWrongMode, setIsRetryWrongMode] = useState(false);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
-  const { data: testData, isLoading } = useLessonTest(lesson.lessonId, userId!, !!userId);
+  const { data: testData, isLoading, refetch } = useLessonTest(lesson.lessonId, userId!, !!userId);
 
   useEffect(() => {
     if (testData?.questions) {
@@ -204,73 +198,29 @@ const LessonScreen = ({ navigation, route }: any) => {
     setIsProcessingAI(false);
   };
 
-  // --- LOGIC GHI ÂM (ĐÃ FIX: Dùng ref để bắt URI) ---
-  const handleStartRecording = () => {
-    setIsRecording(true);
-
-    recordingLock.current = (async () => {
-      try {
-        // Xin quyền (dù bạn nói đã có quyền, nhưng thêm bước này an toàn cho thiết bị khác)
-        const status = await AudioModule.requestRecordingPermissionsAsync();
-        if (!status.granted) {
-          Alert.alert("Permission", "Microphone permission is required.");
-          setIsRecording(false);
-          return;
-        }
-
-        // Đảm bảo recorder ở trạng thái sạch
-        if (recorder.isRecording) {
-          await recorder.stop();
-        }
-
-        await recorder.record();
-
-        // Delay tối thiểu 500ms để file được tạo
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // FIX: Lưu URI vào ref NGAY LẬP TỨC
-        // Khi record() chạy xong, recorder.uri sẽ có giá trị (file path tạm)
-        if (recorder.uri) {
-          audioUriRef.current = recorder.uri;
-          console.log("URI captured at start:", audioUriRef.current);
-        } else {
-          console.warn("Recorder started but URI is null");
-        }
-
-      } catch (e) {
-        console.error("Start Recording Error:", e);
-        setIsRecording(false);
-      }
-    })();
+  const handleStartRecording = async () => {
+    try {
+      setIsRecording(true);
+      await recorder.record();
+    } catch (e) {
+      console.error("Start recording failed:", e);
+      setIsRecording(false);
+    }
   };
 
   const handleStopRecording = async () => {
     try {
-      // 1. Chờ start hoàn tất
-      if (recordingLock.current) {
-        await recordingLock.current;
-        recordingLock.current = null;
-      }
-
-      console.log("Stopping recording...");
-
-      // 2. Lấy URI từ Ref (nơi an toàn nhất) hoặc fallback sang recorder.uri
-      const finalUri = audioUriRef.current || recorder.uri;
-      console.log("URI being used for submit:", finalUri);
-
-      // 3. Stop
-      if (recorder.isRecording) {
-        await recorder.stop();
-      }
-
+      // FIX: Must explicit stop to finalize file, especially for short audio
+      await recorder.stop();
       setIsRecording(false);
 
-      if (finalUri) {
+      const uri = recorder.uri;
+      if (uri) {
         setIsProcessingAI(true);
         setIsAnswered(true);
 
         await streamPronunciationMutation.mutateAsync({
-          audioUri: finalUri,
+          audioUri: uri,
           lessonQuestionId: currentQuestion.lessonQuestionId,
           languageCode: 'vi',
           onChunk: (chunk) => {
@@ -285,21 +235,16 @@ const LessonScreen = ({ navigation, route }: any) => {
             }
           }
         });
-
-        // Reset ref sau khi dùng xong
-        audioUriRef.current = null;
       } else {
-        // Nếu vẫn không có URI thì thực sự là lỗi hệ thống
-        console.warn("Failed to capture audio URI.");
-        // Không alert làm phiền người dùng nếu họ lỡ chạm nhầm
+        console.warn("No URI found after stop");
+        setIsRecording(false);
       }
     } catch (e) {
-      console.error("Stop recording logic failed", e);
+      console.error("Stop recording failed:", e);
       setIsRecording(false);
       setIsProcessingAI(false);
     }
   };
-  // ----------------------------------------------------
 
   const handleReviewQuestion = (index: number) => {
     setShowSummary(false);
