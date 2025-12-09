@@ -29,8 +29,11 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: ➕ Install Expo CLI dependency
+        # Đảm bảo @expo/cli được cài đặt cục bộ, khắc phục lỗi MODULE_NOT_FOUND
+        run: yarn add @expo/cli --dev --ignore-scripts
+
       - name: 🧹 Clean up old Android build files and cache 💥
-        # Xóa sâu các thư mục build cache để đảm bảo CMake/Gradle chạy lại từ đầu
         run: |
           echo "✨ Cleaning up old Android build directories and caches..."
           # Cache chính của dự án
@@ -43,11 +46,10 @@ jobs:
           find ./node_modules -name .cxx -type d -exec rm -rf {} +
 
       - name: 🛠️ Generate Android directory (Prebuild)
-        # Bước này sẽ tạo lại các file cần thiết sau khi dọn dẹp cache
+        # Bước này sẽ gọi @expo/cli
         run: npx expo prebuild --platform android --no-install
 
       - name: 🧹 Clean up duplicate icon files
-        # Xóa các file WEBP được tạo bởi prebuild để tránh lỗi "Duplicate resources"
         run: |
           echo "✨ Cleaning up duplicate icon files (removing .webp)..."
           find ./android/app/src/main/res -name "*.webp" -delete
@@ -69,7 +71,6 @@ jobs:
             ${{ runner.os }}-gradle-fe-
             
       - name: 🧹 Clean up large components (Pre-build)
-        # Vẫn giữ lại Android SDK để tránh lỗi NDK
         run: |
           echo "✨ Freeing up disk space by removing large tools..."
           sudo rm -rf /usr/share/dotnet/

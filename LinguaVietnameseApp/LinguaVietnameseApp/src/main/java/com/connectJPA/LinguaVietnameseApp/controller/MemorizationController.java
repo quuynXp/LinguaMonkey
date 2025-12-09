@@ -25,7 +25,6 @@ public class MemorizationController {
 
     @Operation(summary = "Save a memorization item", description = "Save a note, event, lesson, video, vocabulary, or formula for a user")
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<MemorizationResponse> saveMemorization(
             @RequestBody MemorizationRequest request,
             Principal principal,
@@ -41,7 +40,6 @@ public class MemorizationController {
 
     @Operation(summary = "Update a memorization item", description = "Update an existing memorization item")
     @PutMapping("/{memorizationId}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<MemorizationResponse> updateMemorization(
             @PathVariable UUID memorizationId,
             @RequestBody MemorizationRequest request,
@@ -58,7 +56,6 @@ public class MemorizationController {
 
     @Operation(summary = "Delete a memorization item", description = "Soft delete a memorization item")
     @DeleteMapping("/{memorizationId}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Void> deleteMemorization(
             @PathVariable UUID memorizationId,
             Principal principal,
@@ -73,7 +70,6 @@ public class MemorizationController {
 
     @Operation(summary = "Get memorization items", description = "Get paginated memorization items for a user, optionally filtered by content type")
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Page<MemorizationResponse>> getMemorizations(
             @RequestParam(required = false) String contentType,
             Pageable pageable,

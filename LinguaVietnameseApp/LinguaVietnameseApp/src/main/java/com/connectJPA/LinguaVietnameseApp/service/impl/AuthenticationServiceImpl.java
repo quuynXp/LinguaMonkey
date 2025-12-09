@@ -65,7 +65,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     Resource privateKeyResource;
     @Value("classpath:public_key.pem")
     Resource publicKeyResource;
-    @Value("${google.client-id}")
+    @Value("${GOOGLE_OAUTH_CLIENT_ID}")
     String googleClientId;
     @Value("${jwt.key-id}")
     private String jwtKeyId;
