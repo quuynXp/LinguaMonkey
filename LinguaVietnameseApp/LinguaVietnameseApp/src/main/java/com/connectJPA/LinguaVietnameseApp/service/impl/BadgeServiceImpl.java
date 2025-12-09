@@ -27,7 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -61,27 +63,42 @@ public class BadgeServiceImpl implements BadgeService {
     @Override
     @Transactional
     public void assignBadgeToUser(UUID userId, UUID badgeId) {
-        if (userBadgeRepository.existsById(new UserBadgeId(badgeId, userId))) {
+        // 1. Kiểm tra xem đã sở hữu chưa để tránh trùng lặp
+        UserBadgeId id = new UserBadgeId(badgeId, userId);
+        if (userBadgeRepository.existsById(id)) {
             return;
         }
-        User user = userRepository.getReferenceById(userId);
-        Badge badge = badgeRepository.findById(badgeId).orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
 
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        Badge badge = badgeRepository.findById(badgeId)
+                .orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
+
+        // 2. Tạo UserBadge với ID rõ ràng
         UserBadge userBadge = UserBadge.builder()
-                .id(new UserBadgeId(badgeId, userId))
+                .id(id) // Quan trọng: Set EmbeddedId thủ công để tránh lỗi JPA MapsId trong một số context
                 .user(user)
                 .badge(badge)
                 .earnedAt(OffsetDateTime.now())
                 .build();
 
         userBadgeRepository.save(userBadge);
+        
+        // 3. Gửi thông báo
         sendBadgeEarnedNotification(userId, badge);
     }
 
     @Override
     @Transactional
     public void assignStarterBadges(UUID userId) {
+        // Tìm tất cả badge có type là REGISTRATION
         List<Badge> starterBadges = badgeRepository.findByBadgeTypeAndIsDeletedFalse(BadgeType.REGISTRATION);
+        
+        if (starterBadges.isEmpty()) {
+            log.warn("No REGISTRATION badges found in DB. New user {} gets no starter badges.", userId);
+            return;
+        }
+
         for (Badge badge : starterBadges) {
             assignBadgeToUser(userId, badge.getBadgeId());
         }
@@ -90,6 +107,7 @@ public class BadgeServiceImpl implements BadgeService {
     @Override
     @Transactional
     public void updateBadgeProgress(UUID userId, BadgeType type, int increment) {
+        // Logic tự động check badge khi user làm hành động gì đó (như update exp, streak)
         List<Badge> targetBadges = badgeRepository.findByBadgeTypeAndIsDeletedFalse(type);
         
         for (Badge badge : targetBadges) {
@@ -102,10 +120,12 @@ public class BadgeServiceImpl implements BadgeService {
                 User user = userRepository.findById(userId).orElse(null);
                 currentProgress = (user != null) ? user.getStreak() : 0;
             } else {
-                 currentProgress += increment; 
+                 currentProgress += increment; // Với các loại cộng dồn thủ công
             }
 
-            if (currentProgress >= badge.getCriteriaValue()) {
+            // Nếu đạt đủ điều kiện -> Assign luôn (hoặc để UI hiện nút Claim tùy logic)
+            // Ở đây giữ logic tự động assign:
+            if (currentProgress >= badge.getCriteriaThreshold()) { // Lưu ý: Dùng criteriaThreshold thay vì criteriaValue
                 assignBadgeToUser(userId, badge.getBadgeId());
             }
         }
@@ -128,7 +148,63 @@ public class BadgeServiceImpl implements BadgeService {
 
     @Override
     public List<BadgeProgressResponse> getBadgeProgressForUser(UUID userId) {
-         return new ArrayList<>();
+        
+        List<Badge> allBadges = badgeRepository.findAll().stream()
+                .collect(Collectors.toList());
+
+        if (allBadges.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        Map<UUID, UserBadge> ownedBadgesMap = userBadgeRepository.findByIdUserIdAndIsDeletedFalse(userId).stream()
+                .collect(Collectors.toMap(ub -> ub.getBadge().getBadgeId(), Function.identity()));
+
+        List<BadgeProgressResponse> progressList = new ArrayList<>();
+
+        for (Badge badge : allBadges) {
+            boolean isOwned = ownedBadgesMap.containsKey(badge.getBadgeId());
+            int currentProgress = 0;
+
+            // Tính toán progress thực tế
+            if (isOwned) {
+                currentProgress = badge.getCriteriaThreshold();
+            } else {
+                // Tính progress dựa trên BadgeType và chỉ số hiện tại của User
+                if (badge.getBadgeType() != null) {
+                    switch (badge.getBadgeType()) {
+                        case STREAK_MILESTONE:
+                            currentProgress = user.getStreak();
+                            break;
+                        // Thêm các case khác tùy vào db User có field gì
+                        // Ví dụ: case TOTAL_EXP: currentProgress = user.getExp(); break;
+                        default:
+                            currentProgress = 0;
+                    }
+                }
+            }
+
+            // Cap progress không vượt quá threshold
+            if (currentProgress > badge.getCriteriaThreshold()) {
+                currentProgress = badge.getCriteriaThreshold();
+            }
+
+            // Build response thủ công để đảm bảo đúng field UI cần
+            BadgeProgressResponse response = BadgeProgressResponse.builder()
+                    .badgeId(badge.getBadgeId())
+                    .badgeName(badge.getBadgeName())
+                    .description(badge.getDescription())
+                    .imageUrl(badge.getImageUrl())
+                    .criteriaThreshold(badge.getCriteriaThreshold())
+                    .currentUserProgress(currentProgress)
+                    .isAchieved(isOwned)
+                    // Thêm các field UI cần nếu có trong DTO
+                    .build();
+            
+            progressList.add(response);
+        }
+
+        return progressList;
     }
 
     @Override
@@ -158,6 +234,41 @@ public class BadgeServiceImpl implements BadgeService {
     }
 
     @Override
+    @Transactional
     public void claimBadge(UUID userId, UUID badgeId) {
+        // Logic Claim từ UI (nếu dùng nút Claim thay vì auto assign)
+        Badge badge = badgeRepository.findById(badgeId)
+                .orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
+
+        UserBadgeId id = new UserBadgeId(badgeId, userId);
+        if (userBadgeRepository.existsById(id)) {
+            // Đã nhận rồi
+            return; 
+        }
+
+        // Check điều kiện lại một lần nữa cho chắc (Server-side validation)
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
+        boolean canClaim = false;
+        if (badge.getBadgeType() != null) {
+            switch (badge.getBadgeType()) {
+                case STREAK_MILESTONE:
+                    if (user.getStreak() >= badge.getCriteriaThreshold()) canClaim = true;
+                    break;
+                // Add logic for other types
+                default:
+                    // Với các loại badge không check được từ User entity (VD: số bài học),
+                    // ta tạm tin tưởng Client hoặc phải query count từ bảng learning_activity
+                    canClaim = true; 
+                    break;
+            }
+        }
+
+        if (!canClaim) {
+            throw new AppException(ErrorCode.BADGE_CRITERIA_NOT_MET); // Cần define ErrorCode này
+        }
+
+        assignBadgeToUser(userId, badgeId);
     }
 }

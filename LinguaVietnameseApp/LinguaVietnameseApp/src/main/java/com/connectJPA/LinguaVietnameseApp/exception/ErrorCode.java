@@ -28,6 +28,7 @@ public enum ErrorCode {
     INVALID_DATA_FORMAT(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
     CHALLENGE_ALREADY_CLAIMED(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
         VERSION_NOT_FOUND(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
+        COURSE_NOT_ENROLLED(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
     // Nhóm: User & Auth Logic (400) (11xx)
     INVALID_USER_INFO(1100, "error.invalid_user_info", HttpStatus.BAD_REQUEST, true),
     EMAIL_ALREADY_EXISTS(1101, "error.email_already_exists", HttpStatus.BAD_REQUEST, true),
@@ -41,6 +42,8 @@ public enum ErrorCode {
         CHALLENGE_NOT_COMPLETED(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
         INVALID_TRANSACTION_STATUS(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
         CURRENT_PASSWORD_INVALID(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
+        BADGE_CRITERIA_NOT_MET(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
+        BADGE_ALREADY_CLAIMED(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
 
     // Đã chuẩn hoá lại code và key cho các enum cũ
     INCORRECT_PASSWORD(1109, "error.incorrect_password", HttpStatus.BAD_REQUEST, true),

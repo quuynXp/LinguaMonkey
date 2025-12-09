@@ -66,7 +66,6 @@ async def analyze_course_quality(course_id: str, lesson_ids: list[str]) -> tuple
 
 
 async def decide_refund(transaction_id: str, user_id: str, course_id: str, reason_text: str):
-    # Pre-processing: Check if it is a Standard Code from Dropdown
     is_standard = False
     context_prefix = ""
     
@@ -124,7 +123,7 @@ async def decide_refund(transaction_id: str, user_id: str, course_id: str, reaso
 
         # Boost confidence for standard codes if AI agrees
         if is_standard and confidence > 0.7:
-             confidence = min(0.99, confidence + 0.1)
+            confidence = min(0.99, confidence + 0.1)
 
         return decision, decision, confidence, [explanation], ""
 

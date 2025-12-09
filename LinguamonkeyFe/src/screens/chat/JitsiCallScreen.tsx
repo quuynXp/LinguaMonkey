@@ -53,7 +53,7 @@ type SubtitleData = {
   translated: string;
   translatedLang: string;
   senderId: string;
-  status?: 'complete' | 'noise';
+  status?: 'processing' | 'complete' | 'noise';
 };
 
 const iceServers = [
@@ -89,10 +89,13 @@ const WebRTCCallScreen = () => {
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
 
-  // --- REFS ---
-  const ws = useRef<WebSocket | null>(null);
+  // SEPARATE WEBSOCKETS
+  const wsSignal = useRef<WebSocket | null>(null);
+  const wsAudio = useRef<WebSocket | null>(null);
+
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const iceCandidatesQueue = useRef<Map<string, RTCIceCandidate[]>>(new Map());
+  const processingRef = useRef<{ lastUpdate: number, data: SubtitleData | null }>({ lastUpdate: 0, data: null });
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const pingInterval = useRef<any>(null);
@@ -101,8 +104,8 @@ const WebRTCCallScreen = () => {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
-    audioSource: Platform.OS === 'android' ? 7 : 0,
-    bufferSize: 4096,
+    audioSource: Platform.OS === 'android' ? 6 : 0,
+    bufferSize: 2048, // Reduced latency
     wavFile: 'temp.wav'
   };
 
@@ -116,7 +119,8 @@ const WebRTCCallScreen = () => {
       if (isMounted && stream) {
         setLocalStream(stream);
         localStreamRef.current = stream;
-        connectWebSocket();
+        connectSignalingSocket();
+        connectAudioSocket();
       } else {
         setConnectionStatus("Camera Error");
       }
@@ -130,76 +134,74 @@ const WebRTCCallScreen = () => {
     };
   }, []);
 
-  const connectWebSocket = () => {
+  const connectSignalingSocket = () => {
     if (!roomId || !accessToken || isManuallyClosed.current) return;
-
-    if (ws.current) {
-      try { ws.current.close(); } catch (_) { }
-      ws.current = null;
-    }
+    if (wsSignal.current) { try { wsSignal.current.close(); } catch (_) { } }
 
     const normalizedRoomId = String(roomId).trim().toLowerCase();
     let cleanBase = API_BASE_URL.replace('http://', '').replace('https://', '').replace(/\/$/, '');
     const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
-    const wsUrl = `${protocol}${cleanBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${normalizedRoomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
 
-    console.log(`🔌 Connecting WS (Attempt ${reconnectAttempts.current + 1})...`);
-    ws.current = new WebSocket(wsUrl);
+    // WS SIGNAL ENDPOINT
+    const url = `${protocol}${cleanBase}/ws/py/signal?token=${accessToken}&roomId=${normalizedRoomId}`;
 
-    ws.current.onopen = () => {
-      console.log("✅ Socket Open");
+    console.log(`🔌 Connecting SIGNAL WS...`);
+    wsSignal.current = new WebSocket(url);
+
+    wsSignal.current.onopen = () => {
+      console.log("✅ Signal Socket Open");
       isManuallyClosed.current = false;
-      reconnectAttempts.current = 0;
       setConnectionStatus("Connected. Waiting for others...");
-      initSubtitleAudioStream();
-
-      setTimeout(() => {
-        sendSignalingMessage({ type: 'JOIN_ROOM' });
-      }, 500);
-
+      setTimeout(() => sendSignalingMessage({ type: 'JOIN_ROOM' }), 500);
       startPing();
     };
 
-    ws.current.onmessage = async (e) => {
+    wsSignal.current.onmessage = async (e) => {
       try {
         const data = JSON.parse(e.data);
-
-        if (data.type === 'subtitle') {
-          handleSubtitleMessage(data);
-          return;
-        }
-
         if (data.type === 'webrtc_signal') {
           const senderId = String(data.senderId || 'unknown');
           const myId = String(user?.userId || 'me');
-
           if (senderId === myId) return;
-
-          const payload = data.payload;
-          await handleSignalingData(senderId, payload);
+          await handleSignalingData(senderId, data.payload);
         }
-      } catch (err) {
-        console.error("WS Message Error", err);
-      }
+      } catch (err) { console.error("Signal Msg Error", err); }
     };
 
-    ws.current.onerror = (e) => {
-      console.log("❌ WS Error:", e);
+    wsSignal.current.onclose = () => {
+      if (!isManuallyClosed.current) setTimeout(connectSignalingSocket, 2000);
+    };
+  };
+
+  const connectAudioSocket = () => {
+    if (!roomId || !accessToken || isManuallyClosed.current) return;
+    if (wsAudio.current) { try { wsAudio.current.close(); } catch (_) { } }
+
+    const normalizedRoomId = String(roomId).trim().toLowerCase();
+    let cleanBase = API_BASE_URL.replace('http://', '').replace('https://', '').replace(/\/$/, '');
+    const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
+
+    // WS AUDIO ENDPOINT
+    const url = `${protocol}${cleanBase}/ws/py/subtitles-audio?token=${accessToken}&roomId=${normalizedRoomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
+
+    console.log(`🎤 Connecting AUDIO WS...`);
+    wsAudio.current = new WebSocket(url);
+
+    wsAudio.current.onopen = () => {
+      console.log("✅ Audio Socket Open");
+      wsAudio.current?.send(JSON.stringify({ type: 'META', userId: user?.userId, nativeLang }));
+      initSubtitleAudioStream();
     };
 
-    ws.current.onclose = (e) => {
-      if (isManuallyClosed.current) return;
+    wsAudio.current.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'subtitle') handleSubtitleMessage(data);
+      } catch (err) { }
+    };
 
-      console.log(`⚠️ WS Closed (Code: ${e.code}). Attempting reconnect...`);
-      stopPing();
-
-      if (reconnectAttempts.current < maxReconnectAttempts) {
-        reconnectAttempts.current += 1;
-        setConnectionStatus(`Reconnecting (${reconnectAttempts.current}/${maxReconnectAttempts})...`);
-        setTimeout(connectWebSocket, 2000);
-      } else {
-        setConnectionStatus("Connection Lost. Please restart.");
-      }
+    wsAudio.current.onclose = () => {
+      if (!isManuallyClosed.current) setTimeout(connectAudioSocket, 3000);
     };
   };
 
@@ -208,7 +210,6 @@ const WebRTCCallScreen = () => {
     console.log(`📩 Signal [${type}] from ${senderId.substring(0, 5)}...`);
 
     if (type === 'JOIN_ROOM') {
-      console.log(`👋 Partner ${senderId} joined via JOIN_ROOM`);
       setConnectionStatus(`Partner Joined. Connecting...`);
       await createPeerConnection(senderId, true);
       return;
@@ -219,7 +220,6 @@ const WebRTCCallScreen = () => {
       if (pc) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload));
         await processIceQueue(senderId, pc);
-
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         sendSignalingMessage({ type: 'answer', targetId: senderId }, answer);
@@ -239,45 +239,33 @@ const WebRTCCallScreen = () => {
     if (type === 'ice_candidate') {
       const pc = peerConnections.current.get(senderId);
       const candidate = new RTCIceCandidate(payload.candidate);
-
       if (pc && pc.remoteDescription) {
         await pc.addIceCandidate(candidate);
       } else {
-        console.log(`⚠️ Queuing ICE for ${senderId} (No RemoteDesc)`);
         const queue = iceCandidatesQueue.current.get(senderId) || [];
         queue.push(candidate);
         iceCandidatesQueue.current.set(senderId, queue);
       }
-      return;
     }
   };
 
   const processIceQueue = async (partnerId: string, pc: RTCPeerConnection) => {
     const queue = iceCandidatesQueue.current.get(partnerId);
     if (queue && queue.length > 0) {
-      console.log(`🔄 Processing ${queue.length} queued ICE candidates for ${partnerId}`);
-      for (const candidate of queue) {
-        await pc.addIceCandidate(candidate);
-      }
+      for (const candidate of queue) await pc.addIceCandidate(candidate);
       iceCandidatesQueue.current.delete(partnerId);
     }
   };
 
   const createPeerConnection = async (partnerId: string, shouldCreateOffer: boolean) => {
-    if (peerConnections.current.has(partnerId)) {
-      return peerConnections.current.get(partnerId);
-    }
+    if (peerConnections.current.has(partnerId)) return peerConnections.current.get(partnerId);
 
-    console.log(`🛠 Creating PC for ${partnerId}`);
     const pc = new RTCPeerConnection({ iceServers });
     const pcAny = pc as any;
-
     peerConnections.current.set(partnerId, pc);
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
-      });
+      localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
     }
 
     pcAny.onicecandidate = (event: any) => {
@@ -287,7 +275,6 @@ const WebRTCCallScreen = () => {
     };
 
     pcAny.ontrack = (event: any) => {
-      console.log(`🎥 ontrack triggered from ${partnerId}`);
       if (event.streams && event.streams[0]) {
         setRemoteStreams(prev => {
           const newMap = new Map(prev);
@@ -300,40 +287,22 @@ const WebRTCCallScreen = () => {
 
     pcAny.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState;
-      console.log(`❄️ ICE State (${partnerId}): ${state}`);
-      if (state === 'connected') {
-        setConnectionStatus("Connected");
-      } else if (state === 'failed' || state === 'disconnected') {
-        handlePeerDisconnect(partnerId);
-        setConnectionStatus("Reconnecting...");
-      }
+      if (state === 'failed' || state === 'disconnected') handlePeerDisconnect(partnerId);
     };
 
     if (shouldCreateOffer) {
       try {
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-          iceRestart: true
-        });
+        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true, iceRestart: true });
         await pc.setLocalDescription(offer);
-        console.log(`📤 Sending Offer to ${partnerId}`);
         sendSignalingMessage({ type: 'offer', targetId: partnerId }, offer);
-      } catch (err) {
-        console.error(`Error creating offer for ${partnerId}`, err);
-      }
+      } catch (err) { console.error(err); }
     }
-
     return pc;
   };
 
   const handlePeerDisconnect = (partnerId: string) => {
-    console.log(`❌ Peer ${partnerId} disconnected cleanup`);
     const pc = peerConnections.current.get(partnerId);
-    if (pc) {
-      pc.close();
-      peerConnections.current.delete(partnerId);
-    }
+    if (pc) { pc.close(); peerConnections.current.delete(partnerId); }
     setRemoteStreams(prev => {
       const newMap = new Map(prev);
       newMap.delete(partnerId);
@@ -342,41 +311,14 @@ const WebRTCCallScreen = () => {
   };
 
   const sendSignalingMessage = (meta: any, payloadData?: any) => {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      const message = {
+    if (wsSignal.current?.readyState === WebSocket.OPEN) {
+      wsSignal.current.send(JSON.stringify({
         type: meta.type === 'JOIN_ROOM' ? 'JOIN_ROOM' : 'webrtc_signal',
-        roomId: roomId,
+        roomId,
         senderId: user?.userId,
         payload: { ...meta, ...payloadData }
-      };
-      if (meta.type === 'JOIN_ROOM') {
-        ws.current.send(JSON.stringify({
-          type: "JOIN_ROOM",
-          roomId: roomId,
-          senderId: user?.userId
-        }));
-      } else {
-        ws.current.send(JSON.stringify({
-          type: "webrtc_signal",
-          roomId: roomId,
-          senderId: user?.userId,
-          payload: { ...meta, ...payloadData }
-        }));
-      }
-    } else {
-      console.log("⚠️ Socket not ready, cannot send:", meta.type);
+      }));
     }
-  };
-
-  const handleRetryConnection = () => {
-    console.log("♻️ Retrying Handshake...");
-    setConnectionStatus("Retrying...");
-
-    sendSignalingMessage({ type: 'JOIN_ROOM' });
-
-    peerConnections.current.forEach(pc => pc.close());
-    peerConnections.current.clear();
-    setRemoteStreams(new Map());
   };
 
   const initSubtitleAudioStream = async () => {
@@ -387,25 +329,24 @@ const WebRTCCallScreen = () => {
     try {
       LiveAudioStream.stop();
       LiveAudioStream.init(audioOptions);
-      LiveAudioStream.on('data', (base64Data) => {
-        if (ws.current?.readyState === WebSocket.OPEN && isMicOn && !isManuallyClosed.current) {
-          ws.current.send(JSON.stringify({ audio_chunk: base64Data }));
-        }
+      LiveAudioStream.on('data', (base64Data: string) => {
+        if (!wsAudio.current || wsAudio.current.readyState !== WebSocket.OPEN || !isMicOn || isManuallyClosed.current) return;
+        try {
+          const binaryString = atob(base64Data);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+          wsAudio.current.send(bytes.buffer);
+        } catch (err) { }
       });
       if (isMicOn) LiveAudioStream.start();
-    } catch (e) {
-      console.error("AudioStream Init Error", e);
-    }
+    } catch (e) { console.error(e); }
   };
 
-  // 🔥 Cập nhật logic xử lý phụ đề theo cơ chế reset VAD và hiển thị
   const handleSubtitleMessage = useCallback((data: any) => {
-    if (subtitleTimeoutRef.current) {
-      clearTimeout(subtitleTimeoutRef.current);
-      subtitleTimeoutRef.current = null;
-    }
+    if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
 
-    const newSubtitleData: SubtitleData = {
+    const newData: SubtitleData = {
       originalFull: data.originalFull || '',
       originalLang: data.originalLang || 'en',
       translated: data.translated || '',
@@ -414,65 +355,47 @@ const WebRTCCallScreen = () => {
       status: data.status,
     };
 
-    if (newSubtitleData.status === 'noise' || !newSubtitleData.originalFull.trim()) {
-      // Trường hợp nhiễu hoặc tin nhắn trống (server reset chuỗi)
-      setFullSubtitle({
-        ...newSubtitleData,
-        originalFull: newSubtitleData.originalFull || "hmm...",
-      });
+    if (data.status === 'processing') {
+      processingRef.current.data = newData;
+      const now = Date.now();
+      if (now - processingRef.current.lastUpdate > 300) {
+        setFullSubtitle(newData);
+        processingRef.current.lastUpdate = now;
+      }
     } else {
-      setFullSubtitle(newSubtitleData);
+      setFullSubtitle(newData);
     }
 
-    // Ngắt câu (reset) sau 3 giây không có hoạt động nói
-    if (newSubtitleData.status === 'complete' || newSubtitleData.status === 'noise') {
-      subtitleTimeoutRef.current = setTimeout(() => {
-        setFullSubtitle(null);
-      }, 3000);
+    if (data.status === 'complete' || data.status === 'noise') {
+      subtitleTimeoutRef.current = setTimeout(() => setFullSubtitle(null), 4000);
     }
-
   }, [nativeLang]);
 
   const startPing = () => {
     stopPing();
-    pingInterval.current = setInterval(() => {
-      sendSignalingMessage({ type: 'PING' });
-    }, 5000);
+    pingInterval.current = setInterval(() => sendSignalingMessage({ type: 'PING' }), 5000);
   };
 
   const stopPing = () => {
-    if (pingInterval.current) {
-      clearInterval(pingInterval.current);
-      pingInterval.current = null;
-    }
+    if (pingInterval.current) { clearInterval(pingInterval.current); pingInterval.current = null; }
   };
 
   const cleanupCall = useCallback(() => {
-    console.log("🧹 Cleaning up call...");
     isManuallyClosed.current = true;
-
     stopPing();
     if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
 
-    try {
-      LiveAudioStream.stop();
-      LiveAudioStream.on('data', () => { });
-    } catch (e) { console.warn("Stop stream error", e); }
+    try { LiveAudioStream.stop(); } catch (e) { }
 
-    localStreamRef.current?.getTracks().forEach(track => {
-      track.stop();
-      track.enabled = false;
-    });
+    localStreamRef.current?.getTracks().forEach(track => { track.stop(); track.enabled = false; });
     setLocalStream(null);
 
     peerConnections.current.forEach(pc => pc.close());
     peerConnections.current.clear();
     setRemoteStreams(new Map());
 
-    if (ws.current) {
-      ws.current.close(1000, "User ended call");
-      ws.current = null;
-    }
+    if (wsSignal.current) { wsSignal.current.close(); wsSignal.current = null; }
+    if (wsAudio.current) { wsAudio.current.close(); wsAudio.current = null; }
   }, []);
 
   const getMediaStream = async () => {
@@ -487,57 +410,44 @@ const WebRTCCallScreen = () => {
         audio: true,
         video: { width: 480, height: 640, frameRate: 24, facingMode: 'user' }
       });
-    } catch (e) {
-      console.error("getUserMedia Error", e);
-      return null;
-    }
+    } catch (e) { return null; }
   };
 
   const handleCallEnd = () => {
     cleanupCall();
-
     if (videoCallId && user?.userId) {
       updateCallStatus({ id: videoCallId, payload: { callerId: user.userId, status: VideoCallStatus.ENDED } });
     }
     navigation.goBack();
   };
 
-  useEffect(() => {
-    return () => {
-      cleanupCall();
-    }
-  }, [cleanupCall]);
+  const handleRetryConnection = () => {
+    setConnectionStatus("Retrying...");
+    sendSignalingMessage({ type: 'JOIN_ROOM' });
+    peerConnections.current.forEach(pc => pc.close());
+    peerConnections.current.clear();
+    setRemoteStreams(new Map());
+  };
 
   const renderRemoteVideos = () => {
     const streams = Array.from(remoteStreams.values());
-    const count = streams.length;
-
-    if (count === 0) {
+    if (streams.length === 0) {
       return (
         <View style={styles.remoteVideoPlaceholder}>
           <ActivityIndicator size="large" color="#4f46e5" />
           <Text style={styles.statusText}>{connectionStatus}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={handleRetryConnection}>
-            <Text style={styles.retryText}>Thử lại / Kết nối lại</Text>
+            <Text style={styles.retryText}>{t('retry')}</Text>
           </TouchableOpacity>
         </View>
       );
     }
-
-    let width: DimensionValue = '100%';
-    let height: DimensionValue = '100%';
-
-    if (count === 1) {
-    } else if (count === 2) {
-      height = '50%';
-    } else if (count <= 4) {
-      width = '50%';
-      height = '50%';
-    }
+    let width: DimensionValue = streams.length > 2 ? '50%' : '100%';
+    let height: DimensionValue = streams.length > 1 ? '50%' : '100%';
 
     return (
       <View style={styles.gridContainer}>
-        {streams.map((stream, index) => (
+        {streams.map((stream) => (
           <View key={stream.id} style={{ width, height, borderWidth: 1, borderColor: '#111' }}>
             <RTCView streamURL={stream.toURL()} style={{ flex: 1 }} objectFit="cover" />
           </View>
@@ -547,76 +457,49 @@ const WebRTCCallScreen = () => {
   };
 
   const renderSubtitleText = (data: SubtitleData) => {
-    if (!data.originalFull.trim()) return null;
-
-    const senderIsMe = data.senderId === user?.userId;
-    const senderLabel = senderIsMe ? t('You') : t('Partner');
+    if (!data.originalFull.trim() || data.senderId === user?.userId) return null;
 
     const originalText = data.originalFull;
     const translatedText = data.translated;
-
     let displayOriginal = false;
     let displayTranslated = false;
 
-    if (subtitleMode === 'dual') {
-      displayOriginal = true;
-      displayTranslated = true;
-    } else if (subtitleMode === 'native' && translatedText) {
-      displayTranslated = true;
-    } else if (subtitleMode === 'original' || !translatedText) {
-      displayOriginal = true;
-    }
-
-    // Căn giữa phụ đề
-    const alignment = 'center';
+    if (subtitleMode === 'dual') { displayOriginal = true; displayTranslated = true; }
+    else if (subtitleMode === 'native' && translatedText) { displayTranslated = true; }
+    else if (subtitleMode === 'original' || !translatedText) { displayOriginal = true; }
 
     return (
       <View style={styles.subtitleContainer}>
-        <Text style={[styles.subtitleSender, { textAlign: alignment }]}>{senderLabel}</Text>
-        {displayOriginal && (
-          <Text style={[styles.subtitleTextOriginal, { textAlign: alignment }]}>
-            {originalText}
-          </Text>
-        )}
-        {displayTranslated && translatedText && (
-          <Text style={[styles.subtitleTextTranslated, { textAlign: alignment }]}>
-            {translatedText}
-          </Text>
-        )}
+        <Text style={[styles.subtitleSender, { textAlign: 'center' }]}>{t('Partner')}</Text>
+        {displayOriginal && <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }]}>{originalText}</Text>}
+        {displayTranslated && translatedText && <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translatedText}</Text>}
         {displayTranslated && !translatedText && originalText !== "hmm..." && (
-          <Text style={[styles.subtitleTextTranslated, { textAlign: alignment, color: '#9ca3af' }]}>
-            {t('translating')}...
-          </Text>
+          <Text style={[styles.subtitleTextTranslated, { textAlign: 'center', color: '#9ca3af' }]}>{t('translating')}...</Text>
         )}
       </View>
     );
-  }
+  };
 
   return (
     <ScreenLayout>
       <View style={styles.container}>
         {renderRemoteVideos()}
-
         {localStream && (
           <View style={styles.localVideoContainer}>
             <RTCView streamURL={localStream.toURL()} style={styles.localVideo} objectFit="cover" zOrder={1} />
           </View>
         )}
-
         <TouchableOpacity style={styles.endCallButton} onPress={handleCallEnd}>
           <Icon name="call-end" size={30} color="white" />
         </TouchableOpacity>
 
-        {/* Hiển thị phụ đề ở giữa màn hình */}
         {subtitleMode !== 'off' && fullSubtitle && renderSubtitleText(fullSubtitle)}
 
         <View style={styles.controls}>
           <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
             <Icon name="settings" size={24} color="white" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.iconButton, { backgroundColor: isMicOn ? '#22c55e' : '#ef4444' }]}
-            onPress={() => setIsMicOn(!isMicOn)}>
+          <TouchableOpacity style={[styles.iconButton, { backgroundColor: isMicOn ? '#22c55e' : '#ef4444' }]} onPress={() => setIsMicOn(!isMicOn)}>
             <Icon name={isMicOn ? "mic" : "mic-off"} size={24} color="white" />
           </TouchableOpacity>
         </View>
@@ -633,9 +516,6 @@ const WebRTCCallScreen = () => {
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity style={styles.closeSettings} onPress={() => setShowSettings(false)}>
-              <Text style={{ color: 'white' }}>Close</Text>
-            </TouchableOpacity>
           </View>
         </Modal>
       </View>
@@ -644,7 +524,6 @@ const WebRTCCallScreen = () => {
 };
 
 const windowWidth = Dimensions.get('window').width;
-
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
   gridContainer: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
@@ -655,22 +534,10 @@ const styles = createScaledSheet({
   localVideoContainer: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563', backgroundColor: '#374151' },
   localVideo: { flex: 1 },
   endCallButton: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5 },
-
-  // 🔥 Cập nhật Subtitle Container: Căn giữa, rộng tùy nội dung, và dùng maxWidth 90%
-  subtitleContainer: {
-    position: 'absolute',
-    bottom: 120,
-    alignSelf: 'center', // Căn giữa màn hình
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    maxWidth: windowWidth * 0.9, // Cho phép nó rộng hơn khi câu dài
-    marginHorizontal: 10,
-  },
+  subtitleContainer: { position: 'absolute', bottom: 120, alignSelf: 'center', padding: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.8)', maxWidth: windowWidth * 0.9, marginHorizontal: 10 },
   subtitleSender: { color: '#9ca3af', fontSize: 12, fontWeight: 'bold', marginBottom: 2 },
   subtitleTextOriginal: { color: '#e5e7eb', marginBottom: 4, flexShrink: 1, fontSize: 18 },
   subtitleTextTranslated: { color: '#fbbf24', fontWeight: 'bold', fontSize: 18, flexShrink: 1 },
-
   controls: { position: 'absolute', top: 60, left: 20, gap: 12 },
   iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
@@ -678,7 +545,6 @@ const styles = createScaledSheet({
   sectionTitle: { color: '#9ca3af', fontWeight: 'bold', marginBottom: 10 },
   modeButton: { padding: 10, backgroundColor: '#374151', borderRadius: 8, minWidth: '45%', alignItems: 'center', justifyContent: 'center' },
   modeButtonActive: { backgroundColor: '#4f46e5' },
-  closeSettings: { marginTop: 20, alignSelf: 'center', padding: 10 },
 });
 
 export default WebRTCCallScreen;

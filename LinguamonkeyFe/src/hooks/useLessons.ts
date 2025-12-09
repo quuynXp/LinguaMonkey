@@ -1,5 +1,3 @@
-// File: src/hooks/useLessons.ts
-
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import instance from "../api/axiosClient";
 import { useUserStore } from "../stores/UserStore";

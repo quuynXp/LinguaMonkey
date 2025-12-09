@@ -1,4 +1,3 @@
-
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.FriendshipRequest;
@@ -26,7 +25,6 @@ import java.util.UUID;
 public class FriendshipController {
     private final FriendshipService friendshipService;
     private final MessageSource messageSource;
-
 
     @Operation(summary = "Check if two users are friends", description = "Returns true if users are friends (status ACCEPTED, bidirectional check)")
     @ApiResponses({
@@ -62,18 +60,20 @@ public class FriendshipController {
                 .build();
     }
 
-    @Operation(summary = "Get all friendships", description = "Retrieve a paginated list of friendships with optional filtering by user1Id or status")
+    @Operation(summary = "Get all friendships", description = "Retrieve a paginated list of friendships with filtering by requesterId (Sent/Friends) or receiverId (Received)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved friendships"),
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
     })
     @GetMapping
     public AppApiResponse<Page<FriendshipResponse>> getAllFriendships(
-            @Parameter(description = "User1 ID filter") @RequestParam(required = false) String user1Id,
+            @Parameter(description = "Requester ID filter (For 'Sent' or 'Friends')") @RequestParam(required = false) String requesterId,
+            @Parameter(description = "Receiver ID filter (For 'Received')") @RequestParam(required = false) String receiverId,
             @Parameter(description = "Status filter") @RequestParam(required = false) String status,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
             Locale locale) {
-        Page<FriendshipResponse> friendships = friendshipService.getAllFriendships(user1Id, status, pageable);
+        // FIXED: Accepted both requesterId and receiverId explicitly to match Frontend DTO
+        Page<FriendshipResponse> friendships = friendshipService.getAllFriendships(requesterId, receiverId, status, pageable);
         return AppApiResponse.<Page<FriendshipResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("friendship.list.success", null, locale))

@@ -203,8 +203,12 @@ const EditProfileScreen: React.FC = () => {
   const [isProcessingDelete, setIsProcessingDelete] = useState(false);
 
   const ALL_LANGUAGE_OPTIONS = useMemo(() => {
-    const uniqueLangs = new Set(user?.languages || ['vi', 'en', 'zh']);
-    return Array.from(uniqueLangs).map(code => ({
+    // Luôn bắt đầu với tập hợp các ngôn ngữ được hỗ trợ (vi, en, zh)
+    const availableLangs = new Set(['vi', 'en', 'zh']);
+    // Thêm các ngôn ngữ người dùng đã chọn (nếu có ngôn ngữ khác ngoài vi/en/zh)
+    user?.languages?.forEach(lang => availableLangs.add(lang));
+
+    return Array.from(availableLangs).map(code => ({
       value: code,
       label: getLanguageName(code),
       flag: getCountryFlag(code)

@@ -37,6 +37,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.*;
 
@@ -59,7 +60,7 @@ public class LessonServiceImpl implements LessonService {
     private final UserLearningActivityRepository userLearningActivityRepository;
     private final CourseLessonRepository courseLessonRepository;
     private final CourseVersionLessonRepository courseVersionLessonRepository;
-    private final CourseVersionEnrollmentRepository CourseVersionEnrollmentRepository;
+    private final CourseVersionEnrollmentRepository courseVersionEnrollmentRepository;
     private final UserGoalRepository userGoalRepository;
     private final LessonProgressWrongItemRepository lessonProgressWrongItemRepository;
     private final GrpcClientService grpcClientService;
@@ -299,6 +300,54 @@ public class LessonServiceImpl implements LessonService {
     public Map<String, Object> startTest(UUID lessonId, UUID userId) {
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
+
+        // --- ENROLLMENT & FREE COURSE CHECK ---
+        if (userId != null && lesson.getCourseVersions() != null && !lesson.getCourseVersions().isEmpty()) {
+            boolean isEnrolled = false;
+            
+            // Check existing enrollments in any linked course version
+            for (CourseVersionLesson link : lesson.getCourseVersions()) {
+                CourseVersion version = link.getCourseVersion();
+                boolean enrolled = courseVersionEnrollmentRepository.existsByCourseVersion_VersionIdAndUserIdAndStatus(
+                        version.getVersionId(), userId, CourseVersionEnrollmentStatus.IN_PROGRESS)
+                        || courseVersionEnrollmentRepository.existsByCourseVersion_VersionIdAndUserIdAndStatus(
+                        version.getVersionId(), userId, CourseVersionEnrollmentStatus.COMPLETED);
+                
+                if (enrolled) {
+                    isEnrolled = true;
+                    break;
+                }
+            }
+
+            // If not enrolled, try to auto-enroll if course is FREE
+            if (!isEnrolled) {
+                for (CourseVersionLesson link : lesson.getCourseVersions()) {
+                    CourseVersion version = link.getCourseVersion();
+                    Course course = version.getCourse();
+                    
+                    // Fix: Use BigDecimal.compareTo() for price check
+                    if (course.getLatestPublicVersion().getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                        CourseVersionEnrollment newEnrollment = CourseVersionEnrollment.builder()
+                                .courseVersion(version)
+                                .user(userRepository.getReferenceById(userId))
+                                .userId(userId)
+                                .enrolledAt(OffsetDateTime.now())
+                                .status(CourseVersionEnrollmentStatus.IN_PROGRESS)
+                                .progress(0.0)
+                                .build();
+                        courseVersionEnrollmentRepository.save(newEnrollment);
+                        isEnrolled = true;
+                        break; 
+                    }
+                }
+            }
+            
+            // If still not enrolled and lesson is part of a course, deny access
+            if (!isEnrolled) {
+                throw new AppException(ErrorCode.COURSE_NOT_ENROLLED);
+            }
+        }
+        // ---------------------------------------
 
         List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
         questions = questions.stream().filter(q -> !q.isDeleted()).collect(Collectors.toList());
@@ -773,19 +822,19 @@ public class LessonServiceImpl implements LessonService {
     }
 
     private void updateCourseProgressIfApplicable(UUID userId, UUID lessonId) {
-        List<CourseVersionEnrollment> enrollments = CourseVersionEnrollmentRepository.findActiveEnrollmentsByUserIdAndLessonId(userId, lessonId);
+        List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository.findActiveEnrollmentsByUserIdAndLessonId(userId, lessonId);
         for (CourseVersionEnrollment enrollment : enrollments) {
             UUID versionId = enrollment.getCourseVersion().getVersionId();
-            long totalLessons = CourseVersionEnrollmentRepository.countLessonsInVersion(versionId);
+            long totalLessons = courseVersionEnrollmentRepository.countLessonsInVersion(versionId);
             if (totalLessons > 0) {
-                long completedLessons = CourseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, versionId);
+                long completedLessons = courseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, versionId);
                 double progressPercent = Math.round(((double) completedLessons / totalLessons) * 10000.0) / 100.0;
                 enrollment.setProgress(progressPercent);
                 if (progressPercent >= 100.0 && enrollment.getCompletedAt() == null) {
                     enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
                     enrollment.setCompletedAt(OffsetDateTime.now());
                 }
-                CourseVersionEnrollmentRepository.save(enrollment);
+                courseVersionEnrollmentRepository.save(enrollment);
             }
         }
     }

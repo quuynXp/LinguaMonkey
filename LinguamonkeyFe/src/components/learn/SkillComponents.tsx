@@ -93,7 +93,10 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
                 <Text style={styles.questionText}>{question.question}</Text>
             )}
             {question.questionType === QuestionType.SPEAKING && (
-                <Text style={styles.questionText}>{t("quiz.readAloud") || "Đọc to câu trên"}</Text>
+                <Text style={styles.questionText}>
+                    {/* SỬA LỖI: Truyền default value vào hàm t() */}
+                    {t("quiz.readAloud", "Đọc to câu trên")}
+                </Text>
             )}
         </View>
     );

@@ -9,15 +9,12 @@ try:
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
     MODEL_NAME = "gemini-1.5-flash"
 
-    # Định nghĩa các quy tắc chung cho model
-    # Yêu cầu model LUÔN trả về JSON
     SYSTEM_INSTRUCTION = (
         "You are a strict content moderation and analysis AI for a language learning app. "
         "Your sole output MUST be a valid JSON object. Do not include markdown backticks (```json) "
         "or any other text outside of the JSON structure."
     )
 
-    # Khởi tạo model với cấu hình JSON
     GENERATION_CONFIG = genai.types.GenerationConfig(
         response_mime_type="application/json"
     )
@@ -50,16 +47,16 @@ def build_review_prompt(content_type: str, rating: float, review_text: str) -> s
     **Analysis Task:**
     Provide your analysis as a JSON object strictly matching this format:
     {{
-      "is_valid": <boolean>,
-      "sentiment": "<POSITIVE|NEUTRAL|NEGATIVE>",
-      "topics": ["<topic1>", "<topic2>", ...],
-      "suggested_action": "<AUTO_APPROVE|FLAG_FOR_MODERATION>"
+        "is_valid": <boolean>,
+        "sentiment": "<POSITIVE|NEUTRAL|NEGATIVE>",
+        "topics": ["<topic1>", "<topic2>", ...],
+        "suggested_action": "<AUTO_APPROVE|FLAG_FOR_MODERATION>"
     }}
 
     **Rules for Analysis:**
     1.  **is_valid (boolean):**
         - 'false' if the text is clearly spam (e.g., "asdfasdf", "buy my stuff"), hate speech, harassment, 
-          or contains fewer than 5 meaningful words.
+            or contains fewer than 5 meaningful words.
         - 'true' for all other cases, even if the feedback is negative.
 
     2.  **sentiment (string):**
@@ -69,13 +66,13 @@ def build_review_prompt(content_type: str, rating: float, review_text: str) -> s
 
     3.  **topics (array of strings):**
         - Identify key topics. Choose one or more from this specific list:
-          ["instructor", "content_quality", "content_difficulty", "sound_quality", 
-           "video_quality", "ui_ux", "bug_report", "pricing", "general"]
+            ["instructor", "content_quality", "content_difficulty", "sound_quality", 
+            "video_quality", "ui_ux", "bug_report", "pricing", "general"]
         - If no specific topic fits, use ["general"].
 
     4.  **suggested_action (string):**
         - "FLAG_FOR_MODERATION": Use this if 'is_valid' is 'false' OR if the review contains 
-          severe accusations, threats, or extreme profanity.
+            severe accusations, threats, or extreme profanity.
         - "AUTO_APPROVE": Use this for all other valid reviews.
 
     Return ONLY the JSON object.
@@ -102,14 +99,11 @@ async def analyze_review(
     # Tạo prompt
     prompt = build_review_prompt(content_type, rating, review_text)
 
-    # Giá trị mặc định an toàn (nếu có lỗi thì sẽ gắn cờ)
     default_error_return = (False, "NEUTRAL", ["general"], "FLAG_FOR_MODERATION")
 
     try:
-        # Gọi Gemini API
         response = await MODEL.generate_content_async(prompt)
 
-        # Parse JSON response
         try:
             data = json.loads(response.text)
 

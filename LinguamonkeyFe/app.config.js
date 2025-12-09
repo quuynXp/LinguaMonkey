@@ -67,7 +67,7 @@ export default ({ config }) => {
         package: "com.lingua.monkey",
         edgeToEdgeEnabled: true,
         permissions: [
-          "android.permission.INTERNET", // Nên thêm INTERNET cho chắc chắn (dù mặc định có)
+          "android.permission.INTERNET",
           "android.permission.RECORD_AUDIO",
           "android.permission.MODIFY_AUDIO_SETTINGS",
         ],

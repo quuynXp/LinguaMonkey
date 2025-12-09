@@ -159,7 +159,14 @@ const GroupChatScreen = () => {
             participantIds: participantIds,
             videoCallType: VideoCallType.GROUP
         }, {
-            onSuccess: (res) => navigation.navigate('JitsiCallScreen', { roomId: res.roomId }),
+            onSuccess: (res) => {
+                navigation.navigate('JitsiCallScreen', {
+                    roomId: res.roomId,
+                    videoCallId: res.videoCallId,
+                    isCaller: true,
+                    mode: 'GROUP'
+                });
+            },
             onError: () => showToast({ type: "error", message: t("error.start_call_failed") })
         });
     };

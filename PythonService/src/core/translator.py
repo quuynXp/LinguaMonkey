@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import json
 from typing import Tuple
 from langdetect import detect, LangDetectException
 import google.generativeai as genai
@@ -18,9 +19,10 @@ gemini_model = None
 
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
+    # Update config to favor structured output if supported, but prompt engineering does the heavy lifting
     gemini_model = GenerativeModel(
         'gemini-2.5-flash',
-        generation_config={"temperature": 0.1, "max_output_tokens": 1024}
+        generation_config={"temperature": 0.1, "max_output_tokens": 1024, "response_mime_type": "application/json"}
     )
 else:
     logger.error("Missing GOOGLE_API_KEY. Translation fallback will fail.")
@@ -125,16 +127,20 @@ class HybridTranslator:
         src_lang = self._map_language_code(source_lang_hint)
         target_lang = self._map_language_code(target_lang)
 
+        # Use hint if provided and not auto, else detect
         detected_lang = src_lang
         if detected_lang == "auto" or not detected_lang:
             detected_lang = await asyncio.to_thread(self.detect_language, text)
             detected_lang = self._map_language_code(detected_lang)
 
+        # Same language optimization
         if detected_lang == target_lang:
             return text, detected_lang
 
+        # 1. Try LPM (Fast Path)
         lpm_result, coverage = await self.lpm_translate(text, detected_lang, target_lang)
         
+        # Check if LPM result is garbage (e.g. dictionary dump)
         is_dictionary_dump = False
         if len(text.split()) > 1:
             if len(lpm_result) > len(text) * 3:
@@ -142,40 +148,63 @@ class HybridTranslator:
             elif "To " in lpm_result and "," in lpm_result:
                 is_dictionary_dump = True
         
+        # If coverage is high, trust LPM
         if coverage >= 0.85 and not is_dictionary_dump:
             return lpm_result, detected_lang
 
         if not gemini_model:
             return lpm_result, detected_lang
 
+        # 2. Call Gemini with strict JSON prompt
         try:
             target_lang_name = target_lang
             if target_lang == 'zh-CN': target_lang_name = "Simplified Chinese"
             elif target_lang == 'vi': target_lang_name = "Vietnamese"
 
             prompt = (
-                f"Translate the following text from {detected_lang} to {target_lang_name}. "
-                f"Output ONLY the translated text. Do not add quotes, notes or explanations.\n"
-                f"Text: {text}"
+                f"You are an expert translator. Translate the input from {detected_lang} to {target_lang_name}.\n"
+                "Rules:\n"
+                "1) Preserve English words, named entities, technical terms, URLs, and numbers — do NOT translate them.\n"
+                "2) Keep punctuation and spacing natural for the target language.\n"
+                "3) Output STRICTLY a single JSON object with fields: translated_text (string), detected_source_lang (string).\n"
+                "4) If input is mixed-language, translate only the segments that are not in English (or the target language).\n\n"
+                f"INPUT_TEXT: {text}\n\n"
+                "Output JSON example: {\"translated_text\": \"...\", \"detected_source_lang\": \"vi\"}"
             )
             
             response = await gemini_model.generate_content_async(prompt)
-            final_text = response.text.strip()
+            raw = response.text.strip()
 
-            if not final_text:
-                return lpm_result, detected_lang 
-
-            if len(text.split()) < 15: 
-                key = self._get_redis_key(detected_lang, text)
-                await self.redis.hset(key, mapping={target_lang: final_text})
-                await self.redis.expire(key, 86400 * 7)
+            try:
+                # Parse JSON
+                parsed = json.loads(raw)
+                final_text = parsed.get("translated_text", "").strip()
+                detected_from_model = parsed.get("detected_source_lang", detected_lang)
                 
-                asyncio.create_task(self._save_to_db(text, detected_lang, target_lang, final_text))
+                if final_text:
+                    # Cache valid result
+                    if len(text.split()) < 15: 
+                        key = self._get_redis_key(detected_lang, text)
+                        await self.redis.hset(key, mapping={target_lang: final_text})
+                        await self.redis.expire(key, 86400 * 7)
+                        asyncio.create_task(self._save_to_db(text, detected_lang, target_lang, final_text))
+                    
+                    return final_text, detected_from_model
+                
+                # If JSON parsed but empty text, fallback
+                logger.warning(f"Gemini returned empty JSON text for: {text}")
+                return lpm_result, detected_lang
 
-            return final_text, detected_lang
-            
+            except json.JSONDecodeError:
+                # Fallback: Check if response is raw text (model ignored JSON instruction)
+                logger.warning(f"Gemini returned non-JSON: {raw[:50]}...")
+                if raw and "{" not in raw:
+                    return raw, detected_lang
+                return lpm_result, detected_lang
+
         except Exception as e:
             logger.error(f"External Translation Failed: {e}")
+            # Final fallback to LPM result so we always show *something*
             return lpm_result, detected_lang
 
 _translator = None

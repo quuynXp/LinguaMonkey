@@ -11,8 +11,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface FriendshipService {
-    Page<FriendshipResponse> getAllFriendships(String user1Id, String status, Pageable pageable);
-    FriendshipResponse getFriendshipByIds(UUID user1Id, UUID user2Id);
+Page<FriendshipResponse> getAllFriendships(String requesterId, String receiverId, String status, Pageable pageable);    FriendshipResponse getFriendshipByIds(UUID user1Id, UUID user2Id);
     FriendshipResponse createFriendship(FriendshipRequest request);
     FriendshipResponse updateFriendship(UUID user1Id, UUID user2Id, FriendshipRequest request);
     void deleteFriendship(UUID user1Id, UUID user2Id);

@@ -1,5 +1,3 @@
-# src/core/user_profile_service.py
-
 import logging
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession

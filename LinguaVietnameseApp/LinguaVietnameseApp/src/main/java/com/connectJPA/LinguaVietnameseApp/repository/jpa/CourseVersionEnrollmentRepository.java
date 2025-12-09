@@ -1,6 +1,8 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionEnrollment;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseVersionEnrollmentStatus;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -100,6 +102,8 @@ public interface CourseVersionEnrollmentRepository extends JpaRepository<CourseV
        boolean existsByUserIdAndCourseVersion_VersionId(UUID userId, UUID courseVersionId);
 
 
+       boolean existsByCourseVersion_VersionIdAndUserIdAndStatus(UUID versionId, UUID userId, CourseVersionEnrollmentStatus status);
+       
        // --- New Methods for Creator Dashboard ---
 
     @Query("SELECT COUNT(DISTINCT ce.userId) FROM CourseVersionEnrollment ce " +

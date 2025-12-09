@@ -57,26 +57,23 @@ public class CourseScheduler {
     public void processCourseValidationQueue() {
         log.info(">>> Processing Course Validation Queue (Priority Mode)...");
         
-        // Fetch drafts sorted by VIP Status DESC, then Time ASC
         List<CourseVersion> pendingDrafts = courseVersionRepository.findDraftsPendingValidationSortedByPriority();
 
         for (CourseVersion draft : pendingDrafts) {
             StringBuilder validationLog = new StringBuilder();
             boolean isPassed = true;
 
-            // Rule 1: Strict Lesson Count Check (> 10 lessons)
             List<CourseVersionLesson> lessons = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(draft.getVersionId());
             if (lessons.size() < MIN_LESSONS_REQUIRED) {
                 validationLog.append("Failed: Course must have at least ").append(MIN_LESSONS_REQUIRED).append(" lessons. Found: ").append(lessons.size()).append(". ");
                 isPassed = false;
             }
 
-            // Rule 2: Content Check (Fast check in Java)
             for (CourseVersionLesson cvl : lessons) {
                 Lesson lesson = cvl.getLesson();
                 boolean hasContent = (lesson.getLessonQuestions() != null && !lesson.getLessonQuestions().isEmpty()) 
-                                   || !videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId()).isEmpty()
-                                   || (lesson.getDurationSeconds() != null && lesson.getDurationSeconds() > 30); // Simple audio/video size heuristic
+                                || !videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId()).isEmpty()
+                                || (lesson.getDurationSeconds() != null && lesson.getDurationSeconds() > 30); // Simple audio/video size heuristic
                 
                 if (!hasContent) {
                     validationLog.append("Failed: Lesson '").append(lesson.getLessonName()).append("' is empty or too short. ");
@@ -86,7 +83,7 @@ public class CourseScheduler {
             }
 
             draft.setIsContentValid(isPassed);
-            draft.setIsIntegrityValid(isPassed); // Simplified integrity check for new drafts
+            draft.setIsIntegrityValid(isPassed);
             draft.setValidationWarnings(validationLog.toString());
             courseVersionRepository.save(draft);
 

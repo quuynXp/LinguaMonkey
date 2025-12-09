@@ -8,6 +8,7 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class BadgeProgressResponse {
     private UUID badgeId;
     private String badgeName;
