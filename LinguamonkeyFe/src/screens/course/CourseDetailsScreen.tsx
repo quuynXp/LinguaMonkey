@@ -17,7 +17,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native"; // IMPORT MỚI
+import { useFocusEffect } from "@react-navigation/native";
 import { useCourses } from "../../hooks/useCourses";
 import { useLessons } from "../../hooks/useLessons";
 import { useRooms } from "../../hooks/useRoom";
@@ -57,7 +57,6 @@ const REFUND_REASONS: RefundReason[] = [
 const CourseDetailsScreen = ({ route, navigation }: any) => {
   const params = route.params || {};
   const courseId = params.courseId || params.id;
-  const isFocused = useIsFocused(); // Hook check focus
 
   const { t } = useTranslation();
   const { user } = useUserStore();
@@ -92,22 +91,23 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { useCourseRoom } = useRooms();
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
+  // Refetch functions exposed for focus effect
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
   const { data: roomData } = useCourseRoom(courseId);
   const { data: versionHistory } = useCourseVersions(courseId);
-
-  // Fetch progress logic
-  const { data: userProgressData, refetch: refetchProgress } = useLessonProgresses({ userId: user?.userId, size: 1000 });
+  const { data: userProgressData, refetch: refetchUserProgress } = useLessonProgresses({ userId: user?.userId, size: 1000 });
 
   const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
 
-  // Auto refetch data when screen is focused (returning from LessonScreen)
-  useEffect(() => {
-    if (isFocused && user?.userId) {
-      refetchEnrollments();
-      refetchProgress();
-    }
-  }, [isFocused, user?.userId]);
+  // Force refresh when returning from LessonScreen
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.userId) {
+        refetchEnrollments();
+        refetchUserProgress();
+      }
+    }, [user?.userId, refetchEnrollments, refetchUserProgress])
+  );
 
   useEffect(() => {
     if (course?.latestPublicVersion && !viewingVersionId) {
@@ -140,13 +140,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     return allLessons.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   }, [lessonsInfinite]);
 
-  // LOGIC FIX: Build Map accurately from Progress Data
   const progressMap = useMemo(() => {
     const map: Record<string, number> = {};
     if (!userProgressData?.data) return map;
     userProgressData.data.forEach((p: any) => {
-      // Ensure we catch both flattened structure and nested ID structure
-      const lId = p.lessonId || p.id?.lessonId;
+      const lId = p.id?.lessonId || p.lessonId;
       if (lId) {
         map[lId] = p.score;
       }
@@ -185,31 +183,12 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const isCreator = user?.userId === course?.creatorId;
   const isEnrolled = !!activeEnrollment;
 
+  const progressPercent = useMemo(() => {
+    if (!activeEnrollment) return 0;
+    return activeEnrollment.progress || 0;
+  }, [activeEnrollment]);
+
   const hasAccess = isEnrolled || isCreator || isFreeCourse;
-
-  // LOGIC FIX: Calculate Progress Locally to ensure accuracy (e.g. 1/10 = 10%)
-  const realProgressPercent = useMemo(() => {
-    // 1. If not enrolled/creator/free, progress is 0
-    if (!hasAccess) return 0;
-
-    // 2. Count completed lessons based on progressMap (client side truth)
-    const totalLessons = displayLessons.length;
-    if (totalLessons === 0) return 0;
-
-    const completedCount = displayLessons.filter(lesson => {
-      const score = progressMap[lesson.lessonId];
-      // Consider completed if score exists (usually passed implies score >= passing_grade, assuming backend only saves if passed or we check score)
-      return score !== undefined && score !== null;
-    }).length;
-
-    const calculated = (completedCount / totalLessons) * 100;
-
-    // 3. Use the greater of Backend Enrollment Progress vs Local Calculation
-    // This prevents "0%" flash if backend is slow, but respects backend if it has extra data
-    const backendProgress = activeEnrollment?.progress || 0;
-
-    return Math.max(calculated, backendProgress);
-  }, [hasAccess, displayLessons, progressMap, activeEnrollment]);
 
   const reviews = (reviewsData?.data as any[]) || [];
 
@@ -482,17 +461,17 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
           <View style={styles.progressContainer}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressTitle}>
-                {realProgressPercent >= 100 ? "Completed!" : "Your Progress"}
+                {progressPercent >= 100 ? "Completed!" : "Your Progress"}
               </Text>
-              <Text style={styles.progressValueText}>{Math.round(realProgressPercent)}%</Text>
+              <Text style={styles.progressValueText}>{Math.round(progressPercent)}%</Text>
             </View>
             <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${realProgressPercent}%` }]} />
+              <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
             </View>
             <Text style={styles.progressSubtitle}>
-              {realProgressPercent >= 100
+              {progressPercent >= 100
                 ? "You have finished this course."
-                : `${displayLessons.filter(l => progressMap[l.lessonId] !== undefined).length}/${displayLessons.length} lessons completed`
+                : `${Math.round((progressPercent / 100) * (displayLessons.length || 0))} / ${displayLessons.length || '?'} lessons completed`
               }
             </Text>
           </View>
@@ -558,8 +537,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     const isLocked = !isUnlocked;
 
     const score = progressMap[item.lessonId];
-    // LOGIC FIX: Explicitly check undefined to allow score 0 (failed but attempted) or check null
-    const isLessonCompleted = score !== undefined && score !== null;
+    // Check score >= 50 or just existence of attempt
+    const isLessonCompleted = score !== undefined && score >= 50;
 
     return (
       <View style={{ paddingHorizontal: 20 }}>
@@ -585,10 +564,12 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
                 {Math.ceil((item.durationSeconds || 0) / 60)} min • {item.lessonType || 'LESSON'}
               </Text>
 
-              {isLessonCompleted && (
-                <View style={styles.progressTag}>
-                  <Icon name="check-circle" size={12} color="#10B981" />
-                  <Text style={styles.progressTagText}>{Math.round(score)}%</Text>
+              {score !== undefined && (
+                <View style={[styles.progressTag, { backgroundColor: isLessonCompleted ? '#ECFDF5' : '#FEF2F2' }]}>
+                  <Icon name={isLessonCompleted ? "check-circle" : "cancel"} size={12} color={isLessonCompleted ? "#10B981" : "#EF4444"} />
+                  <Text style={[styles.progressTagText, { color: isLessonCompleted ? "#10B981" : "#EF4444" }]}>
+                    {Math.round(score)}%
+                  </Text>
                 </View>
               )}
 
@@ -850,8 +831,8 @@ const styles = StyleSheet.create({
   reviewsWrapper: { paddingHorizontal: 20 },
   freeTag: { backgroundColor: '#10B981', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
   freeTagText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
-  progressTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8, gap: 2 },
-  progressTagText: { color: '#10B981', fontSize: 10, fontWeight: 'bold' },
+  progressTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8, gap: 2 },
+  progressTagText: { fontSize: 10, fontWeight: 'bold' },
 
   progressContainer: { backgroundColor: '#F9FAFB', padding: 16, borderRadius: 12, marginBottom: 24, borderWidth: 1, borderColor: '#E5E7EB' },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
