@@ -1,4 +1,4 @@
-package com.connectJPA.LinguaVietnameseApp.service.impl;
+ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.MemorizationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.MemorizationResponse;
@@ -61,6 +61,11 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
         }
         userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // Thêm kiểm tra NoteText để tránh lưu note rỗng
+        if (request.getNoteText() == null || request.getNoteText().trim().isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_INPUT); // Hoặc một mã lỗi cụ thể hơn
+        }
 
         if (request.getContentId() != null) {
             switch (request.getContentType()) {

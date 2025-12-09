@@ -1,3 +1,5 @@
+// src/screens/NotesScreen.tsx
+
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -49,7 +51,7 @@ const NotesScreen = ({ navigation, route }: any) => {
     useUserMemorizations,
     useCreateMemorization,
     useDeleteMemorization,
-    useUpdateMemorization, // Dùng update thay vì toggleFavorite để kiểm soát payload
+    useUpdateMemorization,
   } = useMemorizations();
 
   const { useCreateReminder } = useReminders();
@@ -115,14 +117,17 @@ const NotesScreen = ({ navigation, route }: any) => {
     }
 
     // CRITICAL FIX: UUID fields must be null, NEVER empty string ""
-    const safeContentId = (courseId && typeof courseId === 'string' && courseId.length > 0)
-      ? courseId
-      : null;
+    // Hàm này đảm bảo các trường UUID tùy chọn là null nếu không hợp lệ.
+    const ensureUuidOrNull = (id: string | undefined): string | null => {
+      return (id && typeof id === 'string' && id.length > 0)
+        ? id
+        : null;
+    };
 
     const notePayload: MemorizationRequest = {
-      userId: user.userId,                // UUID Check OK
+      userId: user.userId,
       contentType: mapNoteTypeToContentType(selectedNoteType),
-      contentId: safeContentId,           // UUID Check OK (null or valid UUID)
+      contentId: ensureUuidOrNull(courseId),
       noteText: newNote.trim(),
       isFavorite: false,
     };
@@ -144,13 +149,13 @@ const NotesScreen = ({ navigation, route }: any) => {
 
   // --- LOGIC 3: FIX TOGGLE FAVORITE (Clean DTO) ---
   const handleToggleFavorite = (item: MemorizationResponse) => {
-    // Chúng ta không gửi nguyên object `item` vì nó chứa createdAt, updatedAt...
-    // Backend chỉ nhận `MemorizationRequest`
+    // Đảm bảo rằng contentId luôn là null nếu nó là undefined/rỗng từ item.
+    const safeContentId = (item.contentId && item.contentId.length > 0) ? item.contentId : null;
 
     const cleanPayload: MemorizationRequest = {
       userId: item.userId,
       contentType: item.contentType,
-      contentId: item.contentId || null, // Ensure null strictness
+      contentId: safeContentId, // Đảm bảo null strictness
       noteText: item.noteText,
       isFavorite: !item.isFavorite // Toggle logic
     };
