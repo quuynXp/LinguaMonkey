@@ -29,12 +29,23 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: 🔧 Setup specific NDK (Force v26)
+        # QUAN TRỌNG: Xóa NDK 27 để tránh Gradle tự động chọn sai phiên bản
+        run: |
+          echo "✨ Removing incompatible NDK versions..."
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
+          
+          echo "✨ Installing/Verifying NDK 26.1.10909125..."
+          # Cài đặt chính xác bản 26 nếu chưa có (thường có sẵn nhưng lệnh này đảm bảo chắc chắn)
+          sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;26.1.10909125"
+          
+          echo "✨ Setting ANDROID_NDK_HOME..."
+          echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/26.1.10909125" >> $GITHUB_ENV
+
       - name: 🛠️ Generate Android directory (Prebuild)
-        # Tạo thư mục android/
         run: npx expo prebuild --platform android --no-install
 
       - name: 🧹 Clean up duplicate icon files
-        # Xóa file webp để tránh lỗi Duplicate resources
         run: |
           echo "✨ Cleaning up duplicate icon files..."
           find ./android/app/src/main/res -name "*.webp" -delete
@@ -56,8 +67,7 @@ jobs:
             ${{ runner.os }}-gradle-fe-
 
       - name: 🧹 Safe Clean Gradle & CMake
-        # Đây là bước quan trọng sửa lỗi BuildCacheStep và CMake
-        # Chạy clean chuẩn của Gradle thay vì rm -rf thủ công gây lỗi module
+        # Chạy clean để đảm bảo build với NDK mới sạch sẽ hoàn toàn
         run: |
           echo "✨ Running Gradle Clean..."
           cd android
@@ -65,7 +75,6 @@ jobs:
           ./gradlew clean
 
       - name: 🧹 Clean up large components (Safe Mode)
-        # Giữ lại SDK, chỉ xoá các phần không liên quan
         run: |
           echo "✨ Freeing up disk space..."
           sudo rm -rf /usr/share/dotnet/
@@ -91,7 +100,6 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           echo "🔧 Start signed local EAS build..."
-          # EAS Build sẽ tự động sử dụng cấu hình Gradle đã được clean sạch sẽ
           eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
 
       - name: 📤 Upload signed APK to GitHub Artifacts

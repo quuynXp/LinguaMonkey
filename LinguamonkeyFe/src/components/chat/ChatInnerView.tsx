@@ -113,7 +113,7 @@ const ChatLanguageSelector = ({
 
     return (
         <View style={styles.languageSelectorContainer}>
-            {/* Nút bật/tắt Auto Translate riêng biệt hoặc tích hợp */}
+            {/* Switch Auto Translate */}
             <TouchableOpacity
                 style={[styles.autoSwitch, isAutoTranslateOn && styles.autoSwitchActive]}
                 onPress={onToggleAuto}
@@ -123,6 +123,7 @@ const ChatLanguageSelector = ({
                 </Text>
             </TouchableOpacity>
 
+            {/* Flag Dropdown */}
             <TouchableOpacity
                 style={[styles.selectedLanguageButton, !canExpand && { paddingRight: 8 }]}
                 onPress={() => canExpand && setIsExpanded(!isExpanded)}
@@ -156,6 +157,7 @@ const ChatLanguageSelector = ({
                             <View style={styles.languageFlagWrapper}>
                                 {lang.flag}
                             </View>
+                            <Text style={styles.languageName}>{lang.code.toUpperCase()}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
@@ -178,7 +180,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const setChatSettings = useAppStore(state => state.setChatSettings);
     const nativeLanguage = useAppStore(state => state.nativeLanguage);
 
-    // Trạng thái Auto Translate lấy từ Store
     const autoTranslate = chatSettings.autoTranslate;
     const translationTargetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
 
@@ -203,11 +204,32 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         flag: getCountryFlag(langCode, 24),
     }), []);
 
+    // [FIX] Logic lấy danh sách ngôn ngữ từ user.languages
     const availableLanguages: LanguageOption[] = useMemo(() => {
         const uniqueLangs = new Set<string>();
+
+        // 1. Luôn thêm ngôn ngữ gốc
         if (nativeLanguage) uniqueLangs.add(nativeLanguage);
-        if (user?.languages) user.languages.forEach(l => uniqueLangs.add(l));
+
+        // 2. Thêm ngôn ngữ từ user profile (Xử lý cả string[] và object[])
+        if (user?.languages && Array.isArray(user.languages)) {
+            user.languages.forEach((l: any) => {
+                if (typeof l === 'string') {
+                    uniqueLangs.add(l);
+                } else if (typeof l === 'object' && l !== null) {
+                    // Thử các trường phổ biến: lang, code, language
+                    const code = l.lang || l.code || l.language;
+                    if (code) uniqueLangs.add(code);
+                }
+            });
+        }
+
+        // 3. Đảm bảo ngôn ngữ đang chọn phải có trong list
         if (translationTargetLang) uniqueLangs.add(translationTargetLang);
+
+        // Fallback nếu rỗng
+        if (uniqueLangs.size === 0) uniqueLangs.add('vi');
+
         return Array.from(uniqueLangs).map(getLanguageOption);
     }, [user?.languages, nativeLanguage, translationTargetLang, getLanguageOption]);
 
@@ -215,11 +237,18 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         availableLanguages.find(l => l.code === translationTargetLang) || getLanguageOption(translationTargetLang),
         [availableLanguages, translationTargetLang, getLanguageOption]);
 
-    // Handle Logic: Khi chọn ngôn ngữ -> Bật luôn Auto Translate
+    // [FIX] Đồng bộ Store ngay khi mount nếu chưa có target
+    useEffect(() => {
+        if (!chatSettings.targetLanguage) {
+            const defaultTarget = nativeLanguage || 'vi';
+            setChatSettings({ targetLanguage: defaultTarget });
+        }
+    }, []);
+
     const handleSelectLanguage = (lang: LanguageOption) => {
         setChatSettings({
             targetLanguage: lang.code,
-            autoTranslate: true // <-- QUAN TRỌNG: Tự động bật tính năng dịch ngầm
+            autoTranslate: true // Tự động bật dịch khi người dùng chủ động chọn ngôn ngữ
         });
         setMessagesToggleState({});
         showToast({ message: `${t('chat.auto_translate_on')} ${lang.name}`, type: 'success' });
@@ -255,17 +284,14 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
 
             const dbTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
-            // Dịch ngầm (Eager) từ Store
             const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
 
             const finalTranslation = localTrans || eagerTrans || dbTrans;
 
-            // Logic hiển thị: Nếu Auto bật VÀ có bản dịch -> Hiển thị luôn
             const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
             const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
 
-            // QUAN TRỌNG: showTranslation = true nếu autoTranslate ON và có kết quả eagerTrans
             const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!eagerTrans);
 
             const senderProfile = msg.senderProfile || membersMap[senderId];
@@ -351,7 +377,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const localTrans = localTranslations[id]?.[translationTargetLang];
             const hasTranslation = !!(localTrans || eagerTrans);
 
-            // Nếu đang Auto Translate và đã có dịch -> bấm nút sẽ ẩn dịch (về gốc)
             if (autoTranslate && hasTranslation) {
                 setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
             } else {
@@ -373,7 +398,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         let displayText = item.text;
         let isTranslatedView = false;
 
-        // Ưu tiên hiển thị theo Toggle thủ công trước
         const eagerTrans = eagerTranslations[item.id]?.[translationTargetLang];
         const localTrans = localTranslations[item.id]?.[translationTargetLang];
         const dbTrans = item.translatedLang === translationTargetLang ? item.translatedText : null;
@@ -386,7 +410,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             displayText = item.text;
             isTranslatedView = false;
         } else if (autoTranslate && availableTranslation) {
-            // Nếu không có toggle thủ công, và Auto ON -> Hiển thị dịch
             displayText = availableTranslation;
             isTranslatedView = true;
         }
@@ -527,20 +550,25 @@ const styles = createScaledSheet({
         shadowOpacity: 0.1,
         shadowRadius: 10,
         elevation: 5,
-        minWidth: 50,
+        minWidth: 80,
         zIndex: 100,
         paddingVertical: 4,
     },
     languageItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         padding: 10,
         borderBottomWidth: 1,
         borderBottomColor: '#F3F4F6',
     },
     languageFlagWrapper: {
-        marginRight: 0,
+        marginRight: 8,
+    },
+    languageName: {
+        fontSize: 12,
+        color: '#374151',
+        fontWeight: '500',
     },
     list: { flex: 1, paddingHorizontal: 16 },
     msgRow: { flexDirection: 'row', marginVertical: 8 },
