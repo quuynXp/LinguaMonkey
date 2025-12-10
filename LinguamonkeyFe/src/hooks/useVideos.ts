@@ -5,13 +5,22 @@ import {
   PageResponse,
   VideoCallResponse,
   VideoCallRequest,
-  CreateGroupCallRequest,
+  // CreateGroupCallRequest, // Xoá import cũ nếu trùng tên, ta định nghĩa lại bên dưới cho rõ ràng
   UpdateParticipantStatusRequest,
   RoomResponse,
   CallPreferencesRequest,
 } from "../types/dto";
 
 import { VideoCallParticipant } from "../types/entity";
+import { VideoCallType } from "../types/enums";
+
+// Update Definition khớp với BE mới
+export interface CreateGroupCallRequest {
+  callerId: string;
+  roomId?: string; // Source Chat Room ID
+  participantIds?: string[]; // Optional now
+  videoCallType: VideoCallType;
+}
 
 export const videoCallKeys = {
   all: ["videoCalls"] as const,
@@ -36,7 +45,6 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
   },
 });
 
-// Interface for the raw Map structure from Java
 export interface MatchResponseData {
   status: 'MATCHED' | 'WAITING';
   room?: RoomResponse;
@@ -51,11 +59,6 @@ export const useVideoCalls = () => {
   const BASE = "/api/v1/video-calls";
   const MATCHMAKING_BASE = "/api/v1/matchmaking";
 
-  // ==========================================
-  // === 1. VIDEO CALLS QUERIES (CRUD Base) ===
-  // ==========================================
-
-  // GET /api/v1/video-calls
   const useVideoCallsList = (params?: {
     callerId?: string;
     status?: string;
@@ -81,7 +84,6 @@ export const useVideoCalls = () => {
     });
   };
 
-  // GET /api/v1/video-calls/{id}
   const useVideoCall = (videoCallId: string | null) =>
     useQuery({
       queryKey: videoCallKeys.detail(videoCallId!),
@@ -95,7 +97,6 @@ export const useVideoCalls = () => {
       enabled: !!videoCallId,
     });
 
-  // GET /api/v1/video-calls/history/{userId}
   const useVideoCallHistory = (userId: string | null) =>
     useQuery({
       queryKey: videoCallKeys.history(userId!),
@@ -109,12 +110,6 @@ export const useVideoCalls = () => {
       enabled: !!userId,
     });
 
-
-  // ==========================================
-  // === 2. VIDEO CALLS MUTATIONS ===
-  // ==========================================
-
-  // POST /api/v1/video-calls (Basic Create)
   const useCreateVideoCall = () =>
     useMutation({
       mutationFn: async (payload: VideoCallRequest) => {
@@ -129,7 +124,6 @@ export const useVideoCalls = () => {
       },
     });
 
-  // POST /api/v1/video-calls/group
   const useCreateGroupCall = () =>
     useMutation({
       mutationFn: async (req: CreateGroupCallRequest) => {
@@ -144,7 +138,6 @@ export const useVideoCalls = () => {
       },
     });
 
-  // PUT /api/v1/video-calls/{id}
   const useUpdateVideoCall = () =>
     useMutation({
       mutationFn: async ({ id, payload }: { id: string; payload: VideoCallRequest }) => {
@@ -162,7 +155,6 @@ export const useVideoCalls = () => {
       },
     });
 
-  // DELETE /api/v1/video-calls/{id}
   const useDeleteVideoCall = () =>
     useMutation({
       mutationFn: async (videoCallId: string) => {
@@ -173,12 +165,6 @@ export const useVideoCalls = () => {
       },
     });
 
-
-  // ==========================================
-  // === 3. PARTICIPANTS MANAGEMENT ===
-  // ==========================================
-
-  // GET /api/v1/video-calls/{id}/participants
   const useGetParticipants = (videoCallId: string | null) =>
     useQuery({
       queryKey: videoCallKeys.participants(videoCallId!),
@@ -192,11 +178,9 @@ export const useVideoCalls = () => {
       enabled: !!videoCallId,
     });
 
-  // POST /api/v1/video-calls/{id}/participants
   const useAddParticipant = () =>
     useMutation({
       mutationFn: async (data: { videoCallId: string; userId: string }) => {
-        // Controller expects userId as @RequestParam
         await instance.post<AppApiResponse<void>>(
           `${BASE}/${data.videoCallId}/participants`,
           null,
@@ -209,7 +193,6 @@ export const useVideoCalls = () => {
       },
     });
 
-  // DELETE /api/v1/video-calls/{id}/participants/{userId}
   const useRemoveParticipant = () =>
     useMutation({
       mutationFn: async (data: { videoCallId: string; userId: string }) => {
@@ -223,7 +206,6 @@ export const useVideoCalls = () => {
       },
     });
 
-  // PUT /api/v1/video-calls/{id}/participants/{userId}
   const useUpdateParticipantStatus = () =>
     useMutation({
       mutationFn: async (data: {
@@ -242,14 +224,9 @@ export const useVideoCalls = () => {
       },
     });
 
-  // ==========================================
-  // === 4. MATCHMAKING (Integrated from MatchmakingController) ===
-  // ==========================================
-
   const useFindCallPartner = () => {
     return useMutation({
       mutationFn: async (req: CallPreferencesRequest) => {
-        // Return explicit object with code and parsed data
         const response = await instance.post<AppApiResponse<MatchResponseData>>(
           `${MATCHMAKING_BASE}/find-call`,
           req
@@ -257,7 +234,7 @@ export const useVideoCalls = () => {
         return {
           code: response.data.code,
           message: response.data.message,
-          data: response.data.result // This is the MatchResponseData Map
+          data: response.data.result
         };
       },
     });
@@ -275,20 +252,14 @@ export const useVideoCalls = () => {
     useVideoCallsList,
     useVideoCall,
     useVideoCallHistory,
-
-    // CRUD
     useCreateVideoCall,
     useCreateGroupCall,
     useUpdateVideoCall,
     useDeleteVideoCall,
-
-    // Participants
     useGetParticipants,
     useAddParticipant,
     useRemoveParticipant,
     useUpdateParticipantStatus,
-
-    // Matchmaking
     useFindCallPartner,
     useCancelFindMatch,
   };

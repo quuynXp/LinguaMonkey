@@ -86,9 +86,7 @@ public class VideoCallController {
     public AppApiResponse<VideoCallResponse> createGroupCall(
             @RequestBody CreateGroupCallRequest request, Locale locale) {
         VideoCallResponse response = videoCallService.createGroupVideoCall(
-                request.getCallerId(),
-                request.getParticipantIds(),
-                request.getVideoCallType()
+                request
         );
         return AppApiResponse.<VideoCallResponse>builder()
                 .code(201)

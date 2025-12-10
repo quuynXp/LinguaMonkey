@@ -1,8 +1,10 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.CreateGroupCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoCallResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
+import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCall;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCallParticipant;
 import com.connectJPA.LinguaVietnameseApp.entity.id.VideoCallParticipantId;
@@ -11,6 +13,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.VideoCallMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoCallParticipantRepository;
@@ -34,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +48,7 @@ public class VideoCallServiceImpl implements VideoCallService {
     private final VideoCallParticipantRepository videoCallParticipantRepository;
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
+    private final RoomMemberRepository roomMemberRepository; // Injected RoomMemberRepository
     private final SimpMessagingTemplate messagingTemplate;
 
     @Lazy
@@ -100,20 +105,37 @@ public class VideoCallServiceImpl implements VideoCallService {
 
     @Override
     @Transactional
-    public VideoCallResponse createGroupVideoCall(UUID callerId, List<UUID> participantIds, VideoCallType type) {
-        Room room = Room.builder()
+    public VideoCallResponse createGroupVideoCall(CreateGroupCallRequest request) {
+        UUID callerId = request.getCallerId();
+        
+        // Logic mới: Lấy danh sách participants từ Room ID nếu participantIds null hoặc empty
+        List<UUID> participantIds = request.getParticipantIds();
+        if ((participantIds == null || participantIds.isEmpty()) && request.getRoomId() != null) {
+            List<RoomMember> roomMembers = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(request.getRoomId());
+            participantIds = roomMembers.stream()
+                    .map(m -> m.getId().getUserId())
+                    .filter(uid -> !uid.equals(callerId)) // Loại bỏ caller
+                    .collect(Collectors.toList());
+        }
+
+        if (participantIds == null || participantIds.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST); // Hoặc mã lỗi phù hợp: NO_PARTICIPANTS
+        }
+
+        // Tạo Room riêng cho cuộc gọi (Call Room), khác với Chat Room gốc
+        Room callRoom = Room.builder()
                 .creatorId(callerId)
                 .topic(RoomTopic.WORLD)
                 .purpose(RoomPurpose.CALL)
                 .status(RoomStatus.ACTIVE)
                 .build();
 
-        var roomSaved = roomRepository.save(room);
+        var roomSaved = roomRepository.save(callRoom);
 
         VideoCall videoCall = VideoCall.builder()
                 .callerId(callerId)
                 .roomId(roomSaved.getRoomId())
-                .videoCallType(type)
+                .videoCallType(request.getVideoCallType())
                 .status(VideoCallStatus.INITIATED)
                 .startTime(OffsetDateTime.now())
                 .build();
@@ -132,17 +154,15 @@ public class VideoCallServiceImpl implements VideoCallService {
         participants.add(host);
 
         for (UUID userId : participantIds) {
-            if (!userId.equals(callerId)) {
-                VideoCallParticipant participant = VideoCallParticipant.builder()
-                        .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
-                        .videoCall(videoCall)
-                        .user(userRepository.getReferenceById(userId))
-                        .joinedAt(OffsetDateTime.now())
-                        .role(VideoCallRole.GUEST)
-                        .status(VideoCallParticipantStatus.WAITING)
-                        .build();
-                participants.add(participant);
-            }
+            VideoCallParticipant participant = VideoCallParticipant.builder()
+                    .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
+                    .videoCall(videoCall)
+                    .user(userRepository.getReferenceById(userId))
+                    .joinedAt(OffsetDateTime.now())
+                    .role(VideoCallRole.GUEST)
+                    .status(VideoCallParticipantStatus.WAITING)
+                    .build();
+            participants.add(participant);
         }
         videoCallParticipantRepository.saveAll(participants);
 
@@ -155,10 +175,13 @@ public class VideoCallServiceImpl implements VideoCallService {
         socketPayload.put("callerId", callerId);
         socketPayload.put("roomName", "Group Call");
 
-        messagingTemplate.convertAndSend("/topic/room/" + roomSaved.getRoomId(), socketPayload);
-
-        for (UUID userId : participantIds) {
-            if (!userId.equals(callerId)) {
+        // Gửi thông báo socket tới tất cả user được mời
+        // Nếu có roomId gốc (Chat Room), có thể gửi vào topic room đó
+        if (request.getRoomId() != null) {
+             messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
+        } else {
+             // Fallback: Gửi riêng từng người nếu không có roomId gốc (logic cũ)
+             for (UUID userId : participantIds) {
                 try {
                     messagingTemplate.convertAndSendToUser(
                         userId.toString(),
@@ -265,35 +288,28 @@ public class VideoCallServiceImpl implements VideoCallService {
             VideoCallStatus previousStatus = videoCall.getStatus();
             videoCallMapper.updateEntityFromRequest(request, videoCall);
             
-            // Logic mới: Khi WebRTC kết nối thành công (ONGOING), reset lại Start Time 
-            // để tính thời gian gọi thực tế (bỏ qua thời gian chờ INITIATED)
             if (request.getStatus() == VideoCallStatus.ONGOING && previousStatus == VideoCallStatus.INITIATED) {
                 videoCall.setStartTime(OffsetDateTime.now());
             }
 
-            // Handle End Call Logic
             if (request.getStatus() == VideoCallStatus.ENDED && previousStatus != VideoCallStatus.ENDED) {
                 videoCall.setEndTime(OffsetDateTime.now());
                 
-                // Calculate duration
                 int durationMinutes = 0;
                 if (videoCall.getStartTime() != null) {
                     long seconds = Duration.between(videoCall.getStartTime(), videoCall.getEndTime()).getSeconds();
                     durationMinutes = (int) (seconds / 60);
                 }
 
-                // Update Progress for All Participants
                 List<VideoCallParticipant> participants = videoCallParticipantRepository.findByVideoCall_VideoCallId(id);
                 for (VideoCallParticipant p : participants) {
                     if (p.getStatus() == VideoCallParticipantStatus.CONNECTED || p.getRole() == VideoCallRole.HOST) {
                         
-                        // 1. Update Daily Challenge (Speaking Practice & Learning Time)
                         if (dailyChallengeService != null) {
                             dailyChallengeService.updateChallengeProgress(p.getId().getUserId(), ChallengeType.SPEAKING_PRACTICE, Math.max(1, durationMinutes));
                             dailyChallengeService.updateChallengeProgress(p.getId().getUserId(), ChallengeType.LEARNING_TIME, durationMinutes);
                         }
 
-                        // 2. Update Badge (Video Call Count)
                         if (badgeService != null) {
                             badgeService.updateBadgeProgress(p.getId().getUserId(), BadgeType.VIDEO_CALL_COUNT, 1);
                         }

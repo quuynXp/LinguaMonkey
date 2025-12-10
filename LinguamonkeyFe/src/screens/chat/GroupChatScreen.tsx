@@ -109,13 +109,11 @@ const GroupChatScreen = () => {
         return roomInfo?.roomName || initialRoomName;
     }, [isPrivateRoom, targetMember, roomInfo, initialRoomName]);
 
-    // FIX: Đã chỉnh sửa logic để chỉ dựa vào userStatuses (realtime) cho chấm tròn.
     const renderActiveDot = (userId: string | undefined, size = 10) => {
         if (!userId) return null;
         const realtimeStatus = userStatuses[userId];
         const isOnline = realtimeStatus?.isOnline;
 
-        // Dự phòng cho Private Room
         if (!isOnline && isPrivateRoom && userId === targetMember?.userId) {
             if (roomInfo?.partnerIsOnline) {
                 return <View style={[styles.headerActiveDot, { width: size, height: size, borderRadius: size / 2 }]} />;
@@ -149,26 +147,13 @@ const GroupChatScreen = () => {
     }, [roomId, activeBubbleRoomId, closeBubble]);
 
     const handleStartVideoCall = () => {
-        if (!user?.userId || !members) return;
+        if (!user?.userId) return;
 
-        // FIX: Lọc bỏ chính mình ra khỏi danh sách người nhận cuộc gọi
-        // Backend Java có @NotEmpty cho participantIds, nếu mảng rỗng sẽ trả về 400
-        const otherParticipants = members.filter(m => m.userId !== user.userId);
-        const participantIds = otherParticipants.map(m => m.userId);
-
-        if (participantIds.length === 0) {
-            Alert.alert(
-                t('common.error'),
-                t('chat.cannot_call_alone') || "Cần ít nhất một thành viên khác để bắt đầu cuộc gọi nhóm."
-            );
-            return;
-        }
-
+        // UPDATED: Chỉ gửi roomId, không gửi danh sách members để tránh lỗi payload lớn hoặc validate
         createGroupCall({
             callerId: user.userId,
-            participantIds: participantIds,
-            // FIX: Ép kiểu hoặc truyền chuỗi "GROUP" tường minh để tránh lỗi serialization Enum số/chuỗi
-            videoCallType: 'GROUP' as unknown as VideoCallType
+            roomId: roomId, // Source Chat Room ID
+            videoCallType: VideoCallType.GROUP
         }, {
             onSuccess: (res) => {
                 navigation.navigate('JitsiCallScreen', {
@@ -178,9 +163,9 @@ const GroupChatScreen = () => {
                     mode: 'GROUP'
                 });
             },
-            onError: (err: any) => {
-                console.error("Start Call Error:", err);
-                showToast({ type: "error", message: t("error.start_call_failed") || "Không thể bắt đầu cuộc gọi" });
+            onError: (err) => {
+                console.error("Start Call Failed:", err);
+                showToast({ type: "error", message: t("error.start_call_failed") });
             }
         });
     };

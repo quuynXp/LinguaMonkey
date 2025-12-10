@@ -34,5 +34,5 @@ public interface VideoCallService {
 
     VideoCallResponse updateVideoCall(UUID id, VideoCallRequest request);
     void deleteVideoCall(UUID id);
-    VideoCallResponse createGroupVideoCall(UUID userId, List<UUID> participantIds, VideoCallType videoCallType);
+    VideoCallResponse createGroupVideoCall(CreateGroupCallRequest request);
 }

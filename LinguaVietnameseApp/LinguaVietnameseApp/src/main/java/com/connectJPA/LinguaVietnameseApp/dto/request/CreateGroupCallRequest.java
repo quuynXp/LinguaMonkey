@@ -1,7 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.VideoCallType;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,8 +18,9 @@ public class CreateGroupCallRequest {
     @NotNull(message = "Caller ID is required")
     private UUID callerId;
 
-    @NotEmpty(message = "Participant IDs cannot be empty")
     private List<UUID> participantIds;
+
+    private UUID roomId;
 
     @NotNull(message = "Video call type is required")
     private VideoCallType videoCallType;
