@@ -107,11 +107,18 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }, [user?.userId, refetchEnrollments, refetchUserProgress])
   );
 
+  // FIX: Detect if course's latest public version changes (e.g. backend update) and sync UI
+  // Also initialize if viewingVersionId is null.
   useEffect(() => {
-    if (course?.latestPublicVersion && !viewingVersionId) {
-      setViewingVersionId(course.latestPublicVersion.versionId);
+    if (course?.latestPublicVersion) {
+      // If no version is selected yet, select the latest.
+      // Or, if the latest version from API is DIFFERENT from what we thought was latest (and user hasn't explicitly picked an old one)
+      // Determining "explicitly picked" is hard, so we just default to latest on load.
+      if (!viewingVersionId) {
+        setViewingVersionId(course.latestPublicVersion.versionId);
+      }
     }
-  }, [course]);
+  }, [course?.latestPublicVersion?.versionId]);
 
   const { data: selectedVersionData, isLoading: versionMetaLoading } = useGetVersion(viewingVersionId || "");
 

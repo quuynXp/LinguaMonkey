@@ -358,8 +358,8 @@ const EditCourseScreen = () => {
   // --- UPLOAD HANDLER ---
 
   const handleUploadSuccess = (result: any) => {
-    // 1. Try Cloudinary secure URL first
-    let finalUrl = result.secure_url || result.url;
+    // 1. Try Cloudinary secure URL, generic url, OR backend DTO 'fileUrl'
+    let finalUrl = result.secure_url || result.url || result.fileUrl;
 
     // 2. If not found, check for Google Drive ID (legacy support)
     if (!finalUrl && result.id) {
@@ -374,6 +374,7 @@ const EditCourseScreen = () => {
     if (finalUrl) {
       setLocalThumbnailUrl(finalUrl);
     } else {
+      console.log('Upload Result Debug:', result);
       Alert.alert(t("error"), "Could not retrieve file URL.");
     }
   };

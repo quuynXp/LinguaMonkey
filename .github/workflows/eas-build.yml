@@ -16,68 +16,51 @@ jobs:
         working-directory: ./LinguamonkeyFe
 
     steps:
-      - name: 🧱 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🧩 Setup Node.js
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build build-essential
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24.4
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: 🔧 Setup NDK 27 (Force Install)
+      - name: Setup specific NDK (Force v26) & CMake
         run: |
           set -e
-          echo ">>> SDK root: $ANDROID_SDK_ROOT"
+          echo "Cleaning incompatible NDK versions..."
+          sudo rm -rf /usr/local/lib/android/sdk/ndk || true
+          sudo rm -rf $ANDROID_SDK_ROOT/ndk || true
           
-          # Xóa các bản NDK cũ để tránh nhầm lẫn (dọn sạch sẽ)
-          sudo rm -rf /usr/local/lib/android/sdk/ndk/* || true
-          sudo rm -rf $ANDROID_SDK_ROOT/ndk/* || true
-          
-          # Cài đặt chính xác NDK 27.0.12077973 và CMake
-          echo "✨ Installing NDK 27.0.12077973..."
-          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+          echo "Installing NDK 26.1.10909125 and CMake 3.22.1..."
+          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "cmdline-tools;latest" >/dev/null || true
+          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;26.1.10909125" "cmake;3.22.1"
 
-          # Định nghĩa đường dẫn
-          NDK_PATH="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
-          CMAKE_PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "CMAKE_HOME=$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_ENV
+          echo "PATH=$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV
 
-          # Export biến môi trường
-          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
-          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
-          echo "PATH=$CMAKE_PATH:$PATH" >> $GITHUB_ENV
-
-          # Kiểm tra lại
-          ls -la $ANDROID_SDK_ROOT/ndk
-          $NDK_PATH/ndk-build --version
-
-      - name: 🛠️ Generate Android directory (Prebuild)
-        env:
-          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+      - name: Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      - name: 📝 Force NDK path in local.properties
-        run: |
-          # Ghi đè đường dẫn NDK 27 vào local.properties để Gradle không tìm lung tung
-          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> ./android/local.properties
-          cat ./android/local.properties
-
-      - name: 🧹 Clean up duplicate icon files
-        run: |
-          find ./android/app/src/main/res -name "*.webp" -delete || true
-
-      - name: ☕ Setup Java (JDK)
+      - name: Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 🐘 Cache Gradle dependencies
+      - name: Cache Gradle dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -87,46 +70,37 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
 
-      - name: 🧹 Gradle Clean
+      - name: Clean Gradle
         run: |
           cd android
           chmod +x gradlew
           ./gradlew clean
 
-      - name: 🧹 Clean up large components (Free space)
-        run: |
-          sudo rm -rf /usr/share/dotnet/
-          sudo apt-get clean
-
-      - name: 🔐 Install EAS CLI
+      - name: Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: 🔑 Setup Expo authentication
-        run: echo "EXPO_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
-
-      - name: 🔑 Decode Android keystore
+      - name: Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
           chmod 600 my-release-key.keystore
 
-      - name: ⚙️ Build signed APK locally
+      - name: Build signed APK locally
         env:
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
           ANDROID_KEYSTORE_PATH: ./my-release-key.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
         run: |
           eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
 
-      - name: 📤 Upload signed APK to GitHub Artifacts
+      - name: Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-signed-apk
           path: LinguamonkeyFe/app-release.apk
 
-      - name: 🧹 Clean up final disk space
+      - name: Cleanup
         if: always()
         run: |
           rm -rf ~/.gradle/caches/

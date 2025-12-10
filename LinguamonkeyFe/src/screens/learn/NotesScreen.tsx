@@ -5,6 +5,7 @@ import {
   Animated,
   FlatList,
   Modal,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -14,6 +15,7 @@ import {
   Platform,
   Switch
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMemorizations } from "../../hooks/useMemorizations";
 import { useReminders } from "../../hooks/useReminders";
@@ -22,12 +24,11 @@ import * as Enums from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
-import { TimeHelper } from "../../utils/timeHelper";
+import { TimeHelper } from "../../utils/TimeVnHelper";
 
-const NotesScreen = ({ navigation, route }: any) => {
+const NotesScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
-  const { prefillContent, courseId } = route.params || {};
 
   const [selectedContentType, setSelectedContentType] = useState<string>("all");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -38,8 +39,7 @@ const NotesScreen = ({ navigation, route }: any) => {
 
   // Reminder State
   const [isReminderEnabled, setIsReminderEnabled] = useState(false);
-  const [reminderHour, setReminderHour] = useState("09");
-  const [reminderMinute, setReminderMinute] = useState("00");
+  const [reminderTime, setReminderTime] = useState(""); // Input Format HH:mm
   const [reminderRepeat, setReminderRepeat] = useState<Enums.RepeatType>(Enums.RepeatType.DAILY);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -49,19 +49,11 @@ const NotesScreen = ({ navigation, route }: any) => {
     useUserMemorizations,
     useCreateMemorization,
     useDeleteMemorization,
-    useUpdateMemorization,
+    useToggleFavorite,
   } = useMemorizations();
 
   const { useCreateReminder } = useReminders();
   const { mutate: createReminder, isPending: isCreatingReminder } = useCreateReminder();
-
-  useEffect(() => {
-    if (prefillContent) {
-      setNewNote(prefillContent);
-      setShowAddModal(true);
-      setIsReminderEnabled(true);
-    }
-  }, [prefillContent]);
 
   const searchParams = useMemo(() => {
     const params: any = { page: 0, size: 20 };
@@ -78,14 +70,13 @@ const NotesScreen = ({ navigation, route }: any) => {
 
   const { mutate: createMemorization, isPending: isCreatingNote } = useCreateMemorization();
   const { mutate: deleteMemorization } = useDeleteMemorization();
-  const { mutate: updateMemorization } = useUpdateMemorization();
+  const { mutate: toggleFavorite } = useToggleFavorite();
 
   const notesList = useMemo(() => {
     let list = (memorizationsPage?.data as MemorizationResponse[]) || [];
     if (showFavoritesOnly) {
       list = list.filter(item => item.isFavorite);
     }
-    // Local filter fallback if API doesn't support keyword perfectly yet
     if (searchQuery && !searchParams.keyword) {
       list = list.filter(n => n.noteText?.toLowerCase().includes(searchQuery.toLowerCase()));
     }
@@ -93,14 +84,17 @@ const NotesScreen = ({ navigation, route }: any) => {
   }, [memorizationsPage, showFavoritesOnly, searchQuery, searchParams.keyword]);
 
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
   }, [fadeAnim]);
 
   const mapNoteTypeToContentType = (type: string): Enums.ContentType => {
     switch (type) {
       case "word": return Enums.ContentType.VOCABULARY;
       case "grammar": return Enums.ContentType.FORMULA;
-      case "phrase": return Enums.ContentType.NOTE; // Assuming Phrase maps to General Note
       default: return Enums.ContentType.NOTE;
     }
   };
@@ -108,71 +102,50 @@ const NotesScreen = ({ navigation, route }: any) => {
   const handleAddNote = () => {
     if (!newNote.trim()) return;
 
-    if (!user?.userId) {
-      console.error("❌ Missing UserID in Store");
-      Alert.alert("Error", "User session invalid. Please login again.");
-      return;
-    }
-
-    // Helper: Valid UUID or NULL (Strictly for Java Backend)
-    const safeContentId = (courseId && typeof courseId === 'string' && courseId.length === 36)
-      ? courseId
-      : null;
-
-    const payload: MemorizationRequest = {
-      userId: user.userId,
+    // Note Payload
+    const notePayload: MemorizationRequest = {
       contentType: mapNoteTypeToContentType(selectedNoteType),
-      contentId: safeContentId,
+      contentId: null,
       noteText: newNote.trim(),
       isFavorite: false,
+      userId: user?.userId || "",
     };
 
-    console.log("📝 Preparing to create note:", payload);
-
-    createMemorization(payload, {
+    createMemorization(notePayload, {
       onSuccess: (createdNote) => {
-        if (isReminderEnabled) {
+        // If Reminder is enabled, chain the creation
+        if (isReminderEnabled && reminderTime) {
           handleCreateReminder(createdNote.memorizationId, createdNote.noteText);
         } else {
           finishAddProcess();
         }
       },
-      onError: (err: any) => {
-        const msg = err?.response?.data?.message || t("common.error");
-        Alert.alert("Failed to create note", msg);
-      }
-    });
-  };
-
-  const handleToggleFavorite = (item: MemorizationResponse) => {
-    const safeContentId = (item.contentId && item.contentId.length === 36) ? item.contentId : null;
-
-    const cleanPayload: MemorizationRequest = {
-      userId: item.userId,
-      contentType: item.contentType,
-      contentId: safeContentId,
-      noteText: item.noteText,
-      isFavorite: !item.isFavorite
-    };
-
-    updateMemorization({
-      id: item.memorizationId,
-      req: cleanPayload
-    }, {
-      onError: () => Alert.alert("Error", "Failed to update status")
+      onError: () => Alert.alert("Error", t("common.error"))
     });
   };
 
   const handleCreateReminder = (targetId: string, noteTitle: string) => {
-    const timeStringHHMM = `${reminderHour}:${reminderMinute}`;
+    // 1. Create a dummy date with the user's input time to use the Helper
+    const [hours, minutes] = reminderTime.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) {
+      Alert.alert("Invalid Time", "Please use HH:mm format");
+      finishAddProcess();
+      return;
+    }
+
+    const now = new Date();
+    now.setHours(hours, minutes, 0, 0);
+
+    // 2. Convert to Vietnam Time string for Backend
+    const vnTimeString = TimeHelper.convertToVietnamTime(now);
 
     const reminderPayload: UserReminderRequest = {
-      title: t("notes.reminderTitle") + ": " + (noteTitle.length > 20 ? noteTitle.substring(0, 20) + "..." : noteTitle),
+      title: t("notes.reminderTitle") + ": " + noteTitle.substring(0, 20) + "...",
       message: t("notes.reminderBody") + ": " + noteTitle,
-      time: timeStringHHMM,
-      date: TimeHelper.formatDateForApi(new Date()),
+      time: vnTimeString,
+      date: TimeHelper.formatDateForApi(new Date()), // Starts today
       repeatType: reminderRepeat,
-      targetType: Enums.TargetType.NOTE,
+      targetType: Enums.TargetType.NOTE, // Assuming Enum exists, else custom
       targetId: targetId,
       enabled: true
     };
@@ -182,8 +155,7 @@ const NotesScreen = ({ navigation, route }: any) => {
         Alert.alert(t("common.success"), t("notes.reminderSetSuccess"));
         finishAddProcess();
       },
-      onError: (err: any) => {
-        console.error("Reminder creation failed:", err);
+      onError: () => {
         Alert.alert(t("common.warning"), t("notes.noteSavedReminderFailed"));
         finishAddProcess();
       }
@@ -192,8 +164,7 @@ const NotesScreen = ({ navigation, route }: any) => {
 
   const finishAddProcess = () => {
     setNewNote("");
-    setReminderHour("09");
-    setReminderMinute("00");
+    setReminderTime("");
     setIsReminderEnabled(false);
     setShowAddModal(false);
     refetchMemorizations();
@@ -211,8 +182,8 @@ const NotesScreen = ({ navigation, route }: any) => {
       <View style={styles.noteHeader}>
         <View style={styles.noteTypeTag}>
           <Text style={styles.noteTypeTagText}>
-            {item.contentType === Enums.ContentType.VOCABULARY ? "🔤 Vocabulary" :
-              item.contentType === Enums.ContentType.FORMULA ? "📐 Grammar" : "📝 Note"}
+            {item.contentType === Enums.ContentType.VOCABULARY ? "🔤" :
+              item.contentType === Enums.ContentType.FORMULA ? "📐" : "📝"}
           </Text>
         </View>
         <Text style={styles.noteDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
@@ -220,14 +191,14 @@ const NotesScreen = ({ navigation, route }: any) => {
       <Text style={styles.noteText}>{item.noteText}</Text>
       <View style={styles.noteFooter}>
         <TouchableOpacity
-          onPress={() => handleToggleFavorite(item)}
+          onPress={() => toggleFavorite({ id: item.memorizationId, currentReq: item as any })}
           style={styles.iconBtn}
         >
-          <Icon name={item.isFavorite ? "star" : "star-border"} size={22} color={item.isFavorite ? "#F59E0B" : "#9CA3AF"} />
+          <Icon name={item.isFavorite ? "star" : "star-border"} size={20} color={item.isFavorite ? "#F59E0B" : "#9CA3AF"} />
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
         <TouchableOpacity onPress={() => handleDelete(item.memorizationId)} style={styles.iconBtn}>
-          <Icon name="delete-outline" size={22} color="#EF4444" />
+          <Icon name="delete-outline" size={20} color="#EF4444" />
         </TouchableOpacity>
       </View>
     </View>
@@ -250,7 +221,7 @@ const NotesScreen = ({ navigation, route }: any) => {
           <Icon name="search" size={20} color="#9CA3AF" />
           <TextInput
             style={styles.searchInput}
-            placeholder={t("notes.searchPlaceholder") ?? "Search notes..."}
+            placeholder={t("notes.searchPlaceholder") ?? "Search..."}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor="#9CA3AF"
@@ -269,8 +240,8 @@ const NotesScreen = ({ navigation, route }: any) => {
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Icon name="note-add" size={48} color="#E5E7EB" />
-                <Text style={styles.emptyText}>{t("notes.empty") ?? "Create your first note"}</Text>
+                <Icon name="post-add" size={48} color="#E5E7EB" />
+                <Text style={styles.emptyText}>{t("notes.empty") ?? "No notes found. Tap + to add."}</Text>
               </View>
             }
           />
@@ -292,7 +263,6 @@ const NotesScreen = ({ navigation, route }: any) => {
               </TouchableOpacity>
             </View>
 
-            {/* Content Type Selector */}
             <View style={styles.typeSelector}>
               {(["word", "phrase", "grammar"] as const).map(type => (
                 <TouchableOpacity
@@ -310,7 +280,7 @@ const NotesScreen = ({ navigation, route }: any) => {
             <TextInput
               style={styles.modalInput}
               multiline
-              placeholder={t("notes.inputPlaceholder") ?? "Enter text..."}
+              placeholder={t("notes.inputPlaceholder") ?? "Type your note here..."}
               value={newNote}
               onChangeText={setNewNote}
               autoFocus
@@ -321,7 +291,7 @@ const NotesScreen = ({ navigation, route }: any) => {
               <View style={styles.reminderHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Icon name="alarm" size={20} color="#37352F" style={{ marginRight: 8 }} />
-                  <Text style={styles.reminderLabel}>{t("notes.enableReminder") ?? "Reminder"}</Text>
+                  <Text style={styles.reminderLabel}>{t("notes.enableReminder") ?? "Set Reminder"}</Text>
                 </View>
                 <Switch
                   value={isReminderEnabled}
@@ -332,35 +302,19 @@ const NotesScreen = ({ navigation, route }: any) => {
 
               {isReminderEnabled && (
                 <View style={styles.reminderControls}>
-                  <Text style={styles.labelSmall}>{t("notes.time") ?? "Set Time"}</Text>
-                  <View style={styles.timePickerContainer}>
-                    <TouchableOpacity
-                      style={styles.timeBox}
-                      onPress={() => {
-                        const h = parseInt(reminderHour);
-                        const next = h >= 23 ? 0 : h + 1;
-                        setReminderHour(next.toString().padStart(2, '0'));
-                      }}
-                    >
-                      <Text style={styles.timeText}>{reminderHour}</Text>
-                      <Text style={styles.timeLabel}>Hr</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.timeSeparator}>:</Text>
-                    <TouchableOpacity
-                      style={styles.timeBox}
-                      onPress={() => {
-                        const m = parseInt(reminderMinute);
-                        const next = m >= 55 ? 0 : m + 5;
-                        setReminderMinute(next.toString().padStart(2, '0'));
-                      }}
-                    >
-                      <Text style={styles.timeText}>{reminderMinute}</Text>
-                      <Text style={styles.timeLabel}>Min</Text>
-                    </TouchableOpacity>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.labelSmall}>{t("notes.time") ?? "Time (HH:MM)"}</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      value={reminderTime}
+                      onChangeText={setReminderTime}
+                      placeholder="10:00"
+                      keyboardType="numbers-and-punctuation"
+                      maxLength={5}
+                    />
                   </View>
-
                   <View style={styles.repeatContainer}>
-                    <Text style={styles.labelSmall}>{t("notes.repeat") ?? "Frequency"}</Text>
+                    <Text style={styles.labelSmall}>{t("notes.repeat") ?? "Repeat"}</Text>
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                       <TouchableOpacity
                         onPress={() => setReminderRepeat(Enums.RepeatType.DAILY)}
@@ -409,8 +363,8 @@ const styles = createScaledSheet({
   listContent: { padding: 16, paddingBottom: 80 },
   noteCard: { backgroundColor: '#FFFFFF', borderRadius: 8, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E9E9E9', shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 },
   noteHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  noteTypeTag: { backgroundColor: '#F0F0F0', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
-  noteTypeTagText: { fontSize: 12, fontWeight: '500', color: '#555' },
+  noteTypeTag: { backgroundColor: '#F0F0F0', borderRadius: 4, padding: 4 },
+  noteTypeTagText: { fontSize: 12 },
   noteDate: { fontSize: 12, color: '#9CA3AF' },
   noteText: { fontSize: 15, color: '#37352F', lineHeight: 22, marginBottom: 12 },
   noteFooter: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F7F7F7', paddingTop: 8, gap: 16 },
@@ -419,31 +373,25 @@ const styles = createScaledSheet({
   emptyState: { alignItems: 'center', marginTop: 60 },
   emptyText: { color: '#9CA3AF', marginTop: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '90%' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '80%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#37352F' },
   typeSelector: { flexDirection: 'row', marginBottom: 16, gap: 10 },
   typeBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, backgroundColor: '#F7F7F5' },
-  activeTypeBtn: { backgroundColor: '#E6F3FF', borderWidth: 1, borderColor: '#0077D6' },
+  activeTypeBtn: { backgroundColor: '#E6F3FF' },
   typeBtnText: { fontSize: 13, color: '#37352F' },
   activeTypeBtnText: { color: '#0077D6', fontWeight: '600' },
-  modalInput: { fontSize: 16, lineHeight: 24, color: '#37352F', minHeight: 80, textAlignVertical: 'top', marginBottom: 10 },
+  modalInput: { fontSize: 16, lineHeight: 24, color: '#37352F', minHeight: 100, textAlignVertical: 'top', marginBottom: 10 },
 
   // Reminder Styles
   reminderSection: { backgroundColor: '#F7F7F5', padding: 12, borderRadius: 8, marginBottom: 20 },
   reminderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   reminderLabel: { fontSize: 15, fontWeight: '500', color: '#37352F' },
   reminderControls: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E1E1E1', paddingTop: 12 },
-
-  // Time Picker Custom UX
-  timePickerContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 10 },
-  timeBox: { backgroundColor: '#FFF', borderRadius: 8, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', width: 60 },
-  timeText: { fontSize: 24, fontWeight: 'bold', color: '#37352F' },
-  timeLabel: { fontSize: 10, color: '#6B7280' },
-  timeSeparator: { fontSize: 24, fontWeight: 'bold', marginHorizontal: 10, color: '#37352F' },
-
+  timeInputContainer: { marginBottom: 10 },
+  timeInput: { backgroundColor: '#FFF', borderRadius: 4, padding: 8, borderWidth: 1, borderColor: '#E1E1E1', marginTop: 4 },
   labelSmall: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
-  repeatContainer: { marginTop: 10 },
+  repeatContainer: {},
   repeatChip: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFF' },
   activeChip: { backgroundColor: '#37352F', borderColor: '#37352F' },
   chipText: { fontSize: 12, color: '#37352F' },

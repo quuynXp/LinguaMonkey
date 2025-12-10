@@ -60,7 +60,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -242,7 +241,6 @@ public class CourseServiceImpl implements CourseService {
         course.setTitle(request.getTitle());
         course.setCreatorId(request.getCreatorId());
         
-        // Changed: Defaults to APPROVED to allow immediate publishing without admin intervention
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         course = courseRepository.save(course); 
 
@@ -342,31 +340,36 @@ public class CourseServiceImpl implements CourseService {
             throw new AppException(ErrorCode.COURSE_VALIDATION_FAILED);
         }
 
+        // 1. Prepare new version state
         version.setReasonForChange(request.getReasonForChange());
-        
-        // Changed: Removed logic for PENDING_APPROVAL based on price/changes.
-        // All publish requests now go directly to PUBLIC.
-        
-        // Archive old version if exists
-        if (course.getLatestPublicVersion() != null) {
-            CourseVersion oldPublic = course.getLatestPublicVersion();
-            oldPublic.setStatus(VersionStatus.ARCHIVED);
-            courseVersionRepository.save(oldPublic);
-        }
-
         version.setStatus(VersionStatus.PUBLIC);
         version.setPublishedAt(OffsetDateTime.now());
+        
+        // CRITICAL FIX: Save the version FIRST to ensure it's persisted as PUBLIC
+        version = courseVersionRepository.save(version);
+
+        // 2. Handle Old Version Archival
+        if (course.getLatestPublicVersion() != null) {
+            CourseVersion oldPublic = course.getLatestPublicVersion();
+            // Prevent archiving itself if somehow references match (sanity check)
+            if (!oldPublic.getVersionId().equals(version.getVersionId())) {
+                oldPublic.setStatus(VersionStatus.ARCHIVED);
+                courseVersionRepository.save(oldPublic);
+            }
+        }
+
+        // 3. Update Course Reference
         course.setLatestPublicVersion(version);
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
-        courseRepository.save(course);
+        courseRepository.save(course); // Persist FK change
 
+        // Notifications
         sendLearnerUpdateNotification(
                 course,
                 version,
                 "A new version (v" + version.getVersionNumber() + ") is available. Update notes: " + version.getReasonForChange()
         );
 
-        version = courseVersionRepository.save(version);
         return versionMapper.toResponse(version);
     }
 
@@ -651,19 +654,24 @@ public class CourseServiceImpl implements CourseService {
         Course course = courseRepository.findById(version.getCourseId())
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 
-        if (course.getLatestPublicVersion() != null) {
-            CourseVersion oldPublic = course.getLatestPublicVersion();
-            oldPublic.setStatus(VersionStatus.ARCHIVED);
-            courseVersionRepository.save(oldPublic);
-        }
-
+        // 1. Prepare Version (Status PUBLIC) & SAVE FIRST
         version.setStatus(VersionStatus.PUBLIC);
         version.setPublishedAt(OffsetDateTime.now());
+        version = courseVersionRepository.save(version);
 
+        // 2. Handle Old Public
+        if (course.getLatestPublicVersion() != null) {
+            CourseVersion oldPublic = course.getLatestPublicVersion();
+            if (!oldPublic.getVersionId().equals(version.getVersionId())) {
+                oldPublic.setStatus(VersionStatus.ARCHIVED);
+                courseVersionRepository.save(oldPublic);
+            }
+        }
+
+        // 3. Update Course & Save
         course.setLatestPublicVersion(version);
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         courseRepository.save(course);
-        version = courseVersionRepository.save(version);
         
         roomService.ensureCourseRoomExists(course.getCourseId(), course.getTitle(), course.getCreatorId());
 

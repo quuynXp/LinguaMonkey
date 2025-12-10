@@ -1,20 +1,127 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  View, Text, TouchableOpacity, ScrollView,
+  View, Text, Image, TouchableOpacity, ScrollView,
   ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert,
   Platform, PermissionsAndroid
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTranslation } from "react-i18next";
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+
+// Imports from project structure
 import { useLessons } from "../../hooks/useLessons";
 import { useSkillLessons } from "../../hooks/useSkillLessons";
 import { useUserStore } from "../../stores/UserStore";
 import { LessonResponse, LessonQuestionResponse } from "../../types/dto";
 import { QuestionType } from "../../types/enums";
 import ScreenLayout from "../../components/layout/ScreenLayout";
-import { UniversalQuestionView } from "../../components/learn/SkillComponents";
 import { LessonInputArea } from "../../components/learn/LessonInputArea";
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
+
+// --- Constants for Audio Recorder (Bypassing Library TS Exports) ---
+const ANDROID_AUDIO_CONFIG = {
+  AudioEncoderAndroid: 3, // AAC
+  AudioSourceAndroid: 1,  // MIC
+  OutputFormatAndroid: 2, // MPEG_4
+};
+
+// --- Helper Components (UniversalQuestionView) ---
+
+const MediaNotFound = ({ type }: { type: string }) => (
+  <View style={styles.notFoundContainer}>
+    <Icon name="broken-image" size={32} color="#EF4444" />
+    <Text style={styles.notFoundText}>{type} Not Found</Text>
+  </View>
+);
+
+export const UniversalQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
+  const { t } = useTranslation();
+  const [imgError, setImgError] = useState(false);
+
+  const mediaUrl = getDirectMediaUrl(question.mediaUrl);
+
+  const isVideoOrAudio = mediaUrl && (
+    mediaUrl.endsWith('.mp4') ||
+    mediaUrl.endsWith('.mp3') ||
+    mediaUrl.includes('export=view')
+  ) && (question.questionType === QuestionType.VIDEO || question.questionType === QuestionType.AUDIO);
+
+  const isImage = mediaUrl && !isVideoOrAudio;
+
+  const player = useVideoPlayer(isVideoOrAudio ? mediaUrl : "", (player) => {
+    player.loop = false;
+    if (isVideoOrAudio) player.play();
+  });
+
+  const renderMedia = () => {
+    if (!mediaUrl) return null;
+
+    if (isVideoOrAudio) {
+      return (
+        <View style={styles.mediaContainer}>
+          <VideoView player={player} style={{ width: 300, height: 200 }} contentFit="contain" />
+          <TouchableOpacity style={styles.audioButton} onPress={() => player.replay()}>
+            <Icon name="replay" size={24} color="#FFF" />
+            <Text style={styles.audioButtonText}>Replay</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (isImage) {
+      if (imgError) return <MediaNotFound type="Image" />;
+      return (
+        <Image
+          source={{ uri: mediaUrl }}
+          style={styles.contextImage}
+          resizeMode="contain"
+          onError={() => setImgError(true)}
+        />
+      );
+    }
+    return null;
+  };
+
+  const renderTranscript = () => {
+    if (question.questionType === QuestionType.SPEAKING) {
+      return (
+        <View style={styles.speakingBox}>
+          <Icon name="record-voice-over" size={48} color="#10B981" />
+          <Text style={styles.transcriptText}>{question.transcript || question.question}</Text>
+        </View>
+      );
+    }
+
+    if (question.transcript) {
+      return (
+        <View style={styles.readingPassageBox}>
+          <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+            <Text style={styles.readingPassageText}>{question.transcript}</Text>
+          </ScrollView>
+        </View>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <View style={styles.questionContainer}>
+      {renderMedia()}
+      {renderTranscript()}
+      {question.questionType !== QuestionType.SPEAKING && (
+        <Text style={styles.questionText}>{question.question}</Text>
+      )}
+      {question.questionType === QuestionType.SPEAKING && (
+        <Text style={styles.questionText}>
+          {t("quiz.readAloud", "Đọc to câu trên")}
+        </Text>
+      )}
+    </View>
+  );
+};
+
+// --- Main LessonScreen Component ---
 
 const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean => {
   if (!question.correctOption) return false;
@@ -71,13 +178,16 @@ const LessonScreen = ({ navigation, route }: any) => {
   // Recording State
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const audioRecorderPlayer = useRef(new AudioRecorderPlayer()).current;
+  const [recordPath, setRecordPath] = useState<string>('');
+
+  // FIX: Cast to 'any' to bypass TypeScript "no construct signatures" error
+  const audioRecorderPlayer = useRef(new (AudioRecorderPlayer as any)()).current;
 
   const [isRetryWrongMode, setIsRetryWrongMode] = useState(false);
 
-  const { data: testData, isLoading, refetch } = useLessonTest(lesson.lessonId, userId!, !!userId);
+  const { data: testData, isLoading } = useLessonTest(lesson.lessonId, userId!, !!userId);
 
-  // Cleanup recorder on unmount
+  // Cleanup recorder
   useEffect(() => {
     return () => {
       audioRecorderPlayer.stopRecorder();
@@ -206,7 +316,7 @@ const LessonScreen = ({ navigation, route }: any) => {
     setAiAnalysisResult(null);
     setReviewMode(false);
     setIsProcessingAI(false);
-    // Ensure recording is stopped if user skips quickly
+    setRecordPath('');
     if (isRecording) {
       handleStopRecording();
     }
@@ -235,7 +345,7 @@ const LessonScreen = ({ navigation, route }: any) => {
         return false;
       }
     }
-    return true; // iOS permissions handled by Info.plist usually
+    return true;
   };
 
   const handleStartRecording = async () => {
@@ -247,15 +357,22 @@ const LessonScreen = ({ navigation, route }: any) => {
       return;
     }
 
+    // Explicit config using local integer constants to bypass TS export issues
+    const audioSet = {
+      AudioEncoderAndroid: ANDROID_AUDIO_CONFIG.AudioEncoderAndroid,
+      AudioSourceAndroid: ANDROID_AUDIO_CONFIG.AudioSourceAndroid,
+      AVEncoderAudioQualityKeyIOS: 'medium',
+      AVNumberOfChannelsKeyIOS: 1,
+      AVFormatIDKeyIOS: 'aac',
+      OutputFormatAndroid: ANDROID_AUDIO_CONFIG.OutputFormatAndroid,
+    };
+
     try {
       setIsRecording(true);
-      // Start recording, returns uri on some platforms, or just starts
-      await audioRecorderPlayer.startRecorder();
-      audioRecorderPlayer.addRecordBackListener((e) => {
-        // You can update a state here if you want to show duration: e.currentPosition
-        return;
-      });
-      console.log('Recording started...');
+      const uri = await audioRecorderPlayer.startRecorder(undefined, audioSet);
+      setRecordPath(uri);
+      audioRecorderPlayer.addRecordBackListener((e) => { return; });
+      console.log('Recording started at:', uri);
     } catch (e) {
       console.error("Start recording failed:", e);
       setIsRecording(false);
@@ -271,21 +388,18 @@ const LessonScreen = ({ navigation, route }: any) => {
       audioRecorderPlayer.removeRecordBackListener();
       setIsRecording(false);
 
-      // result contains the file path (URI)
-      // On Android, explicitly ensure 'file://' prefix for FormData
-      let uri = result;
-      if (Platform.OS === 'android' && !uri.startsWith('file://')) {
+      let uri = result || recordPath;
+
+      if (Platform.OS === 'android' && uri && !uri.startsWith('file://')) {
         uri = `file://${uri}`;
       }
 
-      console.log("Recording Stopped. URI:", uri);
+      console.log("Recording Stopped. Final URI:", uri);
 
-      if (uri) {
+      if (uri && uri !== 'already_stopped') {
         setIsProcessingAI(true);
         setIsAnswered(true);
-
-        // Optimistically set status
-        setFeedbackMessage("AI is analyzing pronunciation...");
+        setFeedbackMessage("Sending audio to AI...");
 
         await streamPronunciationMutation.mutateAsync({
           audioUri: uri,
@@ -304,11 +418,13 @@ const LessonScreen = ({ navigation, route }: any) => {
           }
         });
       } else {
-        console.warn("No URI found after stop");
+        console.warn("Invalid URI after stop");
         setIsRecording(false);
+        setFeedbackMessage("Recording failed (Empty File).");
       }
     } catch (e) {
-      console.error("Stop recording failed:", e);
+      console.error("Stop recording error:", e);
+      setFeedbackMessage("Error processing audio.");
       setIsRecording(false);
       setIsProcessingAI(false);
     }
@@ -407,7 +523,7 @@ const LessonScreen = ({ navigation, route }: any) => {
         {isProcessingAI && (
           <View style={styles.aiLoading}>
             <ActivityIndicator color="#4F46E5" size="large" />
-            <Text style={styles.aiText}>AI is grading...</Text>
+            <Text style={styles.aiText}>Streaming to Backend...</Text>
           </View>
         )}
 
@@ -463,6 +579,19 @@ const styles = StyleSheet.create({
   summaryFooter: { flexDirection: 'row', gap: 10, marginTop: 20 },
   primaryBtn: { flex: 1, backgroundColor: '#4F46E5', padding: 15, borderRadius: 10, alignItems: 'center' },
   secondaryBtn: { flex: 1, backgroundColor: '#EEE', padding: 15, borderRadius: 10, alignItems: 'center' },
+  // Universal Question Styles
+  questionContainer: { marginBottom: 20, alignItems: 'center', width: '100%' },
+  questionText: { fontSize: 18, fontWeight: '600', color: '#1F2937', textAlign: 'center', marginTop: 16, lineHeight: 26 },
+  mediaContainer: { width: '100%', alignItems: 'center', marginBottom: 16 },
+  notFoundContainer: { width: '100%', height: 150, backgroundColor: '#FEE2E2', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: '#EF4444', borderStyle: 'dashed' },
+  notFoundText: { marginTop: 8, color: '#B91C1C', fontWeight: '600' },
+  audioButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4F46E5', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 30, marginTop: 8 },
+  audioButtonText: { color: '#FFF', fontWeight: '700', fontSize: 14, marginLeft: 8 },
+  contextImage: { width: '100%', height: 200, borderRadius: 12, backgroundColor: '#F9FAFB', marginBottom: 12 },
+  readingPassageBox: { backgroundColor: '#FFF7ED', padding: 16, borderRadius: 8, marginBottom: 12, width: '100%', borderLeftWidth: 4, borderLeftColor: '#F97316' },
+  readingPassageText: { fontSize: 15, color: '#431407', lineHeight: 24 },
+  speakingBox: { alignItems: 'center', padding: 24, backgroundColor: '#ECFDF5', borderRadius: 16, width: '100%', borderWidth: 1, borderColor: '#10B981', borderStyle: 'dashed', marginTop: 12 },
+  transcriptText: { fontSize: 22, fontWeight: '700', color: '#065F46', marginTop: 12, textAlign: 'center', lineHeight: 32 },
 });
 
 export default LessonScreen;

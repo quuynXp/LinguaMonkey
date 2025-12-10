@@ -4,7 +4,6 @@ import { useTokenStore } from "../stores/tokenStore";
 import {
     AppApiResponse,
     ListeningResponse,
-    PronunciationResponseBody,
     WritingResponseBody,
     StreamingChunk,
 } from "../types/dto";
@@ -41,11 +40,13 @@ export const useSkillLessons = () => {
                 formData.append("lessonQuestionId", lessonQuestionId);
                 formData.append("languageCode", languageCode);
 
+                // Hits the new Streaming Endpoint we created
                 const response = await fetch(`${instance.defaults.baseURL}${SKILL_API_BASE}/speaking/stream`, {
                     method: "POST",
                     body: formData,
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
+                        // Do NOT set Content-Type here, let fetch handle boundary for FormData
                     },
                 });
 
@@ -69,7 +70,7 @@ export const useSkillLessons = () => {
                         if (line) {
                             try {
                                 onChunk(JSON.parse(line));
-                            } catch (e) { }
+                            } catch (e) { console.error("Parse error", e); }
                         }
                     }
                     buffer = lines[lines.length - 1];
@@ -130,13 +131,12 @@ export const useSkillLessons = () => {
                 duration
             }: {
                 lessonQuestionId: string;
-                selectedOption: string | object; // Update type to accept complex answers
+                selectedOption: string | object;
                 duration: number
             }) => {
                 const formData = new FormData();
                 formData.append("lessonQuestionId", lessonQuestionId);
 
-                // Ensure complex objects (Ordering/Matching) are strings before sending
                 const finalOption = typeof selectedOption === 'string'
                     ? selectedOption
                     : JSON.stringify(selectedOption);

@@ -23,12 +23,15 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 @RestController
@@ -42,6 +45,63 @@ public class SkillLessonController {
     private final AuthenticationService authenticationService;
     private final UserLearningActivityService userLearningActivityService;
     private final ObjectMapper objectMapper;
+
+    // --- Streaming Endpoint for Pronunciation ---
+    @PostMapping(value = "/speaking/stream", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public void streamSpeaking(
+            @RequestHeader("Authorization") String authorization,
+            @RequestPart("audio") MultipartFile audio,
+            @RequestParam("lessonQuestionId") UUID lessonQuestionId,
+            @RequestParam("languageCode") String languageCode,
+            HttpServletResponse response) {
+
+        String token = extractToken(authorization);
+        UUID userId = extractUserId(token);
+
+        // Set Headers for Streaming Response
+        response.setContentType("application/x-ndjson"); // Newline Delimited JSON
+        response.setCharacterEncoding("UTF-8");
+
+        try {
+            LessonQuestion question = lessonQuestionRepository.findById(lessonQuestionId)
+                    .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
+
+            byte[] audioBytes = audio.getBytes();
+            String referenceText = question.getTranscript() != null ? question.getTranscript() : question.getQuestion();
+
+            // Notify client: Processing started
+            writeJsonChunk(response, Map.of("type", "status", "message", "Processing audio..."));
+
+            // Call AI Service (Wait for result since we need to send it back in this stream)
+            // Note: In a full reactive stack we would pipe the stream, but here we gather and write.
+            PronunciationResponseBody result = grpcClientService.callCheckPronunciationAsync(
+                    token, audioBytes, languageCode, referenceText).get();
+
+            saveQuestionActivity(question.getLesson().getLessonId(), userId);
+
+            // Notify client: Final Result
+            writeJsonChunk(response, Map.of(
+                    "type", "final",
+                    "score", result.getScore(),
+                    "feedback", result.getFeedback(),
+                    "details", result
+            ));
+
+        } catch (IOException | InterruptedException | ExecutionException e) {
+            log.error("Streaming speaking failed", e);
+            try {
+                writeJsonChunk(response, Map.of("type", "error", "message", "Processing failed"));
+            } catch (IOException ignored) {}
+        }
+    }
+
+    private void writeJsonChunk(HttpServletResponse response, Object data) throws IOException {
+        String json = objectMapper.writeValueAsString(data);
+        response.getWriter().write(json + "\n");
+        response.getWriter().flush();
+    }
+
+    // --- Standard Submit Endpoints ---
 
     @PostMapping(value = "/speaking/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public CompletableFuture<AppApiResponse<PronunciationResponseBody>> submitSpeaking(
@@ -97,7 +157,7 @@ public class SkillLessonController {
 
                 byte[] mediaBytes = null;
                 String mediaUrl = null;
-                String mediaType = "text/plain"; 
+                String mediaType = "text/plain";
 
                 if (image != null && !image.isEmpty()) {
                     mediaBytes = image.getBytes();
@@ -105,7 +165,7 @@ public class SkillLessonController {
                 } 
                 else if (question.getMediaUrl() != null && !question.getMediaUrl().isEmpty()) {
                     mediaUrl = question.getMediaUrl();
-                    mediaType = "image/jpeg"; 
+                    mediaType = "image/jpeg";
                 }
 
                 String prompt = question.getQuestion();
@@ -147,7 +207,6 @@ public class SkillLessonController {
         LessonQuestion question = lessonQuestionRepository.findByLessonQuestionIdAndIsDeletedFalse(lessonQuestionId)
                 .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
 
-        // FIX: Just log, do NOT save lesson progress score here
         saveQuestionActivity(question.getLesson().getLessonId(), userId);
 
         userLearningActivityService.logActivityEndAndCheckChallenges(LearningActivityEventRequest.builder()
@@ -170,61 +229,11 @@ public class SkillLessonController {
                 .orElse(LessonProgress.builder()
                         .id(new LessonProgressId(lessonId, userId))
                         .createdAt(OffsetDateTime.now())
-                        .score(0f) 
+                        .score(0f)
                         .build());
         
         progress.setUpdatedAt(OffsetDateTime.now());
         lessonProgressRepository.save(progress);
-    }
-
-
-
-    private boolean validateAnswer(LessonQuestion question, String selectedOption) {
-        if (selectedOption == null || question.getCorrectOption() == null) return false;
-        
-        String correct = question.getCorrectOption();
-        
-        String userNorm = selectedOption.trim().toLowerCase().replaceAll("\\s+", " ");
-        String dbNorm = correct.trim().toLowerCase().replaceAll("\\s+", " ");
-
-        switch (question.getQuestionType()) {
-            case MULTIPLE_CHOICE:
-            case TRUE_FALSE:
-                String cleanUser = userNorm.replace("option", "").replace(" ", "");
-                String cleanDb = dbNorm.replace("option", "").replace(" ", "");
-                return cleanDb.equals(cleanUser);
-
-            case FILL_IN_THE_BLANK:
-                String[] alternatives = dbNorm.split("\\|\\||/");
-                for (String alt : alternatives) {
-                    if (alt.trim().equals(userNorm)) return true;
-                }
-                return false;
-
-            case ORDERING:
-                return userNorm.replace(" ", "").equals(dbNorm.replace(" ", ""));
-
-            case MATCHING:
-                return validateMatching(correct, selectedOption);
-
-            default:
-                return userNorm.equals(dbNorm);
-        }
-    }
-
-    private boolean validateMatching(String correctJsonOrString, String selectedJsonOrString) {
-        try {
-            if (correctJsonOrString.trim().equalsIgnoreCase(selectedJsonOrString.trim())) return true;
-            Map<String, String> correctMap = objectMapper.readValue(correctJsonOrString, Map.class);
-            Map<String, String> selectedMap = objectMapper.readValue(selectedJsonOrString, Map.class);
-            return correctMap.equals(selectedMap);
-        } catch (Exception e) {
-            Set<String> correctSet = Arrays.stream(correctJsonOrString.split("[,;]"))
-                    .map(String::trim).collect(Collectors.toSet());
-            Set<String> selectedSet = Arrays.stream(selectedJsonOrString.split("[,;]"))
-                    .map(String::trim).collect(Collectors.toSet());
-            return correctSet.equals(selectedSet);
-        }
     }
 
     private String extractToken(String authorization) {
@@ -238,15 +247,9 @@ public class SkillLessonController {
         return authenticationService.extractTokenByUserId(token);
     }
 
-    private void saveQuestionProgress(UUID lessonId, UUID userId, float score) {
-        LessonProgress progress = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId))
-                .orElse(LessonProgress.builder()
-                        .id(new LessonProgressId(lessonId, userId))
-                        .createdAt(OffsetDateTime.now())
-                        .build());
-        progress.setScore(score);
-        progress.setUpdatedAt(OffsetDateTime.now());
-        progress.setCompletedAt(OffsetDateTime.now());
-        lessonProgressRepository.save(progress);
+    private void writeJsonChunk(HttpServletResponse response, Map<String, Object> data) throws IOException {
+        String json = objectMapper.writeValueAsString(data);
+        response.getWriter().write(json + "\n");
+        response.getWriter().flush();
     }
 }
