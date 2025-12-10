@@ -109,21 +109,24 @@ const GroupChatScreen = () => {
         return roomInfo?.roomName || initialRoomName;
     }, [isPrivateRoom, targetMember, roomInfo, initialRoomName]);
 
+    // LOGIC FIX: Combine Store Status (Realtime) with RoomInfo (Initial API)
     const renderActiveDot = (userId: string | undefined, size = 10) => {
         if (!userId) return null;
-        const realtimeStatus = userStatuses[userId];
-        const isOnline = realtimeStatus?.isOnline;
 
-        if (!isOnline && isPrivateRoom && userId === targetMember?.userId) {
-            if (roomInfo?.partnerIsOnline) {
+        const realtimeStatus = userStatuses[userId];
+        // 1. Check Realtime Store first
+        if (realtimeStatus) {
+            if (realtimeStatus.isOnline) {
                 return <View style={[styles.headerActiveDot, { width: size, height: size, borderRadius: size / 2 }]} />;
             }
-            return null;
+            return null; // Explicitly offline in store
         }
 
-        if (isOnline) {
+        // 2. Fallback to API data if Store has no record yet
+        if (isPrivateRoom && userId === targetMember?.userId && roomInfo?.partnerIsOnline) {
             return <View style={[styles.headerActiveDot, { width: size, height: size, borderRadius: size / 2 }]} />;
         }
+
         return null;
     };
 
@@ -148,11 +151,9 @@ const GroupChatScreen = () => {
 
     const handleStartVideoCall = () => {
         if (!user?.userId) return;
-
-        // UPDATED: Chỉ gửi roomId, không gửi danh sách members để tránh lỗi payload lớn hoặc validate
         createGroupCall({
             callerId: user.userId,
-            roomId: roomId, // Source Chat Room ID
+            roomId: roomId,
             videoCallType: VideoCallType.GROUP
         }, {
             onSuccess: (res) => {
@@ -204,22 +205,25 @@ const GroupChatScreen = () => {
             const userId = targetMember.userId;
             const realtimeStatus = userStatuses[userId];
 
+            // 1. Check Realtime Online
             if (realtimeStatus?.isOnline) return t('chat.active_now');
+
+            // 2. Check API Initial Online (if no realtime update yet)
             if (!realtimeStatus && roomInfo?.partnerIsOnline) return t('chat.active_now');
 
-            const lastActive = realtimeStatus?.lastActiveAt || roomInfo?.partnerLastActiveText;
-            if (lastActive) {
-                if (realtimeStatus?.lastActiveAt) {
-                    const diff = Date.now() - new Date(realtimeStatus.lastActiveAt).getTime();
-                    const minutes = Math.floor(diff / 60000);
-                    if (minutes < 1) return t('chat.active_now');
-                    if (minutes < 60) return `${t('chat.active')} ${minutes}m ${t('chat.ago')}`;
-                    const hours = Math.floor(minutes / 60);
-                    if (hours < 24) return `${t('chat.active')} ${hours}h ${t('chat.ago')}`;
-                }
-                if (roomInfo?.partnerLastActiveText) return roomInfo.partnerLastActiveText;
-                return t('chat.offline');
+            // 3. Check Last Active (Realtime > API)
+            // FIXED: Only use realtimeStatus.lastActiveAt to calculate minutes.
+            // If realtime is missing, use static text from API (partnerLastActiveText)
+            if (realtimeStatus?.lastActiveAt) {
+                const diff = Date.now() - new Date(realtimeStatus.lastActiveAt).getTime();
+                const minutes = Math.floor(diff / 60000);
+                if (minutes < 1) return t('chat.active_now');
+                if (minutes < 60) return `${t('chat.active')} ${minutes}m ${t('chat.ago')}`;
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${t('chat.active')} ${hours}h ${t('chat.ago')}`;
             }
+
+            // Fallback to static text from API if available, otherwise offline
             return roomInfo?.partnerLastActiveText || t('chat.offline');
         }
         return `${members?.length || 0} ${t('chat.members')}`;
@@ -235,7 +239,7 @@ const GroupChatScreen = () => {
                 <View style={styles.headerContent}>
                     {isPrivateRoom && targetMember && (
                         <View style={{ position: 'relative', marginRight: 10 }}>
-                            <Image source={targetMember.avatarUrl ? { uri: targetMember.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={{ width: 32, height: 32, borderRadius: 16 }} />
+                            <Image source={targetMember.avatarUrl ? { uri: targetMember.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={{ width: 36, height: 36, borderRadius: 18 }} />
                             {renderActiveDot(targetMember.userId)}
                         </View>
                     )}
@@ -245,10 +249,10 @@ const GroupChatScreen = () => {
                     </View>
                 </View>
                 <TouchableOpacity onPress={handleStartVideoCall} style={{ padding: 8 }} disabled={isCalling}>
-                    <Icon name="videocam" size={24} color={isCalling ? "#9CA3AF" : "#4F46E5"} />
+                    <Icon name="videocam" size={26} color={isCalling ? "#9CA3AF" : "#4F46E5"} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
-                    <Icon name="settings" size={24} color="#4F46E5" />
+                    <Icon name="info-outline" size={26} color="#4F46E5" />
                 </TouchableOpacity>
             </View>
 
@@ -297,25 +301,25 @@ const GroupChatScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#EEE' },
-    headerContent: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 10 },
-    headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
-    headerSubtitle: { fontSize: 12, color: '#9CA3AF' },
-    headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderWidth: 1.5, borderColor: '#FFF' },
-    modalContainer: { flex: 1, backgroundColor: '#F9FAFB', paddingTop: 30 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
-    sectionContainer: { marginTop: 16, backgroundColor: '#FFF', paddingVertical: 8 },
-    sectionTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280', paddingHorizontal: 16, marginBottom: 8, textTransform: 'uppercase' },
-    settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 12, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#F3F4F6', elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 1 },
+    headerContent: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 8 },
+    headerTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937' },
+    headerSubtitle: { fontSize: 12, color: '#10B981', fontWeight: '500' },
+    headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#FFF' },
+    modalContainer: { flex: 1, backgroundColor: '#F9FAFB', paddingTop: 0 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1F2937' },
+    sectionContainer: { marginTop: 20, backgroundColor: '#FFF', paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#F3F4F6' },
+    sectionTitle: { fontSize: 13, fontWeight: '700', color: '#6B7280', paddingHorizontal: 16, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+    settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
     settingLabel: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
-    memberItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-    memberAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E5E7EB' },
-    memberName: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
-    memberRole: { fontSize: 12, color: '#9CA3AF' },
-    iconBtn: { padding: 8 },
-    leaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', padding: 12, margin: 20, borderRadius: 8 },
-    leaveBtnText: { color: '#FFF', fontWeight: 'bold' },
+    memberItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
+    memberAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E5E7EB' },
+    memberName: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 2 },
+    memberRole: { fontSize: 12, color: '#6B7280' },
+    iconBtn: { padding: 10 },
+    leaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2', padding: 16, margin: 20, borderRadius: 12, borderWidth: 1, borderColor: '#FECACA' },
+    leaveBtnText: { color: '#EF4444', fontWeight: 'bold', fontSize: 16 },
 });
 
 export default GroupChatScreen;

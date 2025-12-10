@@ -15,11 +15,9 @@ import {
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
-import { useMutation } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
-import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
 import { MemberResponse, UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -27,6 +25,7 @@ import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
 import { useAppStore } from "../../stores/appStore";
+import FileUploader from "../common/FileUploader"; // Assuming location based on structure
 
 const { width } = Dimensions.get('window');
 
@@ -75,12 +74,13 @@ const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en'
     return date.toLocaleTimeString(locale, timeOptions);
 };
 
-const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile, currentUserId, statusInfo }: any) => {
+const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile }: any) => {
     if (!visible || !profile) return null;
     return (
         <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
             <Pressable style={styles.modalOverlay} onPress={onClose}>
                 <View style={styles.popupContainer}>
+                    <Image source={getAvatarSource(profile.avatarUrl, null)} style={styles.popupAvatar} />
                     <Text style={styles.popupName}>{profile.fullname || profile.nickname}</Text>
                     <TouchableOpacity style={styles.viewProfileBtn} onPress={onNavigateProfile}>
                         <Text style={styles.viewProfileText}>View Profile</Text>
@@ -115,6 +115,7 @@ const ChatLanguageSelector = ({
                 style={[styles.autoSwitch, isAutoTranslateOn && styles.autoSwitchActive]}
                 onPress={onToggleAuto}
             >
+                <Icon name={isAutoTranslateOn ? "g-translate" : "translate"} size={14} color={isAutoTranslateOn ? "#FFF" : "#6B7280"} style={{ marginRight: 4 }} />
                 <Text style={[styles.autoText, isAutoTranslateOn && { color: '#FFF' }]}>
                     {isAutoTranslateOn ? "Auto: ON" : "Auto: OFF"}
                 </Text>
@@ -185,6 +186,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | MemberResponse | null>(null);
     const [isPopupVisible, setIsPopupVisible] = useState(false);
     const [translatingId, setTranslatingId] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
         code: langCode,
@@ -264,7 +266,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
 
-            // Priority: Eager Store > DB (Multi-lang JSON)
             const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
             const dbMapTrans = msg.translationsMap ? msg.translationsMap[translationTargetLang] : null;
             const finalTranslation = eagerTrans || dbMapTrans;
@@ -319,6 +320,14 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         setTranslatingId(null);
     };
 
+    const handleUploadSuccess = (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => {
+        if (result?.url || result?.secure_url) {
+            const url = result.secure_url || result.url;
+            // Send message immediately
+            sendMessage(roomId, '', type, url);
+        }
+    };
+
     const handleAvatarPress = (profile?: UserProfileResponse) => { if (profile) { setSelectedProfile(profile); setIsPopupVisible(true); } };
 
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
@@ -326,8 +335,11 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
-        // Display Dual Line if translation exists
-        const showDual = !isMedia && !!item.translatedText;
+        // VISIBILITY LOGIC:
+        // 1. Show Translated Text IF: AutoTranslate is ON AND Translation Exists AND Not Media
+        // 2. Show Manual Button IF: AutoTranslate is OFF AND Not Media AND Not User
+        const showTranslatedText = autoTranslate && !!item.translatedText && !isMedia;
+        const showManualButton = !autoTranslate && !isMedia && !isUser;
         const isTranslating = translatingId === item.id;
 
         return (
@@ -347,6 +359,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                             <View>
                                 {item.messageType === 'IMAGE' && <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />}
                                 {item.messageType === 'VIDEO' && <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
+                                {item.messageType === 'DOCUMENT' && (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Icon name="description" size={30} color={isUser ? "#FFF" : "#4B5563"} />
+                                        <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginLeft: 8 }]}>{t('chat.document')}</Text>
+                                    </View>
+                                )}
                                 {item.text ? <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text> : null}
                             </View>
                         ) : (
@@ -354,8 +372,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 {/* Original Text Line */}
                                 <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
 
-                                {/* Translated Text Line (Dual View) */}
-                                {showDual && (
+                                {/* Translated Text Line (Only if Auto is ON) */}
+                                {showTranslatedText && (
                                     <View style={styles.dualLineContainer}>
                                         <View style={styles.separator} />
                                         <Text style={[styles.translatedText, isUser ? styles.textUserTrans : styles.textOtherTrans]}>
@@ -373,7 +391,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                         </View>
                     </View>
 
-                    {!isUser && !isMedia && !showDual && (
+                    {/* Manual Button (Only if Auto is OFF) */}
+                    {showManualButton && (
                         <TouchableOpacity onPress={() => handleManualTranslate(item.id, item.text)} style={styles.transBtn} disabled={isTranslating}>
                             {isTranslating ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name="translate" size={16} color="#9CA3AF" />}
                         </TouchableOpacity>
@@ -395,7 +414,15 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 />
             </View>
 
-            <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} style={styles.list} renderItem={renderMessageItem} contentContainerStyle={{ paddingTop: 40 }} />
+            <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={item => item.id}
+                style={styles.list}
+                renderItem={renderMessageItem}
+                contentContainerStyle={{ paddingTop: 40, paddingBottom: 10 }}
+            />
+
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 90}>
                 {editingMessage && (
                     <View style={styles.editBanner}>
@@ -403,12 +430,46 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                         <TouchableOpacity onPress={() => { setEditingMessage(null); setInputText(""); }}><Icon name="close" size={20} color="#6B7280" /></TouchableOpacity>
                     </View>
                 )}
-                <View style={styles.inputArea}>
-                    <TextInput style={styles.input} value={inputText} onChangeText={setInputText} placeholder={t("group.input.placeholder")} multiline />
-                    <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}><Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" /></TouchableOpacity>
+
+                <View style={styles.inputWrapper}>
+                    {isUploading && (
+                        <View style={styles.uploadingOverlay}>
+                            <ActivityIndicator size="small" color="#3B82F6" />
+                        </View>
+                    )}
+                    <View style={styles.inputArea}>
+                        <FileUploader
+                            onUploadStart={() => setIsUploading(true)}
+                            onUploadEnd={() => setIsUploading(false)}
+                            onUploadSuccess={handleUploadSuccess}
+                            mediaType="all"
+                            style={styles.attachBtn}
+                        >
+                            <Icon name="add-photo-alternate" size={26} color="#6B7280" />
+                        </FileUploader>
+
+                        <TextInput
+                            style={styles.input}
+                            value={inputText}
+                            onChangeText={setInputText}
+                            placeholder={t("group.input.placeholder")}
+                            multiline
+                            placeholderTextColor="#9CA3AF"
+                        />
+
+                        <TouchableOpacity onPress={handleSendMessage} style={[styles.sendBtn, !inputText.trim() && { backgroundColor: '#E5E7EB' }]} disabled={!inputText.trim()}>
+                            <Icon name={editingMessage ? "check" : "send"} size={20} color={inputText.trim() ? "#FFF" : "#9CA3AF"} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </KeyboardAvoidingView>
-            <QuickProfilePopup visible={isPopupVisible} profile={selectedProfile} onClose={() => setIsPopupVisible(false)} onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }} currentUserId={currentUserId || ""} statusInfo={selectedProfile ? userStatuses[selectedProfile.userId] : undefined} />
+
+            <QuickProfilePopup
+                visible={isPopupVisible}
+                profile={selectedProfile}
+                onClose={() => setIsPopupVisible(false)}
+                onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }}
+            />
         </ScreenLayout>
     );
 };
@@ -417,7 +478,7 @@ const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: '#FFF' },
     chatHeaderToolbar: { position: 'absolute', top: 8, right: 16, zIndex: 100, backgroundColor: 'transparent', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
     languageSelectorContainer: { flexDirection: 'row', alignItems: 'center', position: 'relative', zIndex: 50 },
-    autoSwitch: { backgroundColor: 'rgba(255,255,255,0.8)', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+    autoSwitch: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: "#000", shadowOpacity: 0.05, elevation: 1 },
     autoSwitchActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
     autoText: { fontSize: 10, fontWeight: 'bold', color: '#6B7280' },
     selectedLanguageButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(243, 244, 246, 0.9)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
@@ -431,12 +492,12 @@ const styles = createScaledSheet({
     rowOther: { justifyContent: 'flex-start' },
     msgAvatarImg: { width: 32, height: 32, borderRadius: 16, marginRight: 8, marginTop: 4 },
     msgContent: { maxWidth: '75%' },
-    senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2 },
-    bubble: { borderRadius: 16, padding: 12 },
-    bubbleUser: { backgroundColor: '#3B82F6' },
-    bubbleOther: { backgroundColor: '#F3F4F6' },
-    localBubble: { opacity: 0.6 },
-    msgImage: { width: 200, height: 200, borderRadius: 12, marginTop: 4, backgroundColor: '#EEE' },
+    senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2, marginLeft: 4 },
+    bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+    bubbleUser: { backgroundColor: '#3B82F6', borderBottomRightRadius: 4 },
+    bubbleOther: { backgroundColor: '#F3F4F6', borderBottomLeftRadius: 4 },
+    localBubble: { opacity: 0.7 },
+    msgImage: { width: 200, height: 200, borderRadius: 12, marginTop: 4, backgroundColor: '#E5E7EB' },
     text: { fontSize: 16, lineHeight: 22 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
@@ -444,26 +505,30 @@ const styles = createScaledSheet({
     time: { fontSize: 10 },
     timeUser: { color: 'rgba(255,255,255,0.7)' },
     timeOther: { color: '#9CA3AF' },
-    transBtn: { marginTop: 4, padding: 4, alignSelf: 'flex-start' },
-    inputArea: { flexDirection: 'row', padding: 10, borderTopWidth: 1, borderColor: '#EEE', alignItems: 'flex-end', backgroundColor: '#FFF' },
-    input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 100, marginLeft: 5 },
-    sendBtn: { backgroundColor: '#3B82F6', borderRadius: 20, padding: 10, marginLeft: 8 },
+    transBtn: { marginTop: 4, padding: 6, alignSelf: 'flex-start', backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6' },
+    inputWrapper: { borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF', paddingBottom: Platform.OS === 'ios' ? 20 : 0 },
+    inputArea: { flexDirection: 'row', padding: 10, alignItems: 'center', backgroundColor: '#FFF' },
+    attachBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
+    input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, maxHeight: 100, marginLeft: 5, fontSize: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+    sendBtn: { backgroundColor: '#3B82F6', borderRadius: 24, padding: 12, marginLeft: 8, justifyContent: 'center', alignItems: 'center' },
     editBanner: { backgroundColor: '#FEF3C7', padding: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     editText: { color: '#D97706', fontSize: 12, fontWeight: 'bold' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    popupContainer: { width: width * 0.8, backgroundColor: '#FFF', borderRadius: 16, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 },
-    popupName: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 10 },
-    viewProfileBtn: { padding: 10, alignItems: 'center', borderTopWidth: 1, borderColor: '#EEE' },
-    viewProfileText: { color: '#6B7280', fontSize: 14 },
-    activeDot: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderColor: '#FFF' },
+    popupContainer: { width: width * 0.7, backgroundColor: '#FFF', borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 },
+    popupAvatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 16 },
+    popupName: { fontSize: 20, fontWeight: 'bold', color: '#1F2937', marginBottom: 20, textAlign: 'center' },
+    viewProfileBtn: { paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#F3F4F6', borderRadius: 20, width: '100%', alignItems: 'center' },
+    viewProfileText: { color: '#374151', fontSize: 14, fontWeight: '600' },
+    activeDot: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderColor: '#FFF' },
+    uploadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 10, justifyContent: 'center', alignItems: 'center' },
 
     // Dual Line Styles
-    dualLineContainer: { marginTop: 6, paddingTop: 6 },
-    separator: { height: 1, backgroundColor: 'rgba(0,0,0,0.1)', width: '100%', marginBottom: 4 },
-    translatedText: { fontSize: 15, fontStyle: 'italic', lineHeight: 20 },
+    dualLineContainer: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.1)' },
+    separator: { height: 0 },
+    translatedText: { fontSize: 15, fontStyle: 'italic', lineHeight: 22 },
     textUserTrans: { color: '#E0F2FE' },
     textOtherTrans: { color: '#4B5563' },
-    langTag: { fontSize: 8, color: 'rgba(0,0,0,0.4)', textAlign: 'right', marginTop: 2 }
+    langTag: { fontSize: 9, color: 'rgba(0,0,0,0.4)', textAlign: 'right', marginTop: 4, fontWeight: 'bold' }
 });
 
 export default ChatInnerView;

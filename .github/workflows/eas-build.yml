@@ -14,11 +14,6 @@ jobs:
     defaults:
       run:
         working-directory: ./LinguamonkeyFe
-    
-    # Globally force NDK 26 environment variables
-    env:
-      ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
-      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: 🧱 Checkout repository
@@ -27,69 +22,56 @@ jobs:
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: 🔧 Setup specific NDK (Force v26)
+      - name: 🔧 Setup specific NDK (Force v26) & CMake
         run: |
-          echo "✨ Removing conflicting NDK versions..."
-          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
+          set -e
+          echo ">>> SDK root: $ANDROID_SDK_ROOT"
           
-          echo "✨ Installing/Verifying NDK 26.1.10909125..."
-          sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;26.1.10909125"
+          # Force remove NDK 27 to prevent Gradle from picking it up
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.* || true
+          sudo rm -rf $ANDROID_SDK_ROOT/ndk/27.* || true
           
-          if [ -d "$ANDROID_NDK_HOME" ]; then
-            echo "✅ NDK 26 found at $ANDROID_NDK_HOME"
-          else
-            echo "❌ Failed to setup NDK 26"
-            exit 1
-          fi
+          # Install specific NDK and CMake versions
+          echo "✨ Installing/Verifying NDK 26.1.10909125 and CMake 3.22.1..."
+          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
 
-      - name: 📝 Create local.properties
-        # Explicitly tells Gradle where to find SDK and NDK 26
-        run: |
-          echo "sdk.dir=/usr/local/lib/android/sdk" > android/local.properties
-          echo "ndk.dir=/usr/local/lib/android/sdk/ndk/26.1.10909125" >> android/local.properties
+          # Define paths
+          NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          CMAKE_PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin"
+
+          # Export environment variables for the current runner
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "PATH=$CMAKE_PATH:$PATH" >> $GITHUB_ENV
+
+          # Verify installation
+          echo "✨ Verifying paths..."
+          ls -la $ANDROID_SDK_ROOT/ndk
+          $NDK_PATH/ndk-build --version
+          $CMAKE_PATH/cmake --version
 
       - name: 🛠️ Generate Android directory (Prebuild)
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
         run: npx expo prebuild --platform android --no-install
 
-      # FIXED STEP: Overwrite the project's request for NDK 27 to NDK 26
-      - name: 🚑 Patch Gradle NDK Version
-        # Target the main project's build.gradle and the problematic react-native-worklets module's build files
+      - name: 📝 Force NDK path in local.properties
         run: |
-          OLD_NDK="27.1.12297006"
-          NEW_NDK="26.1.10909125"
-          
-          echo "✨ Patching references from ${OLD_NDK} to ${NEW_NDK}..."
-          
-          # 1. Patch android.ndkVersion in the main project's build.gradle
-          # This is the line that failed in the build log: NDK from ndk.dir... disagrees with android.ndkVersion [27.1.12297006]
-          
-          # Use find to list all files that contain the string, then pass them to sed
-          find ./android -type f -print0 | xargs -0 grep -l "${OLD_NDK}" | while IFS= read -r FILE; do
-            echo "   Patching file: ${FILE}"
-            sed -i "s/${OLD_NDK}/${NEW_NDK}/g" "${FILE}"
-          done
-          
-          # 2. Add an explicit NDK version override to the main project's build.gradle
-          # This ensures that even if a dependency tries to set it, we enforce 26.
-          GRADLE_PATCH_CONTENT='
-// START PATCH: Forced NDK version override for compatibility with GitHub Actions runner
-buildscript {
-    ext {
-        ndkVersion = "26.1.10909125"
-    }
-}
-// END PATCH'
-          # Insert the patch content at the beginning of the root build.gradle
-          sed -i "1s/^/${GRADLE_PATCH_CONTENT}\n/" android/build.gradle
-          
-          echo "✅ NDK version patches applied."
+          # Inject the absolute NDK path into local.properties to override any Gradle auto-detection
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> ./android/local.properties
+          cat ./android/local.properties
+
+      - name: 🧹 Clean up duplicate icon files
+        run: |
+          find ./android/app/src/main/res -name "*.webp" -delete || true
 
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
@@ -107,16 +89,14 @@ buildscript {
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
 
-      - name: 🧹 Safe Clean Gradle
+      - name: 🧹 Gradle Clean (Ensure Fresh Build)
         run: |
-          echo "✨ Running Gradle Clean..."
           cd android
           chmod +x gradlew
           ./gradlew clean
 
       - name: 🧹 Clean up large components (Safe Mode)
         run: |
-          echo "✨ Freeing up disk space..."
           sudo rm -rf /usr/share/dotnet/
           sudo apt-get clean
 
@@ -138,10 +118,10 @@ buildscript {
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
+          # Explicitly pass NDK vars again to the EAS subprocess environment
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
         run: |
-          echo "🔧 Start signed local EAS build..."
-          eas build --platform android --profile production --local --non-interactive --clear-cache --output ./app-release.apk
+          eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
 
       - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
@@ -152,7 +132,6 @@ buildscript {
       - name: 🧹 Clean up final disk space
         if: always()
         run: |
-          echo "✨ Cleaning up final disk space..."
           rm -rf ~/.gradle/caches/
           rm -f my-release-key.keystore
           npm cache clean --force
