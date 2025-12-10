@@ -121,17 +121,24 @@ class ConnectionManager:
             for dead in to_remove:
                 self.disconnect(dead["ws"], room_id)
 
-    async def broadcast_subtitle(self, message: dict, room_id: str, exclude_ws: WebSocket = None):
+    # FIX: Updated signature to handle exclude_user_id cleanly
+    async def broadcast_subtitle(self, message: dict, room_id: str, exclude_user_id: str = None):
         if room_id not in self.active_connections: return
         to_remove = []
+        
         for meta in self.active_connections[room_id]:
             conn = meta["ws"]
-            if conn is exclude_ws:
+            uid = str(meta.get("user_id"))
+            
+            # If exclude_user_id is provided and matches, skip
+            if exclude_user_id and uid == str(exclude_user_id):
                 continue
+            
             try:
                 user_native = meta.get("native_lang", "vi")
                 payload = dict(message)
                 
+                # Logic: Don't translate if original lang matches user native lang
                 if user_native and payload.get("originalLang") and user_native.lower().startswith(payload["originalLang"].lower()):
                     payload["translated"] = ""
                 
@@ -139,6 +146,7 @@ class ConnectionManager:
             except Exception as e:
                 logger.error(f"⚠️ Broadcast_subtitle fail, removing stale connection: {e}")
                 to_remove.append(meta)
+        
         for dead in to_remove:
             self.disconnect(dead["ws"], room_id)
 
@@ -162,31 +170,6 @@ def create_wav_bytes(pcm_data: bytes, sample_rate=16000, channels=1, sampwidth=2
         wav.setframerate(sample_rate)
         wav.writeframes(pcm_data)
     return io_buf.getvalue()
-
-def split_by_script_and_punctuation(text: str) -> List[str]:
-    parts = []
-    buf = ""
-    last_kind = None
-    for ch in text:
-        if '\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf':
-            kind = 'cjk'
-        elif ch.isspace() or re.match(r'[.,!?;:]', ch):
-            kind = 'punct'
-        else:
-            kind = 'latin'
-        
-        if last_kind is None:
-            buf = ch
-            last_kind = kind
-        elif kind == last_kind:
-            buf += ch
-        else:
-            parts.append(buf)
-            buf = ch
-            last_kind = kind
-    if buf:
-        parts.append(buf)
-    return parts
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -351,7 +334,6 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
     finally:
         await db_session.close()
 
-# --- SỬA PATH: "/signal" (Bỏ /ws/py/ vì Gateway đã strip) ---
 @app.websocket("/signal")
 async def signaling_endpoint(
     websocket: WebSocket,
@@ -370,10 +352,8 @@ async def signaling_endpoint(
             data = await websocket.receive_text()
             msg = json.loads(data)
             
-            # Chỉ xử lý WebRTC signals
             if msg.get("type") in ["webrtc_signal", "JOIN_ROOM", "offer", "answer", "ice_candidate"]:
                 msg["senderId"] = user_id
-                # Fix: JOIN_ROOM cần payload chuẩn
                 if msg.get("type") == "JOIN_ROOM":
                     join_msg = {"type": "webrtc_signal", "senderId": user_id, "payload": {"type": "JOIN_ROOM"}}
                     await signal_manager.broadcast_except(join_msg, normalized_room_id, websocket)
@@ -402,62 +382,56 @@ async def audio_endpoint(
 
     await audio_manager.connect(websocket, normalized_room_id, user_id=user_id, native_lang=nativeLang)
     
-    # Dependencies
     redis = await get_redis_client()
     translator = get_translator(redis)
     buffer_key = f"{normalized_room_id}_{user_id}"
 
-    # Fallback config
     user_native_lang = nativeLang or "vi"
-    # Azure cần mã ngôn ngữ chuẩn (ví dụ: en-US, vi-VN)
     target_spoken_lang = "en-US" if (not spokenLang or spokenLang == 'en') else "vi-VN" 
     if spokenLang == 'vi': target_spoken_lang = 'vi-VN'
 
     # --- CALLBACKS XỬ LÝ KẾT QUẢ TỪ AZURE ---
 
     async def handle_interim_result(text: str):
-        """Xử lý kết quả tạm thời (Hiển thị ngay lập tức, KHÔNG dịch)"""
+        # FIX: Send to EVERYONE (including self) so I can see "Processing..."
+        # This confirms mic is working.
         await audio_manager.broadcast_subtitle({
             "type": "subtitle",
             "status": "processing",
             "original": text,
-            "originalFull": user_text_cache[buffer_key] + " " + text, # Hiển thị ngữ cảnh
+            "originalFull": user_text_cache[buffer_key] + " " + text,
             "originalLang": spokenLang,
-            "translated": "", # Không dịch lúc đang nói để giảm lag
+            "translated": "",
             "senderId": user_id
-        }, normalized_room_id, exclude_user_id=user_id)
+        }, normalized_room_id, exclude_user_id=None) 
 
     async def handle_final_result(text: str):
-        """Xử lý kết quả cuối cùng (Dịch bằng Redis/Gemini)"""
-        clean_text = text.strip()
-        if not clean_text: return
-
-        # Cập nhật cache hội thoại để giữ ngữ cảnh
-        current_full = user_text_cache[buffer_key]
-        new_full = (current_full + " " + clean_text).strip()
-        user_text_cache[buffer_key] = new_full
-
-        # Reset cache nếu quá dài
-        if len(new_full) > 200: 
-            user_text_cache[buffer_key] = ""
-
-        # Gửi sự kiện "Processing" lần cuối cho câu hoàn chỉnh
-        await audio_manager.broadcast_subtitle({
-            "type": "subtitle",
-            "status": "processing",
-            "original": clean_text,
-            "originalFull": new_full,
-            "originalLang": spokenLang,
-            "translated": "...", # Đang dịch...
-            "senderId": user_id
-        }, normalized_room_id, exclude_user_id=user_id)
-
-        # --- LOGIC DỊCH (GIỮ LẠI REDIS/GEMINI) ---
-        # Đây là chỗ kết hợp sức mạnh: Azure nghe chuẩn -> Gemini dịch hay
         try:
-            # Dịch nguyên câu (Contextual Translation)
+            clean_text = text.strip()
+            if not clean_text: return
+
+            current_full = user_text_cache[buffer_key]
+            new_full = (current_full + " " + clean_text).strip()
+            user_text_cache[buffer_key] = new_full
+
+            if len(new_full) > 200: 
+                user_text_cache[buffer_key] = ""
+
+            # Broadcast status processing final time
+            await audio_manager.broadcast_subtitle({
+                "type": "subtitle",
+                "status": "processing",
+                "original": clean_text,
+                "originalFull": new_full,
+                "originalLang": spokenLang,
+                "translated": "...",
+                "senderId": user_id
+            }, normalized_room_id, exclude_user_id=None)
+
+            # Translation
             translated_text, _ = await translator.translate(clean_text, spokenLang, user_native_lang)
             
+            # Broadcast COMPLETE to EVERYONE
             await audio_manager.broadcast_subtitle({
                 "type": "subtitle",
                 "status": "complete",
@@ -466,13 +440,12 @@ async def audio_endpoint(
                 "originalLang": spokenLang,
                 "translated": translated_text,
                 "senderId": user_id
-            }, normalized_room_id, exclude_user_id=user_id)
+            }, normalized_room_id, exclude_user_id=None)
             
         except Exception as e:
             logger.error(f"Translation logic error: {e}")
 
     # --- KHỞI TẠO AZURE STREAMING ---
-    # Map ngôn ngữ app -> ngôn ngữ Azure
     azure_lang_code = "vi-VN" if "vi" in str(spokenLang) else "en-US"
     
     transcriber = AzureTranscriber(
@@ -486,15 +459,12 @@ async def audio_endpoint(
 
     try:
         while True:
-            # Nhận audio chunk từ WebSocket và đẩy thẳng vào Azure
             msg = await websocket.receive()
             
             if "bytes" in msg and msg["bytes"]:
-                # Đẩy bytes vào Azure PushStream (Non-blocking)
                 transcriber.write_stream(msg["bytes"])
                 
             elif "text" in msg:
-                # Handle control messages (Mute, etc.)
                 pass
                 
     except WebSocketDisconnect:

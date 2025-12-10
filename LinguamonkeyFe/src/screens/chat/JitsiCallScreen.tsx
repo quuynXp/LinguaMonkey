@@ -65,13 +65,13 @@ const WebRTCCallScreen = () => {
   const accessToken = useTokenStore.getState().accessToken;
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
 
-  const signalReconnectTimeout = useRef<NodeJS.Timeout | null>(null);
-  const audioReconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const signalReconnectTimeout = useRef<any>(null);
+  const audioReconnectTimeout = useRef<any>(null);
   const isManuallyClosed = useRef(false);
 
   const { useUpdateVideoCall } = useVideoCalls();
   const { mutate: updateCallStatus } = useUpdateVideoCall();
-  const subtitleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const subtitleTimeoutRef = useRef<any>(null);
 
   const [nativeLang] = useState(defaultNativeLangCode);
   const [spokenLang] = useState('auto');
@@ -83,9 +83,10 @@ const WebRTCCallScreen = () => {
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
 
+  // WEBSOCKET REFS
   const wsSignal = useRef<WebSocket | null>(null);
   const wsAudio = useRef<WebSocket | null>(null);
-  
+
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const iceCandidatesQueue = useRef<Map<string, RTCIceCandidate[]>>(new Map());
   const processingRef = useRef<{ lastUpdate: number, data: SubtitleData | null }>({ lastUpdate: 0, data: null });
@@ -96,168 +97,110 @@ const WebRTCCallScreen = () => {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
-    audioSource: Platform.OS === 'android' ? 6 : 0,
+    audioSource: Platform.OS === 'android' ? 6 : 0, // 6 = VOICE_RECOGNITION
     bufferSize: 2048,
     wavFile: 'temp.wav'
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    const initializeCall = async () => {
-      console.log("🚀 Starting initialization...");
-      const stream = await getMediaStream();
-      if (isMounted && stream) {
-        setLocalStream(stream);
-        localStreamRef.current = stream;
-        connectSignalingSocket();
-        connectAudioSocket();
-      } else {
-        setConnectionStatus("Camera Error");
-      }
-    };
-    initializeCall();
-    return () => {
-      isMounted = false;
-      cleanupCall();
-    };
+  // --- 1. DEFINITIONS (HOISTED) ---
+
+  const getMediaStream = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+      ]);
+    }
+    try {
+      // Config audio to try and force standard voice communication
+      const stream = await mediaDevices.getUserMedia({
+        audio: true,
+        video: {
+          width: 480,
+          height: 640,
+          frameRate: 24,
+          facingMode: 'user'
+        }
+      });
+      return stream;
+    } catch (e) {
+      console.error("Error getting media stream:", e);
+      Alert.alert(t('error'), t('cannot_access_camera_mic') || 'Không thể truy cập Camera/Mic');
+      return null;
+    }
+  }, [t]);
+
+  const sendSignalingMessage = useCallback((meta: any, payloadData?: any) => {
+    if (wsSignal.current?.readyState === WebSocket.OPEN) {
+      wsSignal.current.send(JSON.stringify({
+        type: meta.type === 'JOIN_ROOM' ? 'JOIN_ROOM' : 'webrtc_signal',
+        roomId,
+        senderId: user?.userId,
+        payload: { ...meta, ...payloadData }
+      }));
+    }
+  }, [roomId, user?.userId]);
+
+  const startPing = useCallback(() => {
+    if (pingInterval.current) clearInterval(pingInterval.current);
+    pingInterval.current = setInterval(() => sendSignalingMessage({ type: 'PING' }), 5000);
+  }, [sendSignalingMessage]);
+
+  const stopPing = useCallback(() => {
+    if (pingInterval.current) { clearInterval(pingInterval.current); pingInterval.current = null; }
   }, []);
 
-  const connectSignalingSocket = () => {
-    if (!roomId || !accessToken || isManuallyClosed.current) return;
+  const cleanupCall = useCallback(() => {
+    isManuallyClosed.current = true;
+    stopPing();
 
+    if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
     if (signalReconnectTimeout.current) clearTimeout(signalReconnectTimeout.current);
-    if (wsSignal.current) { wsSignal.current.close(); wsSignal.current = null; }
-
-    const normalizedRoomId = String(roomId).trim().toLowerCase();
-    let cleanBase = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
-    const url = `${protocol}${cleanBase}/ws/py/signal?token=${accessToken}&roomId=${normalizedRoomId}`;
-
-    console.log(`🔌 Connecting SIGNAL: ${url}`);
-
-    try {
-      wsSignal.current = new WebSocket(url);
-
-      wsSignal.current.onopen = () => {
-        console.log("✅ Signal Socket OPEN");
-        setConnectionStatus("Connected. Waiting for partner...");
-        setTimeout(() => sendSignalingMessage({ type: 'JOIN_ROOM' }), 500);
-        startPing();
-      };
-
-      wsSignal.current.onmessage = async (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.type === 'webrtc_signal') {
-            const senderId = String(data.senderId || 'unknown');
-            const myId = String(user?.userId || 'me');
-            if (senderId === myId) return;
-            await handleSignalingData(senderId, data.payload);
-          }
-        } catch (err) { console.error("Signal Msg Error", err); }
-      };
-
-      wsSignal.current.onerror = (e) => {
-        console.log("❌ Signal WS Error:", e.message);
-      };
-
-      wsSignal.current.onclose = (e) => {
-        if (!isManuallyClosed.current) {
-          console.log(`⚠️ Signal Closed (${e.code}). Retry in 3s...`);
-          signalReconnectTimeout.current = setTimeout(connectSignalingSocket, 3000);
-        }
-      };
-    } catch (err) {
-      console.error("Init WS Error", err);
-      signalReconnectTimeout.current = setTimeout(connectSignalingSocket, 5000);
-    }
-  };
-
-  const connectAudioSocket = () => {
-    if (!roomId || !accessToken || isManuallyClosed.current) return;
-
     if (audioReconnectTimeout.current) clearTimeout(audioReconnectTimeout.current);
+
+    try { LiveAudioStream.stop(); } catch (e) { }
+
+    localStreamRef.current?.getTracks().forEach(track => { track.stop(); track.enabled = false; });
+    setLocalStream(null);
+
+    peerConnections.current.forEach(pc => pc.close());
+    peerConnections.current.clear();
+    setRemoteStreams(new Map());
+
+    if (wsSignal.current) { wsSignal.current.close(); wsSignal.current = null; }
     if (wsAudio.current) { wsAudio.current.close(); wsAudio.current = null; }
+  }, [stopPing]);
 
-    const normalizedRoomId = String(roomId).trim().toLowerCase();
-    let cleanBase = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
-    const url = `${protocol}${cleanBase}/ws/py/subtitles-audio?token=${accessToken}&roomId=${normalizedRoomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
-
-    console.log(`🎤 Connecting AUDIO: ${url}`);
-
-    try {
-      wsAudio.current = new WebSocket(url);
-
-      wsAudio.current.onopen = () => {
-        console.log("✅ Audio Socket OPEN");
-        wsAudio.current?.send(JSON.stringify({ type: 'META', userId: user?.userId, nativeLang }));
-        initSubtitleAudioStream();
-      };
-
-      wsAudio.current.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.type === 'subtitle') handleSubtitleMessage(data);
-        } catch (err) { }
-      };
-
-      wsAudio.current.onclose = () => {
-        if (!isManuallyClosed.current) {
-          audioReconnectTimeout.current = setTimeout(connectAudioSocket, 5000);
-        }
-      };
-    } catch (err) {
-      console.error("Init Audio WS Error", err);
+  const handleCallEnd = useCallback(() => {
+    cleanupCall();
+    if (videoCallId && user?.userId) {
+      updateCallStatus({ id: videoCallId, payload: { callerId: user.userId, status: VideoCallStatus.ENDED } });
     }
-  };
+    navigation.goBack();
+  }, [cleanupCall, videoCallId, user?.userId, updateCallStatus, navigation]);
 
-  const handleSignalingData = async (senderId: string, payload: any) => {
-    const type = payload.type;
-    console.log(`📩 Signal [${type}] from ${senderId.substring(0, 5)}...`);
+  const handlePeerDisconnect = useCallback((partnerId: string) => {
+    const pc = peerConnections.current.get(partnerId);
+    if (pc) { pc.close(); peerConnections.current.delete(partnerId); }
+    setRemoteStreams(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(partnerId);
+      return newMap;
+    });
+  }, []);
 
-    if (type === 'JOIN_ROOM') {
-      setConnectionStatus(`Partner Joined. Connecting...`);
-      await createPeerConnection(senderId, true);
-    } else if (type === 'offer') {
-      const pc = await createPeerConnection(senderId, false);
-      if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(payload));
-        await processIceQueue(senderId, pc);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        sendSignalingMessage({ type: 'answer', targetId: senderId }, answer);
-      }
-    } else if (type === 'answer') {
-      const pc = peerConnections.current.get(senderId);
-      if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(payload));
-        await processIceQueue(senderId, pc);
-      }
-    } else if (type === 'ice_candidate') {
-      const pc = peerConnections.current.get(senderId);
-      const candidate = new RTCIceCandidate(payload.candidate);
-      if (pc && pc.remoteDescription) {
-        await pc.addIceCandidate(candidate);
-      } else {
-        const queue = iceCandidatesQueue.current.get(senderId) || [];
-        queue.push(candidate);
-        iceCandidatesQueue.current.set(senderId, queue);
-      }
-    }
-  };
-
-  const processIceQueue = async (partnerId: string, pc: RTCPeerConnection) => {
+  const processIceQueue = useCallback(async (partnerId: string, pc: RTCPeerConnection) => {
     const queue = iceCandidatesQueue.current.get(partnerId);
     if (queue && queue.length > 0) {
       for (const candidate of queue) await pc.addIceCandidate(candidate);
       iceCandidatesQueue.current.delete(partnerId);
     }
-  };
+  }, []);
 
-  const createPeerConnection = async (partnerId: string, shouldCreateOffer: boolean) => {
+  const createPeerConnection = useCallback(async (partnerId: string, shouldCreateOffer: boolean) => {
     if (peerConnections.current.has(partnerId)) return peerConnections.current.get(partnerId);
 
+    console.log(`🛠 Creating PC for ${partnerId}`);
     const pc = new RTCPeerConnection({ iceServers });
     const pcAny = pc as any;
     peerConnections.current.set(partnerId, pc);
@@ -274,6 +217,11 @@ const WebRTCCallScreen = () => {
 
     pcAny.ontrack = (event: any) => {
       if (event.streams && event.streams[0]) {
+        console.log(`🎥 Stream received from ${partnerId}`);
+        // Ensure remote audio track is enabled
+        event.streams[0].getAudioTracks().forEach((track: any) => {
+          track.enabled = true;
+        });
         setRemoteStreams(prev => {
           const newMap = new Map(prev);
           newMap.set(partnerId, event.streams[0]);
@@ -284,62 +232,89 @@ const WebRTCCallScreen = () => {
     };
 
     pcAny.oniceconnectionstatechange = () => {
-      const state = pc.iceConnectionState;
-      if (state === 'failed' || state === 'disconnected') handlePeerDisconnect(partnerId);
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        handlePeerDisconnect(partnerId);
+      }
     };
 
     if (shouldCreateOffer) {
       try {
-        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true, iceRestart: true });
+        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
         await pc.setLocalDescription(offer);
         sendSignalingMessage({ type: 'offer', targetId: partnerId }, offer);
       } catch (err) { console.error(err); }
     }
     return pc;
-  };
+  }, [sendSignalingMessage, handlePeerDisconnect]);
 
-  const handlePeerDisconnect = (partnerId: string) => {
-    const pc = peerConnections.current.get(partnerId);
-    if (pc) { pc.close(); peerConnections.current.delete(partnerId); }
-    setRemoteStreams(prev => {
-      const newMap = new Map(prev);
-      newMap.delete(partnerId);
-      return newMap;
-    });
-  };
+  const handleSignalingData = useCallback(async (senderId: string, payload: any) => {
+    const type = payload.type;
+    console.log(`📩 Signal [${type}] from ${senderId.substring(0, 5)}...`);
 
-  const sendSignalingMessage = (meta: any, payloadData?: any) => {
-    if (wsSignal.current?.readyState === WebSocket.OPEN) {
-      wsSignal.current.send(JSON.stringify({
-        type: meta.type === 'JOIN_ROOM' ? 'JOIN_ROOM' : 'webrtc_signal',
-        roomId,
-        senderId: user?.userId,
-        payload: { ...meta, ...payloadData }
-      }));
+    if (type === 'JOIN_ROOM') {
+      setConnectionStatus(`Partner Joined. Connecting...`);
+      await createPeerConnection(senderId, true);
+    } else if (type === 'offer') {
+      const pc = await createPeerConnection(senderId, false);
+      if (pc) {
+        if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
+          console.warn("⚠️ Received Offer but state is " + pc.signalingState);
+        }
+        await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        await processIceQueue(senderId, pc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignalingMessage({ type: 'answer', targetId: senderId }, answer);
+      }
+    } else if (type === 'answer') {
+      const pc = peerConnections.current.get(senderId);
+      if (pc) {
+        if (pc.signalingState === 'have-local-offer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(payload));
+          await processIceQueue(senderId, pc);
+        }
+      }
+    } else if (type === 'ice_candidate') {
+      const pc = peerConnections.current.get(senderId);
+      const candidate = new RTCIceCandidate(payload.candidate);
+      if (pc && pc.remoteDescription && pc.signalingState !== 'closed') {
+        await pc.addIceCandidate(candidate);
+      } else {
+        const queue = iceCandidatesQueue.current.get(senderId) || [];
+        queue.push(candidate);
+        iceCandidatesQueue.current.set(senderId, queue);
+      }
     }
-  };
+  }, [createPeerConnection, processIceQueue, sendSignalingMessage]);
 
-  const initSubtitleAudioStream = async () => {
+  const initSubtitleAudioStream = useCallback(async () => {
     if (Platform.OS === 'android') {
       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
     }
-    try {
-      LiveAudioStream.stop();
-      LiveAudioStream.init(audioOptions);
-      LiveAudioStream.on('data', (base64Data: string) => {
-        if (!wsAudio.current || wsAudio.current.readyState !== WebSocket.OPEN || !isMicOn || isManuallyClosed.current) return;
-        try {
-          const binaryString = atob(base64Data);
-          const len = binaryString.length;
-          const bytes = new Uint8Array(len);
-          for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-          wsAudio.current.send(bytes.buffer);
-        } catch (err) { }
-      });
-      if (isMicOn) LiveAudioStream.start();
-    } catch (e) { console.error(e); }
-  };
+
+    // DELAY START to let WebRTC grab the mic first for the call
+    // This is crucial to prevent "Silent Call" issue
+    setTimeout(() => {
+      try {
+        LiveAudioStream.stop();
+        LiveAudioStream.init(audioOptions);
+        LiveAudioStream.on('data', (base64Data: string) => {
+          if (!wsAudio.current || wsAudio.current.readyState !== WebSocket.OPEN || !isMicOn || isManuallyClosed.current) return;
+          try {
+            const binaryString = atob(base64Data);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+            wsAudio.current.send(bytes.buffer);
+          } catch (err) { }
+        });
+        if (isMicOn) LiveAudioStream.start();
+        console.log("🎤 LiveAudioStream started (delayed)");
+      } catch (e) { console.error("LiveAudioStream Init Error:", e); }
+    }, 1500);
+
+  }, [isMicOn]);
 
   const handleSubtitleMessage = useCallback((data: any) => {
     if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
@@ -369,58 +344,81 @@ const WebRTCCallScreen = () => {
     }
   }, [nativeLang]);
 
-  const startPing = () => {
-    stopPing();
-    pingInterval.current = setInterval(() => sendSignalingMessage({ type: 'PING' }), 5000);
-  };
+  // --- SOCKET CONNECTIONS ---
 
-  const stopPing = () => {
-    if (pingInterval.current) { clearInterval(pingInterval.current); pingInterval.current = null; }
-  };
+  const connectSignalingSocket = useCallback(() => {
+    if (!roomId || !accessToken || isManuallyClosed.current) return;
 
-  const cleanupCall = useCallback(() => {
-    isManuallyClosed.current = true;
-    stopPing();
-
-    if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
     if (signalReconnectTimeout.current) clearTimeout(signalReconnectTimeout.current);
-    if (audioReconnectTimeout.current) clearTimeout(audioReconnectTimeout.current);
-
-    try { LiveAudioStream.stop(); } catch (e) { }
-
-    localStreamRef.current?.getTracks().forEach(track => { track.stop(); track.enabled = false; });
-    setLocalStream(null);
-
-    peerConnections.current.forEach(pc => pc.close());
-    peerConnections.current.clear();
-    setRemoteStreams(new Map());
-
     if (wsSignal.current) { wsSignal.current.close(); wsSignal.current = null; }
+
+    const normalizedRoomId = String(roomId).trim().toLowerCase();
+    let cleanBase = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
+    const url = `${protocol}${cleanBase}/ws/py/signal?token=${accessToken}&roomId=${normalizedRoomId}`;
+
+    console.log(`🔌 Connecting SIGNAL: ${url}`);
+    const ws = new WebSocket(url);
+    wsSignal.current = ws;
+
+    ws.onopen = () => {
+      console.log("✅ Signal Socket OPEN");
+      setConnectionStatus("Connected. Waiting...");
+      setTimeout(() => sendSignalingMessage({ type: 'JOIN_ROOM' }), 500);
+      startPing();
+    };
+
+    ws.onmessage = async (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'webrtc_signal' || data.type === 'JOIN_ROOM') {
+          const senderId = String(data.senderId || 'unknown');
+          if (senderId === String(user?.userId)) return;
+          const payload = data.payload || data;
+          await handleSignalingData(senderId, payload);
+        }
+      } catch (err) { console.error("Signal Msg Error", err); }
+    };
+
+    ws.onerror = (e: any) => console.log("❌ Signal WS Error:", e.message);
+    ws.onclose = (e) => {
+      if (!isManuallyClosed.current) {
+        console.log(`⚠️ Signal Closed (${e.code}). Retry...`);
+        signalReconnectTimeout.current = setTimeout(connectSignalingSocket, 3000);
+      }
+    };
+  }, [roomId, accessToken, user?.userId, sendSignalingMessage, startPing, handleSignalingData]);
+
+  const connectAudioSocket = useCallback(() => {
+    if (!roomId || !accessToken || isManuallyClosed.current) return;
+    if (audioReconnectTimeout.current) clearTimeout(audioReconnectTimeout.current);
     if (wsAudio.current) { wsAudio.current.close(); wsAudio.current = null; }
-  }, []);
 
-  const getMediaStream = async () => {
-    if (Platform.OS === 'android') {
-      await PermissionsAndroid.requestMultiple([
-        PermissionsAndroid.PERMISSIONS.CAMERA,
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
-      ]);
-    }
-    try {
-      return await mediaDevices.getUserMedia({
-        audio: true,
-        video: { width: 480, height: 640, frameRate: 24, facingMode: 'user' }
-      });
-    } catch (e) { return null; }
-  };
+    const normalizedRoomId = String(roomId).trim().toLowerCase();
+    let cleanBase = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
+    const url = `${protocol}${cleanBase}/ws/py/subtitles-audio?token=${accessToken}&roomId=${normalizedRoomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
 
-  const handleCallEnd = () => {
-    cleanupCall();
-    if (videoCallId && user?.userId) {
-      updateCallStatus({ id: videoCallId, payload: { callerId: user.userId, status: VideoCallStatus.ENDED } });
-    }
-    navigation.goBack();
-  };
+    console.log(`🎤 Connecting AUDIO: ${url}`);
+    const ws = new WebSocket(url);
+    wsAudio.current = ws;
+
+    ws.onopen = () => {
+      console.log("✅ Audio Socket OPEN");
+      initSubtitleAudioStream();
+    };
+    ws.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'subtitle') handleSubtitleMessage(data);
+      } catch (_) { }
+    };
+    ws.onclose = () => {
+      if (!isManuallyClosed.current) {
+        audioReconnectTimeout.current = setTimeout(connectAudioSocket, 5000);
+      }
+    };
+  }, [roomId, accessToken, nativeLang, spokenLang, initSubtitleAudioStream, handleSubtitleMessage]);
 
   const handleRetryConnection = () => {
     setConnectionStatus("Retrying...");
@@ -430,6 +428,29 @@ const WebRTCCallScreen = () => {
     setRemoteStreams(new Map());
   };
 
+  // --- EFFECT ---
+  useEffect(() => {
+    let isMounted = true;
+    const initializeCall = async () => {
+      console.log("🚀 Starting initialization...");
+      const stream = await getMediaStream();
+      if (isMounted && stream) {
+        setLocalStream(stream);
+        localStreamRef.current = stream;
+        connectSignalingSocket();
+        connectAudioSocket();
+      } else {
+        setConnectionStatus("Camera/Mic Error");
+      }
+    };
+    initializeCall();
+    return () => {
+      isMounted = false;
+      cleanupCall();
+    };
+  }, []);
+
+  // --- RENDER ---
   const renderRemoteVideos = () => {
     const streams = Array.from(remoteStreams.values());
     if (streams.length === 0) {
@@ -443,13 +464,10 @@ const WebRTCCallScreen = () => {
         </View>
       );
     }
-    let width: DimensionValue = streams.length > 2 ? '50%' : '100%';
-    let height: DimensionValue = streams.length > 1 ? '50%' : '100%';
-
     return (
       <View style={styles.gridContainer}>
         {streams.map((stream) => (
-          <View key={stream.id} style={{ width, height, borderWidth: 1, borderColor: '#111' }}>
+          <View key={stream.id} style={{ width: '100%', height: '100%' }}>
             <RTCView streamURL={stream.toURL()} style={{ flex: 1 }} objectFit="cover" />
           </View>
         ))}
@@ -458,24 +476,35 @@ const WebRTCCallScreen = () => {
   };
 
   const renderSubtitleText = (data: SubtitleData) => {
-    if (!data.originalFull.trim() || data.senderId === user?.userId) return null;
+    // Show self subtitles if they are processing, even if not translated yet
+    if (!data.originalFull.trim()) return null;
 
+    const isMe = data.senderId === user?.userId;
     const originalText = data.originalFull;
     const translatedText = data.translated;
-    let displayOriginal = false;
-    let displayTranslated = false;
 
-    if (subtitleMode === 'dual') { displayOriginal = true; displayTranslated = true; }
-    else if (subtitleMode === 'native' && translatedText) { displayTranslated = true; }
-    else if (subtitleMode === 'original' || !translatedText) { displayOriginal = true; }
+    // For self: only show original (to confirm mic is working)
+    if (isMe) {
+      return (
+        <View style={styles.subtitleContainer}>
+          <Text style={[styles.subtitleSender, { textAlign: 'center', color: '#4f46e5' }]}>{t('you') || 'Bạn'}</Text>
+          <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }]}>{originalText}</Text>
+        </View>
+      )
+    }
+
+    let displayOriginal = subtitleMode === 'dual' || subtitleMode === 'original' || !translatedText;
+    let displayTranslated = (subtitleMode === 'dual' || subtitleMode === 'native') && !!translatedText;
+
+    if (subtitleMode === 'native' && !translatedText) displayOriginal = false;
 
     return (
       <View style={styles.subtitleContainer}>
-        <Text style={[styles.subtitleSender, { textAlign: 'center' }]}>{t('Partner') || 'Partner'}</Text>
+        <Text style={[styles.subtitleSender, { textAlign: 'center' }]}>{t('partner') || 'Đối phương'}</Text>
         {displayOriginal && <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }]}>{originalText}</Text>}
-        {displayTranslated && translatedText && <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translatedText}</Text>}
+        {displayTranslated && <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translatedText}</Text>}
         {displayTranslated && !translatedText && originalText !== "hmm..." && (
-          <Text style={[styles.subtitleTextTranslated, { textAlign: 'center', color: '#9ca3af' }]}>{t('translating') || 'Đang dịch...'}</Text>
+          <Text style={[styles.subtitleTextTranslated, { textAlign: 'center', color: '#9ca3af' }]}>{t('translating') || '...'}</Text>
         )}
       </View>
     );
@@ -511,7 +540,7 @@ const WebRTCCallScreen = () => {
             <Text style={styles.sectionTitle}>{t('subtitle_mode') || 'Chế độ phụ đề'}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               {[{ id: 'dual', icon: '📝' }, { id: 'native', icon: '🎯' }, { id: 'original', icon: '🗣️' }, { id: 'off', icon: '🚫' }].map(m => (
-                <TouchableOpacity key={m.id} onPress={() => { setSubtitleMode(m as any); setShowSettings(false) }}
+                <TouchableOpacity key={m.id} onPress={() => { setSubtitleMode(m.id as any); setShowSettings(false) }}
                   style={[styles.modeButton, subtitleMode === m.id && styles.modeButtonActive]}>
                   <Text style={{ color: 'white' }}>{m.icon} {m.id}</Text>
                 </TouchableOpacity>
