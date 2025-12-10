@@ -628,7 +628,9 @@ const styles = createScaledSheet({
   modalContainer: { height: '30%', backgroundColor: '#1f2937', marginTop: 'auto', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
   sectionTitle: { color: '#9ca3af', fontWeight: 'bold', marginBottom: 10 },
   modeButton: { padding: 10, backgroundColor: '#374151', borderRadius: 8, minWidth: '45%', alignItems: 'center', justifyContent: 'center' },
-  modeButtonActive: { backgroundColor: '#4f46e5' },
+  modeButtonActive: {
+    backgroundColor: '#4f46e5'
+  },
   closeSettings: { marginTop: 20, alignSelf: 'center', padding: 10 },
 });
 
