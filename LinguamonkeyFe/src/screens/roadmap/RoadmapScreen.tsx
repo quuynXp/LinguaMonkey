@@ -55,7 +55,7 @@ const RoadmapScreen = ({ navigation }: any) => {
     useAddSuggestion,
     usePublicRoadmapDetail,
     useAssignRoadmap,
-    useToggleFavoriteRoadmap // Hook toggle favorite
+    useToggleFavoriteRoadmap
   } = useRoadmap();
 
   const { data: userRoadmaps, isLoading: userLoading, refetch: refetchUser } = useUserRoadmaps();
@@ -186,11 +186,9 @@ const RoadmapScreen = ({ navigation }: any) => {
     }
   };
 
-  // Toggle Favorite
   const handleToggleFavorite = async (roadmapId: string) => {
     try {
       await toggleFavoriteMut.mutateAsync(roadmapId);
-      // Refetch both lists to update counts/icon state
       if (exploreType === 'official') refetchOfficial();
       else refetchCommunity();
     } catch (error) {
@@ -374,6 +372,9 @@ const RoadmapScreen = ({ navigation }: any) => {
     const publicData = !isUserRoadmap ? publicRoadmapDetail : null;
     const publicBasicInfo = !isUserRoadmap ? getPublicBasicInfo() : null;
 
+    // Check ownership to prevent self-actions
+    const isOwner = publicBasicInfo?.creatorId === user?.userId;
+
     if (loading) return <ActivityIndicator style={styles.loader} color="#3B82F6" />;
 
     if (isUserRoadmap && !myData) return <View style={styles.emptyState}><Text>Roadmap not found</Text></View>;
@@ -439,32 +440,38 @@ const RoadmapScreen = ({ navigation }: any) => {
                 <Text style={styles.creatorName}>{publicBasicInfo?.creator || (exploreType === 'official' ? 'Official' : 'Community')}</Text>
               </View>
 
-              {/* REPLACED RATING WITH FAVORITE */}
-              <TouchableOpacity
-                style={[styles.favBox, publicBasicInfo?.isFavorite && styles.favBoxActive]}
-                onPress={() => handleToggleFavorite(publicBasicInfo?.roadmapId!)}
-              >
-                <Icon
-                  name={publicBasicInfo?.isFavorite ? "favorite" : "favorite-border"}
-                  size={20}
-                  color={publicBasicInfo?.isFavorite ? "#EF4444" : "#6B7280"}
-                />
-                <Text style={[styles.favCount, publicBasicInfo?.isFavorite && { color: "#EF4444" }]}>
-                  {publicBasicInfo?.favoriteCount || 0}
-                </Text>
-              </TouchableOpacity>
+              {!isOwner && (
+                <TouchableOpacity
+                  style={[styles.favBox, publicBasicInfo?.isFavorite && styles.favBoxActive]}
+                  onPress={() => handleToggleFavorite(publicBasicInfo?.roadmapId!)}
+                >
+                  <Icon
+                    name={publicBasicInfo?.isFavorite ? "favorite" : "favorite-border"}
+                    size={20}
+                    color={publicBasicInfo?.isFavorite ? "#EF4444" : "#6B7280"}
+                  />
+                  <Text style={[styles.favCount, publicBasicInfo?.isFavorite && { color: "#EF4444" }]}>
+                    {publicBasicInfo?.favoriteCount || 0}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
             <Text style={styles.exploreDetailDesc}>{desc}</Text>
 
             <TouchableOpacity
-              style={[styles.enrollButton, assignRoadmapMut.isPending && { opacity: 0.7 }]}
+              style={[
+                styles.enrollButton,
+                (assignRoadmapMut.isPending || isOwner) && { opacity: 0.7, backgroundColor: isOwner ? '#9CA3AF' : '#3B82F6' }
+              ]}
               onPress={handleEnroll}
-              disabled={assignRoadmapMut.isPending}
+              disabled={assignRoadmapMut.isPending || isOwner}
             >
               {assignRoadmapMut.isPending ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.enrollButtonText}>{t('roadmap.enroll', 'Start Learning')}</Text>
+                <Text style={styles.enrollButtonText}>
+                  {isOwner ? t('roadmap.owned', 'You own this roadmap') : t('roadmap.enroll', 'Start Learning')}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -576,53 +583,57 @@ const RoadmapScreen = ({ navigation }: any) => {
             contentContainerStyle={styles.exploreList}
             refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />}
           >
-            {filteredExploreRoadmaps.map((roadmap) => (
-              <TouchableOpacity
-                key={roadmap.roadmapId}
-                style={styles.exploreCard}
-                onPress={() => {
-                  handleSelectRoadmap(roadmap.roadmapId);
-                }}
-              >
-                <View style={styles.exploreHeader}>
-                  <Text style={styles.exploreTitle}>{roadmap.title}</Text>
-                  {/* REPLACED RATING WITH FAVORITE IN LIST */}
-                  <TouchableOpacity
-                    style={styles.ratingBadge} // Reusing badge style for heart
-                    onPress={() => handleToggleFavorite(roadmap.roadmapId)}
-                  >
-                    <Icon
-                      name={roadmap.isFavorite ? "favorite" : "favorite-border"}
-                      size={14}
-                      color={roadmap.isFavorite ? "#EF4444" : "#6B7280"}
-                    />
-                    <Text style={[styles.ratingText, roadmap.isFavorite && { color: "#EF4444" }]}>
-                      {roadmap.favoriteCount || 0}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.exploreDesc} numberOfLines={2}>{roadmap.description}</Text>
-
-                <View style={styles.exploreFooter}>
-                  <View style={styles.creatorInfo}>
-                    {exploreType === 'community' && (
-                      <Image
-                        source={getAvatarSource(roadmap.creatorAvatar)}
-                        style={styles.creatorAvatar}
-                      />
+            {filteredExploreRoadmaps.map((roadmap) => {
+              const isOwner = roadmap.creatorId === user?.userId;
+              return (
+                <TouchableOpacity
+                  key={roadmap.roadmapId}
+                  style={styles.exploreCard}
+                  onPress={() => {
+                    handleSelectRoadmap(roadmap.roadmapId);
+                  }}
+                >
+                  <View style={styles.exploreHeader}>
+                    <Text style={styles.exploreTitle}>{roadmap.title}</Text>
+                    {!isOwner && (
+                      <TouchableOpacity
+                        style={styles.ratingBadge}
+                        onPress={() => handleToggleFavorite(roadmap.roadmapId)}
+                      >
+                        <Icon
+                          name={roadmap.isFavorite ? "favorite" : "favorite-border"}
+                          size={14}
+                          color={roadmap.isFavorite ? "#EF4444" : "#6B7280"}
+                        />
+                        <Text style={[styles.ratingText, roadmap.isFavorite && { color: "#EF4444" }]}>
+                          {roadmap.favoriteCount || 0}
+                        </Text>
+                      </TouchableOpacity>
                     )}
-                    <Text style={styles.exploreMetaText}>
-                      {exploreType === 'official' ? 'Official' : roadmap.creator}
-                    </Text>
                   </View>
-                  <View style={styles.exploreMeta}>
-                    <Icon name="list" size={14} color="#6B7280" />
-                    <Text style={styles.exploreMetaText}>{roadmap.totalItems} Items</Text>
+
+                  <Text style={styles.exploreDesc} numberOfLines={2}>{roadmap.description}</Text>
+
+                  <View style={styles.exploreFooter}>
+                    <View style={styles.creatorInfo}>
+                      {exploreType === 'community' && (
+                        <Image
+                          source={getAvatarSource(roadmap.creatorAvatar)}
+                          style={styles.creatorAvatar}
+                        />
+                      )}
+                      <Text style={styles.exploreMetaText}>
+                        {exploreType === 'official' ? 'Official' : (isOwner ? `${roadmap.creator} (You)` : roadmap.creator)}
+                      </Text>
+                    </View>
+                    <View style={styles.exploreMeta}>
+                      <Icon name="list" size={14} color="#6B7280" />
+                      <Text style={styles.exploreMetaText}>{roadmap.totalItems} Items</Text>
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
             {filteredExploreRoadmaps.length === 0 && <Text style={styles.emptyText}>No roadmaps found.</Text>}
           </ScrollView>
         )}

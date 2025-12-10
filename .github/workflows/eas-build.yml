@@ -42,23 +42,40 @@ jobs:
           sudo rm -rf $ANDROID_SDK_ROOT/ndk || true
           
           echo "Installing NDK 26.1.10909125 and CMake 3.22.1..."
-          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "cmdline-tools;latest" >/dev/null || true
-          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;26.1.10909125" "cmake;3.22.1"
+          # Installing package
+          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
 
+          # Export Environment Variables
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
           echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
           echo "CMAKE_HOME=$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_ENV
           echo "PATH=$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV
 
-      - name: Generate Android directory (Prebuild)
-        run: npx expo prebuild --platform android --no-install
-
       - name: Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      - name: Generate Android directory (Clean Prebuild)
+        # --clean ensures we regenerate the project from app.config.js, removing any checked-in bad config
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Force NDK Configuration in Gradle
+        run: |
+          echo "🔧 Injecting strict NDK paths into Gradle..."
+          cd android
+          
+          # Force ndk.dir in local.properties (Highest priority override)
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> local.properties
+          
+          # Force android.ndkVersion in gradle.properties
+          echo "android.ndkVersion=26.1.10909125" >> gradle.properties
+          
+          # Verify injection
+          cat local.properties
+          cat gradle.properties
 
       - name: Cache Gradle dependencies
         uses: actions/cache@v4

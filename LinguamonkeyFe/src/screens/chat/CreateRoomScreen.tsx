@@ -31,12 +31,10 @@ const CreateRoomScreen = () => {
   const navigation = useNavigation<any>();
   const { user } = useUserStore();
 
-  const { useCreateRoom, useAddRoomMembers } = useRooms();
+  const { useCreateRoom } = useRooms();
   const { useSearchPublicUsers } = useUsers();
 
   const { mutate: createRoom, isPending: isCreating } = useCreateRoom();
-  // Chúng ta không cần useAddRoomMembers nữa vì logic đã được chuyển sang createRoom ở Backend
-  // const { mutate: addMembers, isPending: isAddingMembers } = useAddRoomMembers(); 
 
   const [roomName, setRoomName] = useState('');
   const [description, setDescription] = useState('');
@@ -84,7 +82,7 @@ const CreateRoomScreen = () => {
   };
 
   const handleCreateRoom = () => {
-    if (isCreating) return; // Chỉ cần kiểm tra isCreating vì addMembers đã được loại bỏ
+    if (isCreating) return;
 
     if (!roomName.trim()) {
       Alert.alert(t('common.error'), t('createRoom.errors.nameRequired'));
@@ -101,31 +99,32 @@ const CreateRoomScreen = () => {
       return;
     }
 
+    // FIX: Clean payload logic to avoid 400 Bad Request (Error 1001)
+    // Convert empty strings to null for optional fields
     const roomPayload: RoomRequest = {
       roomName: roomName.trim(),
       creatorId: user.userId,
       description: description.trim(),
-      maxMembers: parseInt(maxMembers) || 20,
+      maxMembers: parseInt(maxMembers, 10) || 20, // Ensure integer
       purpose: roomPurpose,
       roomType: isPrivate ? RoomType.PRIVATE : RoomType.PUBLIC,
-      password: isPrivate ? roomPassword : "",
-      roomCode: "",
+      password: (isPrivate && roomPassword.trim()) ? roomPassword.trim() : null, // Send null if empty/public
+      roomCode: null, // Send null instead of empty string
       isDeleted: false,
       memberIds: Array.from(selectedUsers)
-    };
+    } as any; // Cast to any to bypass strict TS check if interface doesn't allow nulls
 
     createRoom(roomPayload, {
       onSuccess: (newRoom) => {
-        // newRoom.members (list UserProfileResponse) đã có sẵn từ BE, chuyển hướng ngay
         navigation.replace('GroupChatScreen', {
           roomId: newRoom.roomId,
           roomName: newRoom.roomName
-          // Có thể truyền thêm members list nếu cần thiết cho màn hình GroupChatScreen
         });
       },
-      onError: (error) => {
-        console.error(error);
-        Alert.alert(t('common.error'), t('createRoom.errors.creationFailed'));
+      onError: (error: any) => {
+        console.error("Create Room Error:", error?.response?.data || error);
+        const serverMsg = error?.response?.data?.message || t('createRoom.errors.creationFailed');
+        Alert.alert(t('common.error'), serverMsg);
       }
     });
   };
@@ -153,8 +152,6 @@ const CreateRoomScreen = () => {
       </TouchableOpacity>
     );
   };
-
-  const isLoading = isCreating; // Chỉ cần kiểm tra isCreating
 
   return (
     <ScreenLayout>
@@ -192,7 +189,7 @@ const CreateRoomScreen = () => {
                 placeholder={t('createRoom.roomNamePlaceholder')}
                 placeholderTextColor="#9CA3AF"
                 maxLength={50}
-                editable={!isLoading}
+                editable={!isCreating}
               />
               <Text style={styles.characterCount}>{roomName.length}/50</Text>
             </View>
@@ -211,7 +208,7 @@ const CreateRoomScreen = () => {
                 multiline
                 numberOfLines={3}
                 maxLength={255}
-                editable={!isLoading}
+                editable={!isCreating}
               />
               <Text style={styles.characterCount}>{description.length}/255</Text>
             </View>
@@ -228,7 +225,7 @@ const CreateRoomScreen = () => {
                     roomPurpose === RoomPurpose.QUIZ_TEAM && styles.selectedPurpose,
                   ]}
                   onPress={() => setRoomPurpose(RoomPurpose.QUIZ_TEAM)}
-                  disabled={isLoading}
+                  disabled={isCreating}
                 >
                   <Icon
                     name="school"
@@ -250,7 +247,7 @@ const CreateRoomScreen = () => {
                     roomPurpose === RoomPurpose.GROUP_CHAT && styles.selectedPurpose,
                   ]}
                   onPress={() => setRoomPurpose(RoomPurpose.GROUP_CHAT)}
-                  disabled={isLoading}
+                  disabled={isCreating}
                 >
                   <Icon
                     name="group"
@@ -282,7 +279,7 @@ const CreateRoomScreen = () => {
                 placeholderTextColor="#9CA3AF"
                 keyboardType="numeric"
                 maxLength={2}
-                editable={!isLoading}
+                editable={!isCreating}
               />
             </View>
 
@@ -294,7 +291,7 @@ const CreateRoomScreen = () => {
               <TouchableOpacity
                 style={styles.privacyToggle}
                 onPress={() => setIsPrivate(!isPrivate)}
-                disabled={isLoading}
+                disabled={isCreating}
               >
                 <View style={styles.privacyInfo}>
                   <Icon
@@ -328,7 +325,7 @@ const CreateRoomScreen = () => {
                   placeholderTextColor="#9CA3AF"
                   secureTextEntry
                   maxLength={20}
-                  editable={!isLoading}
+                  editable={!isCreating}
                 />
               )}
             </View>
@@ -370,13 +367,13 @@ const CreateRoomScreen = () => {
             <TouchableOpacity
               style={[
                 styles.createButton,
-                (!roomName.trim() || !description.trim() || isLoading) &&
+                (!roomName.trim() || !description.trim() || isCreating) &&
                 styles.createButtonDisabled,
               ]}
               onPress={handleCreateRoom}
-              disabled={!roomName.trim() || !description.trim() || isLoading}
+              disabled={!roomName.trim() || !description.trim() || isCreating}
             >
-              {isLoading ? (
+              {isCreating ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
@@ -617,7 +614,7 @@ const styles = createScaledSheet({
     backgroundColor: '#4F46E5',
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: 0.2 // Default unchecked state
+    opacity: 0.2
   },
   userItemSelectedCheckbox: {
     opacity: 1

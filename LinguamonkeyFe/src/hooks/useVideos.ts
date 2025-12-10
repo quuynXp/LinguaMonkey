@@ -5,7 +5,6 @@ import {
   PageResponse,
   VideoCallResponse,
   VideoCallRequest,
-  // CreateGroupCallRequest, // Xoá import cũ nếu trùng tên, ta định nghĩa lại bên dưới cho rõ ràng
   UpdateParticipantStatusRequest,
   RoomResponse,
   CallPreferencesRequest,
@@ -14,11 +13,11 @@ import {
 import { VideoCallParticipant } from "../types/entity";
 import { VideoCallType } from "../types/enums";
 
-// Update Definition khớp với BE mới
+// Defined locally to ensure correct structure for the group call endpoint
 export interface CreateGroupCallRequest {
   callerId: string;
   roomId?: string; // Source Chat Room ID
-  participantIds?: string[]; // Optional now
+  participantIds?: string[];
   videoCallType: VideoCallType;
 }
 

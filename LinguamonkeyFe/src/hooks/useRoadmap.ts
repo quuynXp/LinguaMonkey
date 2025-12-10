@@ -61,7 +61,6 @@ export const useRoadmap = () => {
   const user = useUserStore((state) => state.user);
   const userId = user?.userId;
 
-  // --- 1. USER ROADMAPS (My Learning) ---
   const useUserRoadmaps = () =>
     useQuery({
       queryKey: roadmapKeys.userList(userId!),
@@ -127,14 +126,12 @@ export const useRoadmap = () => {
       },
     });
 
-  // --- NEW HOOK FIX: Map Backend Response to UI Expectations ---
   const usePublicRoadmapDetail = (roadmapId: string | null, options?: { enabled?: boolean }) =>
     useQuery({
       queryKey: roadmapKeys.detail(roadmapId!),
       queryFn: async () => {
         if (!roadmapId) throw new Error("Missing roadmapId");
 
-        // Gọi API lấy chi tiết (RoadmapResponse từ Java)
         const res = await instance.get<AppApiResponse<RoadmapResponse>>(
           `/api/v1/roadmaps/${roadmapId}`
         );
@@ -153,7 +150,7 @@ export const useRoadmap = () => {
           isOfficial: false,
           creator: "",
           creatorAvatar: "",
-          favoriteCount: 0, // Will merge later or need backend update for detail
+          favoriteCount: 0,
           isFavorite: false,
           suggestionCount: 0,
           totalItems: data.items?.length || 0,
@@ -177,7 +174,6 @@ export const useRoadmap = () => {
       enabled: !!roadmapId,
     });
 
-  // --- 3. ITEMS & SUGGESTIONS ---
   const useRoadmapItemDetail = (itemId: string | null) =>
     useQuery({
       queryKey: roadmapKeys.itemDetail(itemId!),
@@ -202,7 +198,6 @@ export const useRoadmap = () => {
       enabled: !!roadmapId,
     });
 
-  // --- 5. REVIEWS ---
   const useRoadmapReviews = (roadmapId: string) =>
     useQuery({
       queryKey: roadmapKeys.reviews(roadmapId),
@@ -231,23 +226,15 @@ export const useRoadmap = () => {
       },
     });
 
-  // --- 4. MUTATIONS ---
-
   const useCreateRoadmap = () =>
     useMutation({
       mutationFn: async (req: CreateRoadmapRequest) => {
-        // [FIX] Sanitization Layer: Ensure types match Java Backend Strictness
         const sanitizedReq = {
           ...req,
-          // Force convert strings to numbers for Integer fields
           currentLevel: Number(req.currentLevel) || 0,
           targetLevel: Number(req.targetLevel) || 0,
           estimatedCompletionTime: Number(req.estimatedCompletionTime) || 0,
-
-          // Force null if enum is empty string (Java crashes on "")
-          certification: (req.certification as any) === "" ? null : req.certification,
-
-          // Ensure items is an array (not null/undefined) and its numbers are numbers
+          certification: (req.certification === "NONE" || req.certification === "") ? null : req.certification,
           items: (req.items || []).map((item, index) => ({
             ...item,
             estimatedTime: Number(item.estimatedTime) || 0,
@@ -377,13 +364,12 @@ export const useRoadmap = () => {
   const useEditRoadmap = () =>
     useMutation({
       mutationFn: async ({ id, req }: { id: string; req: CreateRoadmapRequest }) => {
-        // [FIX] Sanitization Layer for Edit as well
         const sanitizedReq = {
           ...req,
           currentLevel: Number(req.currentLevel) || 0,
           targetLevel: Number(req.targetLevel) || 0,
           estimatedCompletionTime: Number(req.estimatedCompletionTime) || 0,
-          certification: (req.certification as any) === "" ? null : req.certification,
+          certification: (req.certification === "NONE" || req.certification === "") ? null : req.certification,
           items: (req.items || []).map((item, index) => ({
             ...item,
             estimatedTime: Number(item.estimatedTime) || 0,

@@ -311,7 +311,7 @@ try:
     speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
     genai.configure(api_key=GEMINI_API_KEY)
     # Dùng Flash cho nhanh và rẻ
-    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+    gemini_model = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
     logging.error(f"Init Error: {e}")
     speech_config = None

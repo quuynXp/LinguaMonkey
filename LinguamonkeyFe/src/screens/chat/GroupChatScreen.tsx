@@ -175,11 +175,17 @@ const GroupChatScreen = () => {
     }, [roomId, activeBubbleRoomId, closeBubble]);
 
     const handleStartVideoCall = () => {
-        if (!user?.userId) return;
+        if (!user?.userId || !roomId) {
+            showToast({ type: "error", message: t("error.start_call_failed") });
+            return;
+        }
+
+        // Ensure roomId and callerId are strings.
+        // Explicitly send "GROUP" to avoid Enum serialization issues with Jackson
         createGroupCall({
             callerId: user.userId,
             roomId: roomId,
-            videoCallType: VideoCallType.GROUP
+            videoCallType: 'GROUP' as unknown as VideoCallType
         }, {
             onSuccess: (res) => {
                 navigation.navigate('JitsiCallScreen', {

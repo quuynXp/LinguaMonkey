@@ -5,7 +5,6 @@ import {
   Animated,
   FlatList,
   Modal,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -13,9 +12,9 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Switch
+  Switch,
+  ScrollView
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMemorizations } from "../../hooks/useMemorizations";
 import { useReminders } from "../../hooks/useReminders";
@@ -24,11 +23,12 @@ import * as Enums from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
-import { TimeHelper } from "../../utils/TimeVnHelper";
+import { TimeHelper } from "../../utils/timeHelper";
 
-const NotesScreen = ({ navigation }: any) => {
+const NotesScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
+  const { prefillContent, courseId } = route.params || {};
 
   const [selectedContentType, setSelectedContentType] = useState<string>("all");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -37,23 +37,32 @@ const NotesScreen = ({ navigation }: any) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
-  // Reminder State
   const [isReminderEnabled, setIsReminderEnabled] = useState(false);
-  const [reminderTime, setReminderTime] = useState(""); // Input Format HH:mm
+  const [reminderHour, setReminderHour] = useState("09");
+  const [reminderMinute, setReminderMinute] = useState("00");
   const [reminderRepeat, setReminderRepeat] = useState<Enums.RepeatType>(Enums.RepeatType.DAILY);
+  const [reminderTitle, setReminderTitle] = useState("");
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Hooks
   const {
     useUserMemorizations,
     useCreateMemorization,
     useDeleteMemorization,
-    useToggleFavorite,
+    useUpdateMemorization,
   } = useMemorizations();
 
   const { useCreateReminder } = useReminders();
   const { mutate: createReminder, isPending: isCreatingReminder } = useCreateReminder();
+
+  useEffect(() => {
+    if (prefillContent) {
+      setNewNote(prefillContent);
+      setShowAddModal(true);
+      setIsReminderEnabled(true);
+      setReminderTitle("Review Note");
+    }
+  }, [prefillContent]);
 
   const searchParams = useMemo(() => {
     const params: any = { page: 0, size: 20 };
@@ -70,7 +79,7 @@ const NotesScreen = ({ navigation }: any) => {
 
   const { mutate: createMemorization, isPending: isCreatingNote } = useCreateMemorization();
   const { mutate: deleteMemorization } = useDeleteMemorization();
-  const { mutate: toggleFavorite } = useToggleFavorite();
+  const { mutate: updateMemorization } = useUpdateMemorization();
 
   const notesList = useMemo(() => {
     let list = (memorizationsPage?.data as MemorizationResponse[]) || [];
@@ -84,11 +93,7 @@ const NotesScreen = ({ navigation }: any) => {
   }, [memorizationsPage, showFavoritesOnly, searchQuery, searchParams.keyword]);
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
   }, [fadeAnim]);
 
   const mapNoteTypeToContentType = (type: string): Enums.ContentType => {
@@ -101,51 +106,68 @@ const NotesScreen = ({ navigation }: any) => {
 
   const handleAddNote = () => {
     if (!newNote.trim()) return;
+    if (!user?.userId) {
+      Alert.alert("Error", "User session missing. Please restart app.");
+      return;
+    }
 
-    // Note Payload
+    const ensureUuidOrNull = (id: string | undefined): string | null => {
+      return (id && typeof id === 'string' && id.length > 0) ? id : null;
+    };
+
     const notePayload: MemorizationRequest = {
+      userId: user.userId,
       contentType: mapNoteTypeToContentType(selectedNoteType),
-      contentId: null,
+      contentId: ensureUuidOrNull(courseId),
       noteText: newNote.trim(),
       isFavorite: false,
-      userId: user?.userId || "",
     };
 
     createMemorization(notePayload, {
       onSuccess: (createdNote) => {
-        // If Reminder is enabled, chain the creation
-        if (isReminderEnabled && reminderTime) {
+        if (isReminderEnabled) {
           handleCreateReminder(createdNote.memorizationId, createdNote.noteText);
         } else {
           finishAddProcess();
         }
       },
-      onError: () => Alert.alert("Error", t("common.error"))
+      onError: (err) => {
+        console.error("Create Note Error:", err);
+        Alert.alert("Error", t("common.error"));
+      }
     });
   };
 
-  const handleCreateReminder = (targetId: string, noteTitle: string) => {
-    // 1. Create a dummy date with the user's input time to use the Helper
-    const [hours, minutes] = reminderTime.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) {
-      Alert.alert("Invalid Time", "Please use HH:mm format");
-      finishAddProcess();
-      return;
-    }
+  const handleToggleFavorite = (item: MemorizationResponse) => {
+    const safeContentId = (item.contentId && item.contentId.length > 0) ? item.contentId : null;
+    const cleanPayload: MemorizationRequest = {
+      userId: item.userId,
+      contentType: item.contentType,
+      contentId: safeContentId,
+      noteText: item.noteText,
+      isFavorite: !item.isFavorite
+    };
 
-    const now = new Date();
-    now.setHours(hours, minutes, 0, 0);
+    updateMemorization({
+      id: item.memorizationId,
+      req: cleanPayload
+    }, {
+      onError: () => Alert.alert("Error", "Failed to update favorite status")
+    });
+  };
 
-    // 2. Convert to Vietnam Time string for Backend
-    const vnTimeString = TimeHelper.convertToVietnamTime(now);
+  const handleCreateReminder = (targetId: string, noteText: string) => {
+    const timeStringHHMM = `${reminderHour}:${reminderMinute}`;
+    const finalTitle = reminderTitle.trim() ? reminderTitle : t("notes.reminderDefaultTitle", { defaultValue: "Note Reminder" });
+    const finalMessage = noteText.length > 100 ? noteText.substring(0, 100) + "..." : noteText;
 
     const reminderPayload: UserReminderRequest = {
-      title: t("notes.reminderTitle") + ": " + noteTitle.substring(0, 20) + "...",
-      message: t("notes.reminderBody") + ": " + noteTitle,
-      time: vnTimeString,
-      date: TimeHelper.formatDateForApi(new Date()), // Starts today
+      title: finalTitle,
+      message: finalMessage,
+      time: timeStringHHMM,
+      date: TimeHelper.formatDateForApi(new Date()),
       repeatType: reminderRepeat,
-      targetType: Enums.TargetType.NOTE, // Assuming Enum exists, else custom
+      targetType: Enums.TargetType.NOTE,
       targetId: targetId,
       enabled: true
     };
@@ -155,7 +177,9 @@ const NotesScreen = ({ navigation }: any) => {
         Alert.alert(t("common.success"), t("notes.reminderSetSuccess"));
         finishAddProcess();
       },
-      onError: () => {
+      onError: (err) => {
+        console.log("Reminder Error Payload", reminderPayload);
+        console.error("Create Reminder Error:", err);
         Alert.alert(t("common.warning"), t("notes.noteSavedReminderFailed"));
         finishAddProcess();
       }
@@ -164,7 +188,9 @@ const NotesScreen = ({ navigation }: any) => {
 
   const finishAddProcess = () => {
     setNewNote("");
-    setReminderTime("");
+    setReminderTitle("");
+    setReminderHour("09");
+    setReminderMinute("00");
     setIsReminderEnabled(false);
     setShowAddModal(false);
     refetchMemorizations();
@@ -191,7 +217,7 @@ const NotesScreen = ({ navigation }: any) => {
       <Text style={styles.noteText}>{item.noteText}</Text>
       <View style={styles.noteFooter}>
         <TouchableOpacity
-          onPress={() => toggleFavorite({ id: item.memorizationId, currentReq: item as any })}
+          onPress={() => handleToggleFavorite(item)}
           style={styles.iconBtn}
         >
           <Icon name={item.isFavorite ? "star" : "star-border"} size={20} color={item.isFavorite ? "#F59E0B" : "#9CA3AF"} />
@@ -252,7 +278,6 @@ const NotesScreen = ({ navigation }: any) => {
         <Icon name="add" size={28} color="#FFF" />
       </TouchableOpacity>
 
-      {/* Add Note Modal */}
       <Modal visible={showAddModal} animationType="slide" transparent>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -263,87 +288,122 @@ const NotesScreen = ({ navigation }: any) => {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.typeSelector}>
-              {(["word", "phrase", "grammar"] as const).map(type => (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.typeBtn, selectedNoteType === type && styles.activeTypeBtn]}
-                  onPress={() => setSelectedNoteType(type)}
-                >
-                  <Text style={[styles.typeBtnText, selectedNoteType === type && styles.activeTypeBtnText]}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TextInput
-              style={styles.modalInput}
-              multiline
-              placeholder={t("notes.inputPlaceholder") ?? "Type your note here..."}
-              value={newNote}
-              onChangeText={setNewNote}
-              autoFocus
-            />
-
-            {/* Reminder Section */}
-            <View style={styles.reminderSection}>
-              <View style={styles.reminderHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Icon name="alarm" size={20} color="#37352F" style={{ marginRight: 8 }} />
-                  <Text style={styles.reminderLabel}>{t("notes.enableReminder") ?? "Set Reminder"}</Text>
-                </View>
-                <Switch
-                  value={isReminderEnabled}
-                  onValueChange={setIsReminderEnabled}
-                  trackColor={{ false: "#E5E7EB", true: "#37352F" }}
-                />
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.typeSelector}>
+                {(["word", "phrase", "grammar"] as const).map(type => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.typeBtn, selectedNoteType === type && styles.activeTypeBtn]}
+                    onPress={() => setSelectedNoteType(type)}
+                  >
+                    <Text style={[styles.typeBtnText, selectedNoteType === type && styles.activeTypeBtnText]}>
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
-              {isReminderEnabled && (
-                <View style={styles.reminderControls}>
-                  <View style={styles.timeInputContainer}>
-                    <Text style={styles.labelSmall}>{t("notes.time") ?? "Time (HH:MM)"}</Text>
-                    <TextInput
-                      style={styles.timeInput}
-                      value={reminderTime}
-                      onChangeText={setReminderTime}
-                      placeholder="10:00"
-                      keyboardType="numbers-and-punctuation"
-                      maxLength={5}
-                    />
+              <TextInput
+                style={styles.modalInput}
+                multiline
+                placeholder={t("notes.inputPlaceholder") ?? "Type your note here..."}
+                value={newNote}
+                onChangeText={setNewNote}
+                autoFocus
+              />
+
+              <View style={styles.reminderSection}>
+                <View style={styles.reminderHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Icon name="alarm" size={20} color="#37352F" style={{ marginRight: 8 }} />
+                    <Text style={styles.reminderLabel}>{t("notes.enableReminder") ?? "Set Reminder"}</Text>
                   </View>
-                  <View style={styles.repeatContainer}>
-                    <Text style={styles.labelSmall}>{t("notes.repeat") ?? "Repeat"}</Text>
-                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                  <Switch
+                    value={isReminderEnabled}
+                    onValueChange={setIsReminderEnabled}
+                    trackColor={{ false: "#E5E7EB", true: "#37352F" }}
+                  />
+                </View>
+
+                {isReminderEnabled && (
+                  <View style={styles.reminderControls}>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.labelSmall}>{t("notes.reminderTitle") ?? "Reminder Title"}</Text>
+                      <TextInput
+                        style={styles.miniInput}
+                        placeholder="e.g. Review vocabulary"
+                        value={reminderTitle}
+                        onChangeText={setReminderTitle}
+                      />
+                    </View>
+
+                    <Text style={[styles.labelSmall, { marginTop: 10 }]}>{t("notes.time") ?? "Select Time"}</Text>
+                    <View style={styles.timePickerContainer}>
                       <TouchableOpacity
-                        onPress={() => setReminderRepeat(Enums.RepeatType.DAILY)}
-                        style={[styles.repeatChip, reminderRepeat === Enums.RepeatType.DAILY && styles.activeChip]}
+                        style={styles.timeBox}
+                        onPress={() => {
+                          const h = parseInt(reminderHour);
+                          const next = h >= 23 ? 0 : h + 1;
+                          setReminderHour(next.toString().padStart(2, '0'));
+                        }}
                       >
-                        <Text style={[styles.chipText, reminderRepeat === Enums.RepeatType.DAILY && styles.activeChipText]}>Daily</Text>
+                        <Text style={styles.timeText}>{reminderHour}</Text>
+                        <Text style={styles.timeLabel}>Hr</Text>
                       </TouchableOpacity>
+                      <Text style={styles.timeSeparator}>:</Text>
                       <TouchableOpacity
-                        onPress={() => setReminderRepeat(Enums.RepeatType.ONCE)}
-                        style={[styles.repeatChip, reminderRepeat === Enums.RepeatType.ONCE && styles.activeChip]}
+                        style={styles.timeBox}
+                        onPress={() => {
+                          const m = parseInt(reminderMinute);
+                          const next = m >= 55 ? 0 : m + 5;
+                          setReminderMinute(next.toString().padStart(2, '0'));
+                        }}
                       >
-                        <Text style={[styles.chipText, reminderRepeat === Enums.RepeatType.ONCE && styles.activeChipText]}>Once</Text>
+                        <Text style={styles.timeText}>{reminderMinute}</Text>
+                        <Text style={styles.timeLabel}>Min</Text>
                       </TouchableOpacity>
+                      <Text style={styles.hintText}>Tap to change</Text>
+                    </View>
+
+                    <View style={styles.repeatContainer}>
+                      <Text style={styles.labelSmall}>{t("notes.repeat") ?? "Repeat"}</Text>
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                        <TouchableOpacity
+                          onPress={() => setReminderRepeat(Enums.RepeatType.DAILY)}
+                          style={[styles.repeatChip, reminderRepeat === Enums.RepeatType.DAILY && styles.activeChip]}
+                        >
+                          <Text style={[styles.chipText, reminderRepeat === Enums.RepeatType.DAILY && styles.activeChipText]}>Daily</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setReminderRepeat(Enums.RepeatType.ONCE)}
+                          style={[styles.repeatChip, reminderRepeat === Enums.RepeatType.ONCE && styles.activeChip]}
+                        >
+                          <Text style={[styles.chipText, reminderRepeat === Enums.RepeatType.ONCE && styles.activeChipText]}>Once</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setReminderRepeat(Enums.RepeatType.WEEKLY)}
+                          style={[styles.repeatChip, reminderRepeat === Enums.RepeatType.WEEKLY && styles.activeChip]}
+                        >
+                          <Text style={[styles.chipText, reminderRepeat === Enums.RepeatType.WEEKLY && styles.activeChipText]}>Weekly</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </View>
-              )}
-            </View>
+                )}
+              </View>
 
-            <TouchableOpacity
-              style={[styles.saveButton, (!newNote.trim() || isCreatingNote || isCreatingReminder) && styles.disabledBtn]}
-              onPress={handleAddNote}
-              disabled={!newNote.trim() || isCreatingNote || isCreatingReminder}
-            >
-              {(isCreatingNote || isCreatingReminder) ?
-                <ActivityIndicator color="#FFF" /> :
-                <Text style={styles.saveButtonText}>{t("common.save")}</Text>
-              }
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveButton, (!newNote.trim() || isCreatingNote || isCreatingReminder) && styles.disabledBtn]}
+                onPress={handleAddNote}
+                disabled={!newNote.trim() || isCreatingNote || isCreatingReminder}
+              >
+                {(isCreatingNote || isCreatingReminder) ?
+                  <ActivityIndicator color="#FFF" /> :
+                  <Text style={styles.saveButtonText}>{t("common.save")}</Text>
+                }
+              </TouchableOpacity>
+              <View style={{ height: 20 }} />
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -373,7 +433,7 @@ const styles = createScaledSheet({
   emptyState: { alignItems: 'center', marginTop: 60 },
   emptyText: { color: '#9CA3AF', marginTop: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '80%' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#37352F' },
   typeSelector: { flexDirection: 'row', marginBottom: 16, gap: 10 },
@@ -381,22 +441,25 @@ const styles = createScaledSheet({
   activeTypeBtn: { backgroundColor: '#E6F3FF' },
   typeBtnText: { fontSize: 13, color: '#37352F' },
   activeTypeBtnText: { color: '#0077D6', fontWeight: '600' },
-  modalInput: { fontSize: 16, lineHeight: 24, color: '#37352F', minHeight: 100, textAlignVertical: 'top', marginBottom: 10 },
-
-  // Reminder Styles
+  modalInput: { fontSize: 16, lineHeight: 24, color: '#37352F', minHeight: 80, textAlignVertical: 'top', marginBottom: 10 },
   reminderSection: { backgroundColor: '#F7F7F5', padding: 12, borderRadius: 8, marginBottom: 20 },
   reminderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   reminderLabel: { fontSize: 15, fontWeight: '500', color: '#37352F' },
   reminderControls: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E1E1E1', paddingTop: 12 },
-  timeInputContainer: { marginBottom: 10 },
-  timeInput: { backgroundColor: '#FFF', borderRadius: 4, padding: 8, borderWidth: 1, borderColor: '#E1E1E1', marginTop: 4 },
+  inputGroup: { marginBottom: 10 },
+  miniInput: { backgroundColor: '#FFFFFF', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#E5E7EB', marginTop: 4, fontSize: 14 },
+  timePickerContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 10 },
+  timeBox: { backgroundColor: '#FFF', borderRadius: 8, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', width: 60 },
+  timeText: { fontSize: 24, fontWeight: 'bold', color: '#37352F' },
+  timeLabel: { fontSize: 10, color: '#6B7280' },
+  timeSeparator: { fontSize: 24, fontWeight: 'bold', marginHorizontal: 10, color: '#37352F' },
+  hintText: { fontSize: 10, color: '#9CA3AF', marginLeft: 10 },
   labelSmall: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
-  repeatContainer: {},
+  repeatContainer: { marginTop: 10 },
   repeatChip: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFF' },
   activeChip: { backgroundColor: '#37352F', borderColor: '#37352F' },
   chipText: { fontSize: 12, color: '#37352F' },
   activeChipText: { color: '#FFF' },
-
   saveButton: { backgroundColor: '#37352F', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
   disabledBtn: { backgroundColor: '#A0A0A0' },
   saveButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 16 }
