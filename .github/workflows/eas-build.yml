@@ -29,34 +29,32 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: 🔧 Setup specific NDK (Force v26) & CMake
+      - name: 🔧 Setup NDK 27 (Force Install)
         run: |
           set -e
           echo ">>> SDK root: $ANDROID_SDK_ROOT"
           
-          # Force remove NDK 27 to prevent Gradle from picking it up
-          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.* || true
-          sudo rm -rf $ANDROID_SDK_ROOT/ndk/27.* || true
+          # Xóa các bản NDK cũ để tránh nhầm lẫn (dọn sạch sẽ)
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/* || true
+          sudo rm -rf $ANDROID_SDK_ROOT/ndk/* || true
           
-          # Install specific NDK and CMake versions
-          echo "✨ Installing/Verifying NDK 26.1.10909125 and CMake 3.22.1..."
-          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+          # Cài đặt chính xác NDK 27.1.12297006 và CMake
+          echo "✨ Installing NDK 27.1.12297006..."
+          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
 
-          # Define paths
-          NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          # Định nghĩa đường dẫn
+          NDK_PATH="$ANDROID_SDK_ROOT/ndk/27.1.12297006"
           CMAKE_PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin"
 
-          # Export environment variables for the current runner
+          # Export biến môi trường
           echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
           echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
           echo "PATH=$CMAKE_PATH:$PATH" >> $GITHUB_ENV
 
-          # Verify installation
-          echo "✨ Verifying paths..."
+          # Kiểm tra lại
           ls -la $ANDROID_SDK_ROOT/ndk
           $NDK_PATH/ndk-build --version
-          $CMAKE_PATH/cmake --version
 
       - name: 🛠️ Generate Android directory (Prebuild)
         env:
@@ -65,8 +63,8 @@ jobs:
 
       - name: 📝 Force NDK path in local.properties
         run: |
-          # Inject the absolute NDK path into local.properties to override any Gradle auto-detection
-          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> ./android/local.properties
+          # Ghi đè đường dẫn NDK 27 vào local.properties để Gradle không tìm lung tung
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/27.1.12297006" >> ./android/local.properties
           cat ./android/local.properties
 
       - name: 🧹 Clean up duplicate icon files
@@ -89,13 +87,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
 
-      - name: 🧹 Gradle Clean (Ensure Fresh Build)
+      - name: 🧹 Gradle Clean
         run: |
           cd android
           chmod +x gradlew
           ./gradlew clean
 
-      - name: 🧹 Clean up large components (Safe Mode)
+      - name: 🧹 Clean up large components (Free space)
         run: |
           sudo rm -rf /usr/share/dotnet/
           sudo apt-get clean
@@ -118,7 +116,6 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          # Explicitly pass NDK vars again to the EAS subprocess environment
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
         run: |
           eas build --platform android --profile production --local --non-interactive --output ./app-release.apk

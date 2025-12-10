@@ -95,7 +95,7 @@ export default ({ config }) => {
           "expo-build-properties",
           {
             android: {
-              ndkVersion: "26.1.10909125",
+              ndkVersion: "27.1.12297006",
               cmakeVersion: "3.22.1",
             },
           },

@@ -343,7 +343,7 @@
         "generic_message": "Đã xảy ra lỗi. Vui lòng thử lại sau."
     },
     "common": {
-        "items" : "Items",
+        "items": "Items",
         "connect": "Connect",
         "connected": "Connected",
         "seeAll": "See all",
@@ -625,8 +625,8 @@
         "selectLanguages": "Select Languages",
         "changed": "Language changed successfully",
         "vietnamese": "Vietnamese",
-        "english" : "English",
-        "chinese" : "Chinese"
+        "english": "English",
+        "chinese": "Chinese"
     },
     "languageSelection": {
         "title": "Select Your Languages",
@@ -1988,6 +1988,7 @@
     "social": "Social",
     "join": "Join",
     "chat": {
+        "active_now": "Online",
         "title": "Chat",
         "aiChat": "Chat with AI",
         "aiChatDescription": "Practice with intelligent AI assistant",

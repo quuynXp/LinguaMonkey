@@ -25,7 +25,7 @@ import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
 import { useAppStore } from "../../stores/appStore";
-import FileUploader from "../common/FileUploader"; // Assuming location based on structure
+import FileUploader from "../common/FileUploader";
 
 const { width } = Dimensions.get('window');
 
@@ -335,11 +335,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
-        // VISIBILITY LOGIC:
-        // 1. Show Translated Text IF: AutoTranslate is ON AND Translation Exists AND Not Media
+        // VISIBILITY LOGIC FIX:
+        // 1. Show Translated Text IF: AutoTranslate is ON AND Translation Exists AND Not Media AND NOT USER (Self)
+        const showTranslatedText = autoTranslate && !!item.translatedText && !isMedia && !isUser;
         // 2. Show Manual Button IF: AutoTranslate is OFF AND Not Media AND Not User
-        const showTranslatedText = autoTranslate && !!item.translatedText && !isMedia;
         const showManualButton = !autoTranslate && !isMedia && !isUser;
+
         const isTranslating = translatingId === item.id;
 
         return (
@@ -372,7 +373,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 {/* Original Text Line */}
                                 <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
 
-                                {/* Translated Text Line (Only if Auto is ON) */}
+                                {/* Translated Text Line (Only if Auto is ON AND Not User) */}
                                 {showTranslatedText && (
                                     <View style={styles.dualLineContainer}>
                                         <View style={styles.separator} />
