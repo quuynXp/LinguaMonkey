@@ -121,17 +121,16 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         ChatMessage message = chatMessageMapper.toEntity(request);
+        if (request.getMediaUrl() != null && !request.getMediaUrl().isEmpty()) {
+            message.setMediaUrl(request.getMediaUrl());
+        }
+        
         if (message.getId() == null) {
             message.setId(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()));
         }
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
         
-        // Performance optimization: No synchronous translation here.
-        // Translation is now handled asynchronously by the client or background worker
-        // to prevent blocking the STOMP websocket flow.
-        message.setTranslations("{}");
-
         ChatMessage savedMessage = chatMessageRepository.save(message);
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);

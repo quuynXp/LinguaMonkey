@@ -24,7 +24,6 @@ type ChatRoomParams = {
         roomId: string;
         roomName: string;
         initialFocusMessageId?: string;
-        // Nhận thêm params này từ màn hình danh sách để hiển thị ngay lập tức
         partnerIsOnline?: boolean;
         partnerLastActiveText?: string;
     };
@@ -35,7 +34,6 @@ const GroupChatScreen = () => {
     const navigation = useNavigation<any>();
     const { t } = useTranslation();
 
-    // Lấy thêm partnerIsOnline từ params nếu có
     const { roomId, roomName: initialRoomName, initialFocusMessageId, partnerIsOnline: initialIsOnline, partnerLastActiveText: initialLastActive } = route.params;
 
     const { user } = useUserStore();
@@ -58,7 +56,6 @@ const GroupChatScreen = () => {
         stompConnected,
         subscribeToRoom, unsubscribeFromRoom,
         userStatuses,
-        updateUserStatus
     } = useChatStore();
 
     const { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom } = useRooms();
@@ -114,97 +111,55 @@ const GroupChatScreen = () => {
         return roomInfo?.roomName || initialRoomName;
     }, [isPrivateRoom, targetMember, roomInfo, initialRoomName]);
 
-    // --- LOGIC TRẠNG THÁI ONLINE/OFFLINE (SỬA LẠI) ---
-
-    // 1. Tính toán trạng thái Online chuẩn duy nhất
-    const isTargetOnline = useMemo(() => {
-        if (!isPrivateRoom || !targetMember) return false;
-        const userId = targetMember.userId;
-
-        // Ưu tiên 1: Realtime từ WebSocket Store (Chính xác nhất khi đang chat)
-        if (userStatuses[userId]?.isOnline !== undefined) {
-            return userStatuses[userId].isOnline;
-        }
-
-        // Ưu tiên 2: Dữ liệu API chi tiết phòng (Vừa load xong)
+    const isPartnerOnline = useMemo(() => {
         if (roomInfo?.partnerIsOnline !== undefined) {
             return roomInfo.partnerIsOnline;
         }
+        return initialIsOnline ?? false;
+    }, [roomInfo, initialIsOnline]);
 
-        // Ưu tiên 3: Dữ liệu truyền từ màn hình danh sách (Hiển thị ngay lập tức khi chưa load xong API)
-        if (initialIsOnline !== undefined) {
-            return initialIsOnline;
+    const partnerLastActive = useMemo(() => {
+        if (roomInfo?.partnerLastActiveText) {
+            return roomInfo.partnerLastActiveText;
         }
+        return initialLastActive;
+    }, [roomInfo, initialLastActive]);
 
-        return false;
-    }, [isPrivateRoom, targetMember, userStatuses, roomInfo, initialIsOnline]);
-
-    // 2. Đồng bộ API vào Store (để logic Realtime luôn có dữ liệu nền)
-    useEffect(() => {
-        if (roomInfo && isPrivateRoom && targetMember) {
-            // Nếu Store chưa có dữ liệu, cập nhật từ API vào Store ngay
-            if (userStatuses[targetMember.userId]?.isOnline === undefined) {
-                updateUserStatus(targetMember.userId, roomInfo.partnerIsOnline, undefined);
-            }
-        }
-    }, [roomInfo, isPrivateRoom, targetMember, updateUserStatus, userStatuses]);
-
-
-    // 3. Render Dot (Sử dụng biến isTargetOnline đã tính toán)
     const renderHeaderStatusDot = () => {
-        if (isTargetOnline) {
-            return <View style={[styles.headerActiveDot, { width: 10, height: 10, borderRadius: 5 }]} />;
+        if (isPrivateRoom && isPartnerOnline) {
+            return <View style={styles.headerActiveDot} />;
         }
         return null;
     };
 
-    // Render Dot trong danh sách thành viên (Modal setting)
     const renderMemberDot = (userId: string) => {
-        // Logic tương tự nhưng cho danh sách member
         const status = userStatuses[userId];
-        const isOnline = status?.isOnline || (userId === targetMember?.userId && isTargetOnline);
-        
+        const isOnline = status?.isOnline || (userId === targetMember?.userId && isPartnerOnline);
+
         if (isOnline) {
             return <View style={[styles.headerActiveDot, { width: 12, height: 12, borderRadius: 6 }]} />;
         }
         return null;
     };
 
-    // 4. Render Text Trạng thái (Học theo ChatRoomListScreen)
     const getHeaderStatusText = () => {
         if (isPrivateRoom && targetMember) {
-            // CASE 1: Đang Online -> Hiển thị "Active now"
-            if (isTargetOnline) return t('chat.active_now');
-
-            // CASE 2: Offline - Kiểm tra WebSocket Store có thời gian last active mới nhất không?
-            const realtimeLastActive = userStatuses[targetMember.userId]?.lastActiveAt;
-            if (realtimeLastActive) {
-                const diff = Date.now() - new Date(realtimeLastActive).getTime();
-                const minutes = Math.floor(diff / 60000);
-                if (minutes < 1) return t('chat.active_now');
-                if (minutes < 60) return `${t('chat.active')} ${minutes}m ${t('chat.ago')}`;
-                const hours = Math.floor(minutes / 60);
-                if (hours < 24) return `${t('chat.active')} ${hours}h ${t('chat.ago')}`;
+            if (isPartnerOnline) {
+                return t('chat.active_now');
             }
-
-            // CASE 3: Offline - Fallback về text từ Server (giống ChatRoomListScreen)
-            // Đây là dòng quan trọng để khớp với màn hình danh sách
-            const serverText = roomInfo?.partnerLastActiveText || initialLastActive;
-            if (serverText) return serverText;
-
+            if (partnerLastActive) {
+                return partnerLastActive;
+            }
             return t('chat.offline');
         }
         return `${members?.length || 0} ${t('chat.members')}`;
     };
-
-    // --- KẾT THÚC LOGIC TRẠNG THÁI ---
 
     useEffect(() => {
         if (stompConnected && roomId) {
             subscribeToRoom(roomId);
             if (user?.userId) {
                 try {
-                    // Báo mình đang online khi vào phòng
                     stompService.publish(`/app/chat/room/${roomId}/status`, {
                         userId: user.userId,
                         status: 'ONLINE'
@@ -281,7 +236,6 @@ const GroupChatScreen = () => {
                     {isPrivateRoom && targetMember && (
                         <View style={{ position: 'relative', marginRight: 10 }}>
                             <Image source={targetMember.avatarUrl ? { uri: targetMember.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={{ width: 36, height: 36, borderRadius: 18 }} />
-                            {/* Dùng chung logic hiển thị dot */}
                             {renderHeaderStatusDot()}
                         </View>
                     )}

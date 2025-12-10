@@ -57,6 +57,7 @@ public class RoomServiceImpl implements RoomService {
     private final ChatMessageRepository chatMessageRepository;
     private final NotificationService notificationService;
 
+    // --- FIX QUAN TRỌNG: Cập nhật logic tính toán status vào đây ---
     private RoomResponse toRoomResponseWithMembers(Room room) {
         RoomResponse response = roomMapper.toResponse(room);
         long memberCount = roomRepository.countMembersByRoomId(room.getRoomId());
@@ -64,13 +65,48 @@ public class RoomServiceImpl implements RoomService {
 
         List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId());
         
+        // 1. Map danh sách thành viên
         List<UserProfileResponse> memberProfiles = members.stream()
             .map(RoomMember::getUser)
-            .map(userMapper::toProfileResponse)
-            .map(user -> UserProfileResponse.builder().userId(user.getUserId()).fullname(user.getFullname()).nickname(user.getNickname()).avatarUrl(user.getAvatarUrl()).build()) // Dùng Builder tạm thời
+            .map(user -> UserProfileResponse.builder()
+                    .userId(user.getUserId())
+                    .fullname(user.getFullname())
+                    .nickname(user.getNickname())
+                    .avatarUrl(user.getAvatarUrl())
+                    .build()) 
             .collect(Collectors.toList());
         
         response.setMembers(memberProfiles);
+
+        // 2. LOGIC MỚI: Tính toán Partner Online/Offline cho Private Room
+        if (room.getRoomType() == RoomType.PRIVATE) {
+            try {
+                // Lấy ID người đang gọi API
+                String currentUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
+                if (!"anonymousUser".equals(currentUserIdStr)) {
+                    UUID currentUserId = UUID.fromString(currentUserIdStr);
+
+                    // Tìm partner (người không phải là mình)
+                    Optional<RoomMember> partnerOpt = members.stream()
+                            .filter(m -> !m.getId().getUserId().equals(currentUserId))
+                            .findFirst();
+
+                    if (partnerOpt.isPresent()) {
+                        User partner = partnerOpt.get().getUser();
+                        // Set các thông tin quan trọng cho Client hiển thị
+                        response.setPartnerIsOnline(UserStatusUtils.isOnline(partner.getLastActiveAt()));
+                        response.setPartnerLastActiveText(UserStatusUtils.formatLastActive(partner.getLastActiveAt()));
+                        
+                        // Optional: Có thể override tên room bằng tên partner nếu muốn đồng nhất logic
+                        // response.setRoomName(partner.getNickname() != null ? partner.getNickname() : partner.getFullname());
+                        // response.setAvatarUrl(partner.getAvatarUrl());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Cannot determine partner status in toRoomResponseWithMembers: {}", e.getMessage());
+            }
+        }
+
         return response;
     }
 
@@ -95,6 +131,7 @@ public class RoomServiceImpl implements RoomService {
                     User partner = partnerOpt.get().getUser();
                     response.setRoomName(partner.getNickname() != null ? partner.getNickname() : partner.getFullname());
                     response.setAvatarUrl(partner.getAvatarUrl());
+                    // Logic này đúng, nhưng cần đảm bảo toRoomResponseWithMembers cũng có logic tương tự
                     response.setPartnerIsOnline(UserStatusUtils.isOnline(partner.getLastActiveAt()));
                     response.setPartnerLastActiveText(UserStatusUtils.formatLastActive(partner.getLastActiveAt()));
                 } else {
@@ -115,11 +152,6 @@ public class RoomServiceImpl implements RoomService {
                         response.setLastMessage(msg.getContent());
                         response.setLastMessageTime(msg.getId().getSentAt());
                     });
-            
-            // Lấy thành viên cho Joined Rooms nếu cần thiết (tùy thuộc vào yêu cầu UI)
-            // Nếu bạn chỉ cần list members khi tạo phòng thì bỏ qua phần này
-            // List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId());
-            // response.setMembers(members.stream().map(RoomMember::getUser).map(userMapper::toProfileResponse).collect(Collectors.toList()));
             
             return response;
         });
@@ -263,18 +295,8 @@ public class RoomServiceImpl implements RoomService {
             }
         }
         
-        RoomResponse response = roomMapper.toResponse(room);
-        response.setMemberCount(initialMembers.size());
-        
-        // 3. Populate danh sách UserProfileResponse
-        List<UserProfileResponse> memberProfiles = initialMembers.stream()
-            .map(user -> UserProfileResponse.builder().userId(user.getUserId()).fullname(user.getFullname()).nickname(user.getNickname()).avatarUrl(user.getAvatarUrl()).build()) // Dùng Builder tạm thời
-            //.map(userMapper::toProfileResponse) // SỬA: Thay thế bằng UserMapper thực tế của bạn
-            .collect(Collectors.toList());
-
-        response.setMembers(memberProfiles);
-        
-        return response;
+        // Trả về response thông qua hàm chuẩn hóa đã fix
+        return toRoomResponseWithMembers(room);
     }
 
     @Override
@@ -408,7 +430,7 @@ public class RoomServiceImpl implements RoomService {
         UUID currentUserId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
         if (!room.getCreatorId().equals(currentUserId)) {
              RoomMember requester = roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, currentUserId)
-                         .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
+                          .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
              if(!Boolean.TRUE.equals(requester.getIsAdmin())) {
                  throw new AppException(ErrorCode.UNAUTHORIZED);
              }
@@ -558,6 +580,8 @@ public class RoomServiceImpl implements RoomService {
             }
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+            
+            // Hàm này bây giờ đã bao gồm logic tính toán online/offline
             return toRoomResponseWithMembers(room);
         } catch (Exception e) {
             log.error("Error while fetching room by ID {}: {}", id, e.getMessage());
@@ -766,5 +790,4 @@ public class RoomServiceImpl implements RoomService {
 
         return toRoomResponseWithMembers(roomToJoin);
     }
-
 }

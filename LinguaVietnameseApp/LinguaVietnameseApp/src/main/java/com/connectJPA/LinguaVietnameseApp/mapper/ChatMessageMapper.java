@@ -20,20 +20,23 @@ public abstract class ChatMessageMapper {
     @Autowired
     protected Gson gson;
 
+    // --- SỬA ĐỔI: Thêm mapping tường minh cho mediaUrl và messageType ---
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "translations", ignore = true) // Ignore khi tạo mới, Service sẽ set "{}"
+    @Mapping(target = "translations", ignore = true)
+    @Mapping(source = "mediaUrl", target = "mediaUrl") // Bắt buộc map
+    @Mapping(source = "messageType", target = "messageType") // Bắt buộc map
     public abstract ChatMessage toEntity(ChatMessageRequest request);
 
     @Mapping(source = "id.chatMessageId", target = "chatMessageId")
     @Mapping(source = "id.sentAt", target = "sentAt")
     @Mapping(target = "translations", expression = "java(mapTranslations(message.getTranslations()))")
+    @Mapping(source = "mediaUrl", target = "mediaUrl") // Bắt buộc map chiều về
     public abstract ChatMessageResponse toResponse(ChatMessage message);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "translations", ignore = true)
     public abstract void updateEntityFromRequest(ChatMessageRequest request, @MappingTarget ChatMessage message);
 
-    // Helper method để convert JSON String -> Map
     protected Map<String, String> mapTranslations(String json) {
         if (json == null || json.isEmpty()) {
             return new HashMap<>();

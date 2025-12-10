@@ -38,12 +38,12 @@ jobs:
           sudo rm -rf /usr/local/lib/android/sdk/ndk/* || true
           sudo rm -rf $ANDROID_SDK_ROOT/ndk/* || true
           
-          # Cài đặt chính xác NDK 27.1.12297006 và CMake
-          echo "✨ Installing NDK 27.1.12297006..."
-          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+          # Cài đặt chính xác NDK 27.0.12077973 và CMake
+          echo "✨ Installing NDK 27.0.12077973..."
+          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
 
           # Định nghĩa đường dẫn
-          NDK_PATH="$ANDROID_SDK_ROOT/ndk/27.1.12297006"
+          NDK_PATH="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
           CMAKE_PATH="$ANDROID_SDK_ROOT/cmake/3.22.1/bin"
 
           # Export biến môi trường
@@ -64,7 +64,7 @@ jobs:
       - name: 📝 Force NDK path in local.properties
         run: |
           # Ghi đè đường dẫn NDK 27 vào local.properties để Gradle không tìm lung tung
-          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/27.1.12297006" >> ./android/local.properties
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> ./android/local.properties
           cat ./android/local.properties
 
       - name: 🧹 Clean up duplicate icon files
