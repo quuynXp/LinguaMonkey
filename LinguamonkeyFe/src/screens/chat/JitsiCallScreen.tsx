@@ -85,7 +85,6 @@ const WebRTCCallScreen = () => {
 
   const wsSignal = useRef<WebSocket | null>(null);
   const wsAudio = useRef<WebSocket | null>(null);
-
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const iceCandidatesQueue = useRef<Map<string, RTCIceCandidate[]>>(new Map());
   const processingRef = useRef<{ lastUpdate: number, data: SubtitleData | null }>({ lastUpdate: 0, data: null });

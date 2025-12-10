@@ -1,14 +1,14 @@
 # ==========================================
 # STAGE 1: BUILDER
+# Dùng Bullseye (Debian 11) để có OpenSSL 1.1
 # ==========================================
-FROM python:3.11-bookworm AS builder
+FROM python:3.10-slim-bullseye AS builder
 
 WORKDIR /opt/venv
 RUN python -m venv .
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Cài đặt các thư viện cần thiết để BUILD packages
-# Thêm: libssl-dev, ca-certificates (cho Azure SDK compile linking)
+# Cài đặt dependency để build
 RUN apt-get update && apt-get install -y \
     build-essential \
     libsndfile1-dev \
@@ -17,25 +17,26 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libpq-dev \
     libssl-dev \
-    ca-certificates \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip setuptools wheel
 
 COPY requirements.txt .
-# Cài đặt requirements vào venv
+# Cài đặt requirements
 RUN pip install --no-cache-dir -r requirements.txt \
     --index-url https://download.pytorch.org/whl/cpu || \
     pip install --no-cache-dir -r requirements.txt
 
 # ==========================================
 # STAGE 2: FINAL RUNTIME
+# Dùng Bullseye (Debian 11) - QUAN TRỌNG CHO AZURE SDK
 # ==========================================
-FROM python:3.11-slim-bookworm
+FROM python:3.10-slim-bullseye
 
-# Cài đặt các thư viện RUNTIME (Bắt buộc phải có để Azure chạy được)
-# 1. libssl-dev & ca-certificates: Fix lỗi kết nối Azure (Error 2176)
-# 2. libasound2: Fix lỗi khởi tạo platform âm thanh (bắt buộc cho SDK)
+# Cài đặt thư viện hệ thống bắt buộc cho Azure Speech SDK
+# 1. libssl-dev & ca-certificates: OpenSSL 1.1 (Native của Bullseye)
+# 2. libasound2: Thư viện âm thanh (Bắt buộc phải có để load dll)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     libjpeg62-turbo \
@@ -45,19 +46,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     ca-certificates \
     libasound2 \
+    libasound2-plugins \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Cập nhật chứng chỉ CA mới nhất (An toàn)
+# Cập nhật chứng chỉ CA
 RUN update-ca-certificates
 
 WORKDIR /app
 
-# Tạo user non-root để bảo mật
+# Tạo user (Bảo mật)
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 RUN chown -R appuser:appuser /app
 
-# Copy môi trường ảo từ builder sang
+# Copy môi trường ảo
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONPATH="/app"
@@ -65,11 +67,9 @@ ENV PYTHONPATH="/app"
 # Copy source code
 COPY . ./
 
-# Cấp quyền execute cho script khởi động
+# Cấp quyền
 RUN chmod +x ./start_services_local.sh
 
-# Expose port (HTTP và gRPC)
 EXPOSE 8001 50051
 
-# Chạy container
 CMD ["./start_services_local.sh"]
