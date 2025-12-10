@@ -390,11 +390,9 @@ async def audio_endpoint(
     target_spoken_lang = "en-US" if (not spokenLang or spokenLang == 'en') else "vi-VN" 
     if spokenLang == 'vi': target_spoken_lang = 'vi-VN'
 
-    # --- CALLBACKS XỬ LÝ KẾT QUẢ TỪ AZURE ---
 
     async def handle_interim_result(text: str):
-        # FIX: Send to EVERYONE (including self) so I can see "Processing..."
-        # This confirms mic is working.
+        # Broadcast to everyone including sender so sender sees "Processing..."
         await audio_manager.broadcast_subtitle({
             "type": "subtitle",
             "status": "processing",
@@ -417,7 +415,6 @@ async def audio_endpoint(
             if len(new_full) > 200: 
                 user_text_cache[buffer_key] = ""
 
-            # Broadcast status processing final time
             await audio_manager.broadcast_subtitle({
                 "type": "subtitle",
                 "status": "processing",
@@ -428,10 +425,8 @@ async def audio_endpoint(
                 "senderId": user_id
             }, normalized_room_id, exclude_user_id=None)
 
-            # Translation
             translated_text, _ = await translator.translate(clean_text, spokenLang, user_native_lang)
             
-            # Broadcast COMPLETE to EVERYONE
             await audio_manager.broadcast_subtitle({
                 "type": "subtitle",
                 "status": "complete",
@@ -445,7 +440,6 @@ async def audio_endpoint(
         except Exception as e:
             logger.error(f"Translation logic error: {e}")
 
-    # --- KHỞI TẠO AZURE STREAMING ---
     azure_lang_code = "vi-VN" if "vi" in str(spokenLang) else "en-US"
     
     transcriber = AzureTranscriber(
@@ -462,9 +456,13 @@ async def audio_endpoint(
             msg = await websocket.receive()
             
             if "bytes" in msg and msg["bytes"]:
-                transcriber.write_stream(msg["bytes"])
+                data_bytes = msg["bytes"]
+                # Optional: Log data arrival (spammy, but good for debug)
+                # logger.info(f"Got {len(data_bytes)} bytes from {user_id}")
+                transcriber.write_stream(data_bytes)
                 
             elif "text" in msg:
+                # Handle any text commands if needed
                 pass
                 
     except WebSocketDisconnect:

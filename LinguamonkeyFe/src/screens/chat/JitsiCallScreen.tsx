@@ -8,7 +8,6 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
-  DimensionValue,
   Alert
 } from 'react-native';
 import {
@@ -93,16 +92,18 @@ const WebRTCCallScreen = () => {
   const localStreamRef = useRef<MediaStream | null>(null);
   const pingInterval = useRef<any>(null);
 
+  // --- AUDIO CONFIG ---
+  // Change source to 0 (DEFAULT) to avoid conflict with WebRTC (VOICE_COMMUNICATION)
   const audioOptions = {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
-    audioSource: Platform.OS === 'android' ? 6 : 0, // 6 = VOICE_RECOGNITION
-    bufferSize: 2048,
+    audioSource: 0, // 0=DEFAULT. Avoid 6 (VoiceRec) when in call
+    bufferSize: 4096, // Increased buffer slightly
     wavFile: 'temp.wav'
   };
 
-  // --- 1. DEFINITIONS (HOISTED) ---
+  // --- 1. DEFINITIONS ---
 
   const getMediaStream = useCallback(async () => {
     if (Platform.OS === 'android') {
@@ -112,7 +113,6 @@ const WebRTCCallScreen = () => {
       ]);
     }
     try {
-      // Config audio to try and force standard voice communication
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: {
@@ -218,10 +218,7 @@ const WebRTCCallScreen = () => {
     pcAny.ontrack = (event: any) => {
       if (event.streams && event.streams[0]) {
         console.log(`🎥 Stream received from ${partnerId}`);
-        // Ensure remote audio track is enabled
-        event.streams[0].getAudioTracks().forEach((track: any) => {
-          track.enabled = true;
-        });
+        event.streams[0].getAudioTracks().forEach((track: any) => { track.enabled = true; });
         setRemoteStreams(prev => {
           const newMap = new Map(prev);
           newMap.set(partnerId, event.streams[0]);
@@ -249,7 +246,7 @@ const WebRTCCallScreen = () => {
 
   const handleSignalingData = useCallback(async (senderId: string, payload: any) => {
     const type = payload.type;
-    console.log(`📩 Signal [${type}] from ${senderId.substring(0, 5)}...`);
+    // console.log(`📩 Signal [${type}] from ${senderId.substring(0, 5)}...`);
 
     if (type === 'JOIN_ROOM') {
       setConnectionStatus(`Partner Joined. Connecting...`);
@@ -293,26 +290,34 @@ const WebRTCCallScreen = () => {
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
     }
 
-    // DELAY START to let WebRTC grab the mic first for the call
-    // This is crucial to prevent "Silent Call" issue
+    // Increased delay to 2s to ensure WebRTC is fully established before we try to hook the mic
     setTimeout(() => {
+      if (isManuallyClosed.current) return;
       try {
+        console.log("🎤 Initializing LiveAudioStream...");
         LiveAudioStream.stop();
         LiveAudioStream.init(audioOptions);
+
         LiveAudioStream.on('data', (base64Data: string) => {
-          if (!wsAudio.current || wsAudio.current.readyState !== WebSocket.OPEN || !isMicOn || isManuallyClosed.current) return;
+          // LOGGING: Check if data is actually generated
+          // console.log(`🎤 Chunk: ${base64Data.length}`); 
+
+          if (!wsAudio.current || wsAudio.current.readyState !== WebSocket.OPEN || !isMicOn) return;
           try {
             const binaryString = atob(base64Data);
             const len = binaryString.length;
             const bytes = new Uint8Array(len);
             for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
             wsAudio.current.send(bytes.buffer);
-          } catch (err) { }
+          } catch (err) { console.error("Audio send error", err) }
         });
-        if (isMicOn) LiveAudioStream.start();
-        console.log("🎤 LiveAudioStream started (delayed)");
+
+        if (isMicOn) {
+          LiveAudioStream.start();
+          console.log("🎤 LiveAudioStream START command sent");
+        }
       } catch (e) { console.error("LiveAudioStream Init Error:", e); }
-    }, 1500);
+    }, 2000);
 
   }, [isMicOn]);
 
@@ -357,12 +362,12 @@ const WebRTCCallScreen = () => {
     const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
     const url = `${protocol}${cleanBase}/ws/py/signal?token=${accessToken}&roomId=${normalizedRoomId}`;
 
-    console.log(`🔌 Connecting SIGNAL: ${url}`);
+    // console.log(`🔌 Connecting SIGNAL: ${url}`);
     const ws = new WebSocket(url);
     wsSignal.current = ws;
 
     ws.onopen = () => {
-      console.log("✅ Signal Socket OPEN");
+      // console.log("✅ Signal Socket OPEN");
       setConnectionStatus("Connected. Waiting...");
       setTimeout(() => sendSignalingMessage({ type: 'JOIN_ROOM' }), 500);
       startPing();
@@ -377,13 +382,12 @@ const WebRTCCallScreen = () => {
           const payload = data.payload || data;
           await handleSignalingData(senderId, payload);
         }
-      } catch (err) { console.error("Signal Msg Error", err); }
+      } catch (err) { }
     };
 
     ws.onerror = (e: any) => console.log("❌ Signal WS Error:", e.message);
     ws.onclose = (e) => {
       if (!isManuallyClosed.current) {
-        console.log(`⚠️ Signal Closed (${e.code}). Retry...`);
         signalReconnectTimeout.current = setTimeout(connectSignalingSocket, 3000);
       }
     };
@@ -476,14 +480,12 @@ const WebRTCCallScreen = () => {
   };
 
   const renderSubtitleText = (data: SubtitleData) => {
-    // Show self subtitles if they are processing, even if not translated yet
     if (!data.originalFull.trim()) return null;
 
     const isMe = data.senderId === user?.userId;
     const originalText = data.originalFull;
     const translatedText = data.translated;
 
-    // For self: only show original (to confirm mic is working)
     if (isMe) {
       return (
         <View style={styles.subtitleContainer}>

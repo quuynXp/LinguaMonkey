@@ -14,6 +14,11 @@ jobs:
     defaults:
       run:
         working-directory: ./LinguamonkeyFe
+    
+    # Globally force the NDK path for all steps in this job
+    env:
+      ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
+      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: 🧱 Checkout repository
@@ -22,7 +27,7 @@ jobs:
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20 # Fixed: 24.4 does not exist yet. Used LTS 20.
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
@@ -31,36 +36,32 @@ jobs:
 
       - name: 🔧 Setup specific NDK (Force v26)
         run: |
-          echo "✨ Locating Android SDK..."
-          echo "SDK Root: $ANDROID_SDK_ROOT"
-          
-          echo "✨ Removing incompatible NDK versions (v27+)..."
-          sudo rm -rf $ANDROID_SDK_ROOT/ndk/27*
-          sudo rm -rf $ANDROID_SDK_ROOT/ndk-bundle
+          echo "✨ Removing conflicting NDK versions..."
+          # Aggressively remove NDK 27 to prevent Gradle from auto-detecting it
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
           
           echo "✨ Installing/Verifying NDK 26.1.10909125..."
+          # Ensure NDK 26 is present using sdkmanager
           sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;26.1.10909125"
           
-          echo "✨ setting Environment Variables..."
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          # Verify installation
+          if [ -d "$ANDROID_NDK_HOME" ]; then
+            echo "✅ NDK 26 found at $ANDROID_NDK_HOME"
+          else
+            echo "❌ Failed to setup NDK 26"
+            exit 1
+          fi
+
+      - name: 📝 Create local.properties (Crucial Fix)
+        # We explicitly write the NDK path to local.properties. 
+        # Gradle ALWAYS prioritizes this file over auto-detection.
+        run: |
+          echo "sdk.dir=/usr/local/lib/android/sdk" > android/local.properties
+          echo "ndk.dir=/usr/local/lib/android/sdk/ndk/26.1.10909125" >> android/local.properties
+          cat android/local.properties
 
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
-
-      - name: 🔒 Force NDK in local.properties
-        # This is the critical fix. We explicitly tell Gradle where the NDK is via file.
-        run: |
-          echo "✨ Forcing NDK path in local.properties..."
-          cd android
-          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> local.properties
-          echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
-          cat local.properties
-
-      - name: 🧹 Clean up duplicate icon files
-        run: |
-          echo "✨ Cleaning up duplicate icon files..."
-          find ./android/app/src/main/res -name "*.webp" -delete
 
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
@@ -78,7 +79,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
 
-      - name: 🧹 Safe Clean Gradle & CMake
+      - name: 🧹 Safe Clean Gradle
         run: |
           echo "✨ Running Gradle Clean..."
           cd android
@@ -109,9 +110,11 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
         run: |
           echo "🔧 Start signed local EAS build..."
-          eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
+          # Added --clear-cache to ensure no stale Gradle demons use the old NDK
+          eas build --platform android --profile production --local --non-interactive --clear-cache --output ./app-release.apk
 
       - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4

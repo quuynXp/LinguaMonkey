@@ -65,7 +65,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Lazy
     private final BadgeService badgeService;
 
-    // UUID cố định cho AI Bot, đồng bộ với Python và Mobile
     private static final UUID AI_BOT_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     @Override
@@ -88,7 +87,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-        // Logic check member: Bỏ qua nếu là AI Bot gửi tin
         boolean isAiBot = AI_BOT_ID.equals(request.getSenderId());
         
         if (!isAiBot && room.getPurpose() != RoomPurpose.AI_CHAT) {
@@ -105,147 +103,87 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
 
-        // === LOGIC DỊCH THÔNG MINH (EAGER TRANSLATION) ===
-        // Chỉ dịch tin nhắn TEXT
         if (request.getContent() != null && !request.getContent().isEmpty() 
             && (request.getMessageType() == null || request.getMessageType().name().equals("TEXT"))) {
             
-            String targetLang = "en"; // Default fallback
+            String targetLang = "en"; 
             boolean shouldTranslate = false;
 
-            // 1. Xác định ngôn ngữ mục tiêu dựa trên người nhận
             if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
                 UUID receiverId = request.getReceiverId(); 
                 if (receiverId == null) {
-                      // Fallback tìm member còn lại
                       receiverId = roomMemberRepository.findOtherMemberId(roomId, request.getSenderId());
                 }
-                
                 if (receiverId != null) {
                     User receiver = userRepository.findById(receiverId).orElse(null);
-                    // Lấy ngôn ngữ mẹ đẻ của người nhận làm ngôn ngữ đích
                     if (receiver != null && receiver.getNativeLanguageCode() != null) {
                         targetLang = receiver.getNativeLanguageCode();
                         shouldTranslate = true;
                     }
                 }
             } else {
-                // Với Group Chat, có thể mặc định dịch sang tiếng Anh hoặc Việt
-                targetLang = "vi"; 
-                // shouldTranslate = true; // Uncomment để bật dịch cho Group
+                shouldTranslate = false;
             }
 
             if (shouldTranslate) {
                 try {
-                    // Gọi Python để Detect & Translate
-                    // Truyền "auto" để Python tự detect source language
                     CompletableFuture<TranslateResponse> future = grpcClientService.callTranslateAsync(
-                        null, // Internal call, no token needed if handled by interceptor logic or trusted network
-                        request.getContent(), 
-                        "auto", 
-                        targetLang
+                        null, request.getContent(), "auto", targetLang
                     );
-                    
-                    TranslateResponse aiResponse = future.join(); // Sync wait (gRPC fast enough)
-                    
+                    TranslateResponse aiResponse = future.join();
                     String detectedSource = aiResponse.getSourceLanguageDetected();
                     String translatedText = aiResponse.getTranslatedText();
                     
-                    // 2. Logic kiểm tra: Chỉ lưu nếu ngôn ngữ gốc KHÁC ngôn ngữ đích
                     if (detectedSource != null && !detectedSource.equalsIgnoreCase(targetLang)) {
                         message.setTranslatedText(translatedText);
                         message.setTranslatedLang(targetLang);
                     } else {
-                        // Cùng ngôn ngữ -> Không cần lưu bản dịch
                         message.setTranslatedText(null); 
                         message.setTranslatedLang(null);
                     }
-                    
                 } catch (Exception e) {
-                    log.error("Auto-translation failed, saving original only: {}", e.getMessage());
+                    log.error("Auto-translation failed: {}", e.getMessage());
                 }
             }
         }
         
         ChatMessage savedMessage = chatMessageRepository.save(message);
-
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);
 
-        // --- UPDATE CHALLENGES AND BADGES (Only for real users) ---
         if (!isAiBot) {
             try {
-                // 1. Badge Update (Message Count)
-                if (badgeService != null) {
-                    badgeService.updateBadgeProgress(request.getSenderId(), BadgeType.MESSAGE_COUNT, 1);
-                }
-    
-                // 2. Daily Challenge Update
-                if (dailyChallengeService != null) {
-                    dailyChallengeService.updateChallengeProgress(request.getSenderId(), ChallengeType.VOCABULARY_REVIEW, 1);
-                }
-            } catch (Exception e) {
-                log.warn("Failed to update challenge/badge progress for message: {}", e.getMessage());
-            }
+                if (badgeService != null) badgeService.updateBadgeProgress(request.getSenderId(), BadgeType.MESSAGE_COUNT, 1);
+                if (dailyChallengeService != null) dailyChallengeService.updateChallengeProgress(request.getSenderId(), ChallengeType.VOCABULARY_REVIEW, 1);
+            } catch (Exception e) { log.warn("Stats update failed", e); }
         }
 
         ChatMessageResponse response = chatMessageMapper.toResponse(savedMessage);
         response.setPurpose(room.getPurpose());
-
-        // Handle Sender Profile: If AI, return null or dummy, else fetch user
-        if (isAiBot) {
-            response.setSenderProfile(null); 
-        } else {
-            UserProfileResponse senderProfile = userService.getUserProfile(null, savedMessage.getSenderId());
-            response.setSenderProfile(senderProfile);
-        }
+        if (isAiBot) response.setSenderProfile(null); 
+        else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
         try {
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
-
             List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
-                .stream()
-                .map(rm -> rm.getId().getUserId())
-                .filter(u -> !u.equals(request.getSenderId()))
-                .toList();
+                .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(request.getSenderId())).toList();
 
             for (UUID uId : memberIds) {
                 try {
-                    messagingTemplate.convertAndSendToUser(
-                        uId.toString(), 
-                        "/queue/notifications", 
-                        response
-                    );
-                } catch (Exception wsEx) {
-                    log.warn("Failed to send private WS notification to user {}", uId);
-                }
+                    messagingTemplate.convertAndSendToUser(uId.toString(), "/queue/notifications", response);
+                } catch (Exception wsEx) { log.warn("Failed to send private WS notification to user {}", uId); }
 
                 try {
                     Map<String, String> dataPayload = Map.of(
-                        "screen", "TabApp",
-                        "stackScreen", "GroupChatScreen",
-                        "roomId", roomId.toString(),
-                        "initialFocusMessageId", response.getChatMessageId().toString()
+                        "screen", "TabApp", "stackScreen", "GroupChatScreen",
+                        "roomId", roomId.toString(), "initialFocusMessageId", response.getChatMessageId().toString()
                     );
                     String payloadJson = gson.toJson(dataPayload);
-
-                    NotificationRequest nreq = NotificationRequest.builder()
-                            .userId(uId)
-                            .title("New message")
-                            .content(response.getContent() != null ? response.getContent() : "You sent an attachment")
-                            .type("CHAT_MESSAGE")
-                            .payload(payloadJson)
-                            .build();
-
+                    NotificationRequest nreq = NotificationRequest.builder().userId(uId).title("New message").content(response.getContent() != null ? response.getContent() : "You sent an attachment").type("CHAT_MESSAGE").payload(payloadJson).build();
                     notificationService.createPushNotification(nreq);
-                } catch (Exception pushEx) {
-                    log.error("Failed to create push notification for user {}: {}", uId, pushEx.getMessage());
-                }
+                } catch (Exception pushEx) { log.error("Failed to create push notification for user {}", uId); }
             }
-            log.info("Processed message delivery for room {}", roomId);
-        } catch (Exception e) {
-            log.error("Failed to process message delivery logic", e);
-        }
+        } catch (Exception e) { log.error("Delivery failed", e); }
 
         return response;
     }
@@ -259,7 +197,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Override
     @Transactional
     public ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request) {
-        // Redirect to main save logic to reuse AI UUID checking
         return this.saveMessage(roomId, request);
     }
 
@@ -269,25 +206,17 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
-            
             String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
             if (!message.getSenderId().toString().equals(currentUserId)) {
                 throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
             }
-
             long minutesSinceSent = ChronoUnit.MINUTES.between(message.getId().getSentAt(), OffsetDateTime.now());
-            if (minutesSinceSent > 5) {
-                throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED); 
-            }
+            if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED); 
 
             chatMessageRepository.softDeleteByChatMessageId(id);
             messageReactionRepository.softDeleteByChatMessageId(id);
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Error while deleting message ID {}: {}", id, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        } catch (AppException e) { throw e; }
+        catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
     @Override
@@ -296,16 +225,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
-
             String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
-            if (!message.getSenderId().toString().equals(currentUserId)) {
-                throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
-            }
-
+            if (!message.getSenderId().toString().equals(currentUserId)) throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
             long minutesSinceSent = ChronoUnit.MINUTES.between(message.getId().getSentAt(), OffsetDateTime.now());
-            if (minutesSinceSent > 5) {
-                throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
-            }
+            if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
 
             message.setContent(newContent);
             message.setUpdatedAt(OffsetDateTime.now());
@@ -315,14 +238,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
             response.setPurpose(room.getPurpose());
-            
             return response;
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Error while editing message ID {}: {}", messageId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        } catch (AppException e) { throw e; }
+        catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
     @Override
@@ -334,22 +252,14 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(message.getRoomId(), userId)
                     .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
             MessageReaction messageReaction = MessageReaction.builder()
-                    .reactionId(UUID.randomUUID())
-                    .chatMessageId(messageId)
-                    .sentAt(OffsetDateTime.now())
-                    .userId(userId)
-                    .reaction(reaction)
-                    .build();
+                    .reactionId(UUID.randomUUID()).chatMessageId(messageId).sentAt(OffsetDateTime.now()).userId(userId).reaction(reaction).build();
             messageReactionRepository.save(messageReaction);
             ChatMessageResponse response = chatMessageMapper.toResponse(message);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
             response.setPurpose(room.getPurpose());
             return response;
-        } catch (Exception e) {
-            log.error("Error while adding reaction to message ID {}: {}", messageId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        } catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
     @Override
@@ -360,46 +270,34 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
             roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(message.getRoomId(), userId)
                     .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
-            
             if (!message.isRead()) {
                 message.setRead(true);
                 message = chatMessageRepository.save(message);
             }
-            
             ChatMessageResponse response = chatMessageMapper.toResponse(message);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
             response.setPurpose(room.getPurpose());
             return response;
-        } catch (Exception e) {
-            log.error("Error while marking message ID {} as read: {}", messageId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        } catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
     @Override
     @Transactional
     public ChatMessageResponse generateAIResponse(ChatMessageResponse userMessage) {
         try {
-            // FIXED: Use standardized AI_BOT_ID instead of randomUUID
             ChatMessage aiMessage = ChatMessage.builder()
                     .id(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()))
-                    .roomId(userMessage.getRoomId())
-                    .senderId(AI_BOT_ID) 
+                    .roomId(userMessage.getRoomId()).senderId(AI_BOT_ID)
                     .content("AI response to: " + userMessage.getContent())
-                    .messageType(userMessage.getMessageType())
-                    .isRead(false)
-                    .build();
+                    .messageType(userMessage.getMessageType()).isRead(false).build();
             aiMessage = chatMessageRepository.save(aiMessage);
             ChatMessageResponse response = chatMessageMapper.toResponse(aiMessage);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(userMessage.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
             response.setPurpose(room.getPurpose());
             return response;
-        } catch (Exception e) {
-            log.error("Error while generating AI response for message ID {}: {}", userMessage.getChatMessageId(), e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        } catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
     @Override
@@ -411,32 +309,16 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, request.getUserId())
                         .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
             }
-        } catch (Exception e) {
-            log.error("Error while handling typing status for room ID {}: {}", roomId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        } catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
     @Override
     public ChatStatsResponse getStatsByUser(UUID userId) {
-        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         long totalMessages = chatMessageRepository.countBySenderIdAndIsDeletedFalse(userId);
         long totalTranslations = chatMessageRepository.countTranslationsForUser(userId);
         long totalRooms = roomMemberRepository.countByIdUserIdAndIsDeletedFalse(userId);
-
-        return ChatStatsResponse.builder()
-                .totalMessages(totalMessages)
-                .translationsUsed(totalTranslations)
-                .joinedRooms(totalRooms)
-                .videoCalls(0)
-                .lastActiveAt(user.getLastActiveAt())
-                .online(user.isOnline())
-                .level(user.getLevel())
-                .exp(user.getExp())
-                .streak(user.getStreak())
-                .build();
+        return ChatStatsResponse.builder().totalMessages(totalMessages).translationsUsed(totalTranslations).joinedRooms(totalRooms).videoCalls(0).lastActiveAt(user.getLastActiveAt()).online(user.isOnline()).level(user.getLevel()).exp(user.getExp()).streak(user.getStreak()).build();
     }
 
     @Override
@@ -459,6 +341,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
             response.setTranslatedText(translatedText);
             response.setTranslatedLang(targetLang);
+            
             return response;
         } catch (Exception e) {
             log.error("Error saving translation for message {}", messageId, e);

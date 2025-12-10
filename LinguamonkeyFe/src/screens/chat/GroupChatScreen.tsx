@@ -110,15 +110,12 @@ const GroupChatScreen = () => {
     }, [isPrivateRoom, targetMember, roomInfo, initialRoomName]);
 
     // FIX: Đã chỉnh sửa logic để chỉ dựa vào userStatuses (realtime) cho chấm tròn.
-    // userStatuses chứa trạng thái online của tất cả người dùng trong phòng hiện tại (sau khi subscribe)
-    // và là nguồn chính xác nhất cho chấm tròn.
     const renderActiveDot = (userId: string | undefined, size = 10) => {
         if (!userId) return null;
         const realtimeStatus = userStatuses[userId];
-        const isOnline = realtimeStatus?.isOnline; // Chỉ kiểm tra trạng thái realtime
+        const isOnline = realtimeStatus?.isOnline;
 
-        // Thêm kiểm tra dự phòng cho phòng Private (targetMember) trong header, nếu trạng thái realtime chưa về
-        // Điều này giúp header hiển thị đúng ngay cả khi chưa có trạng thái realtime từ WebSocket
+        // Dự phòng cho Private Room
         if (!isOnline && isPrivateRoom && userId === targetMember?.userId) {
             if (roomInfo?.partnerIsOnline) {
                 return <View style={[styles.headerActiveDot, { width: size, height: size, borderRadius: size / 2 }]} />;
@@ -153,11 +150,25 @@ const GroupChatScreen = () => {
 
     const handleStartVideoCall = () => {
         if (!user?.userId || !members) return;
-        const participantIds = members.map(m => m.userId);
+
+        // FIX: Lọc bỏ chính mình ra khỏi danh sách người nhận cuộc gọi
+        // Backend Java có @NotEmpty cho participantIds, nếu mảng rỗng sẽ trả về 400
+        const otherParticipants = members.filter(m => m.userId !== user.userId);
+        const participantIds = otherParticipants.map(m => m.userId);
+
+        if (participantIds.length === 0) {
+            Alert.alert(
+                t('common.error'),
+                t('chat.cannot_call_alone') || "Cần ít nhất một thành viên khác để bắt đầu cuộc gọi nhóm."
+            );
+            return;
+        }
+
         createGroupCall({
             callerId: user.userId,
             participantIds: participantIds,
-            videoCallType: VideoCallType.GROUP
+            // FIX: Ép kiểu hoặc truyền chuỗi "GROUP" tường minh để tránh lỗi serialization Enum số/chuỗi
+            videoCallType: 'GROUP' as unknown as VideoCallType
         }, {
             onSuccess: (res) => {
                 navigation.navigate('JitsiCallScreen', {
@@ -167,7 +178,10 @@ const GroupChatScreen = () => {
                     mode: 'GROUP'
                 });
             },
-            onError: () => showToast({ type: "error", message: t("error.start_call_failed") })
+            onError: (err: any) => {
+                console.error("Start Call Error:", err);
+                showToast({ type: "error", message: t("error.start_call_failed") || "Không thể bắt đầu cuộc gọi" });
+            }
         });
     };
 
@@ -205,16 +219,11 @@ const GroupChatScreen = () => {
             const userId = targetMember.userId;
             const realtimeStatus = userStatuses[userId];
 
-            // Ưu tiên trạng thái realtime
             if (realtimeStatus?.isOnline) return t('chat.active_now');
-
-            // Dự phòng bằng trạng thái API
             if (!realtimeStatus && roomInfo?.partnerIsOnline) return t('chat.active_now');
 
-            // Ưu tiên thời gian hoạt động cuối cùng từ realtime, sau đó là API
             const lastActive = realtimeStatus?.lastActiveAt || roomInfo?.partnerLastActiveText;
             if (lastActive) {
-                // Nếu lastActive là timestamp, tính toán thời gian
                 if (realtimeStatus?.lastActiveAt) {
                     const diff = Date.now() - new Date(realtimeStatus.lastActiveAt).getTime();
                     const minutes = Math.floor(diff / 60000);
@@ -223,16 +232,11 @@ const GroupChatScreen = () => {
                     const hours = Math.floor(minutes / 60);
                     if (hours < 24) return `${t('chat.active')} ${hours}h ${t('chat.ago')}`;
                 }
-
-                // Nếu là text từ API
                 if (roomInfo?.partnerLastActiveText) return roomInfo.partnerLastActiveText;
                 return t('chat.offline');
             }
-            // Mặc định cuối cùng
             return roomInfo?.partnerLastActiveText || t('chat.offline');
         }
-
-        // Phòng Group: chỉ cần đếm số thành viên (vì trạng thái online được kiểm tra bằng chấm tròn)
         return `${members?.length || 0} ${t('chat.members')}`;
     };
 

@@ -96,7 +96,7 @@ export default ({ config }) => {
           {
             android: {
               ndkVersion: "26.1.10909125",
-              cmakeVersion: "3.22.1", // QUAN TRỌNG: Cố định phiên bản CMake để tránh lỗi build native
+              cmakeVersion: "3.22.1",
             },
           },
         ],

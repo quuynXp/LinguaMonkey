@@ -51,6 +51,7 @@ type UIMessage = {
     showTranslation?: boolean;
     roomId?: string;
     isDeleted?: boolean;
+    isLoadingTranslation?: boolean;
 };
 
 interface ChatInnerViewProps {
@@ -113,7 +114,6 @@ const ChatLanguageSelector = ({
 
     return (
         <View style={styles.languageSelectorContainer}>
-            {/* Switch Auto Translate */}
             <TouchableOpacity
                 style={[styles.autoSwitch, isAutoTranslateOn && styles.autoSwitchActive]}
                 onPress={onToggleAuto}
@@ -123,7 +123,6 @@ const ChatLanguageSelector = ({
                 </Text>
             </TouchableOpacity>
 
-            {/* Flag Dropdown */}
             <TouchableOpacity
                 style={[styles.selectedLanguageButton, !canExpand && { paddingRight: 8 }]}
                 onPress={() => canExpand && setIsExpanded(!isExpanded)}
@@ -190,9 +189,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const [inputText, setInputText] = useState("");
     const [localTranslations, setLocalTranslations] = useState<any>({});
-    const [messagesToggleState, setMessagesToggleState] = useState<any>({});
 
-    const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
+    const [messagesToggleState, setMessagesToggleState] = useState<Record<string, 'original' | 'translated'>>({});
+
+    const [translatingMessageIds, setTranslatingMessageIds] = useState<Set<string>>(new Set());
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | MemberResponse | null>(null);
@@ -204,32 +204,17 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         flag: getCountryFlag(langCode, 24),
     }), []);
 
-    // [FIX] Logic lấy danh sách ngôn ngữ từ user.languages
     const availableLanguages: LanguageOption[] = useMemo(() => {
         const uniqueLangs = new Set<string>();
-
-        // 1. Luôn thêm ngôn ngữ gốc
         if (nativeLanguage) uniqueLangs.add(nativeLanguage);
-
-        // 2. Thêm ngôn ngữ từ user profile (Xử lý cả string[] và object[])
         if (user?.languages && Array.isArray(user.languages)) {
             user.languages.forEach((l: any) => {
-                if (typeof l === 'string') {
-                    uniqueLangs.add(l);
-                } else if (typeof l === 'object' && l !== null) {
-                    // Thử các trường phổ biến: lang, code, language
-                    const code = l.lang || l.code || l.language;
-                    if (code) uniqueLangs.add(code);
-                }
+                if (typeof l === 'string') uniqueLangs.add(l);
+                else if (typeof l === 'object' && l?.code) uniqueLangs.add(l.code);
             });
         }
-
-        // 3. Đảm bảo ngôn ngữ đang chọn phải có trong list
         if (translationTargetLang) uniqueLangs.add(translationTargetLang);
-
-        // Fallback nếu rỗng
         if (uniqueLangs.size === 0) uniqueLangs.add('vi');
-
         return Array.from(uniqueLangs).map(getLanguageOption);
     }, [user?.languages, nativeLanguage, translationTargetLang, getLanguageOption]);
 
@@ -237,26 +222,11 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         availableLanguages.find(l => l.code === translationTargetLang) || getLanguageOption(translationTargetLang),
         [availableLanguages, translationTargetLang, getLanguageOption]);
 
-    // [FIX] Đồng bộ Store ngay khi mount nếu chưa có target
     useEffect(() => {
         if (!chatSettings.targetLanguage) {
-            const defaultTarget = nativeLanguage || 'vi';
-            setChatSettings({ targetLanguage: defaultTarget });
+            setChatSettings({ targetLanguage: nativeLanguage || 'vi' });
         }
     }, []);
-
-    const handleSelectLanguage = (lang: LanguageOption) => {
-        setChatSettings({
-            targetLanguage: lang.code,
-            autoTranslate: true // Tự động bật dịch khi người dùng chủ động chọn ngôn ngữ
-        });
-        setMessagesToggleState({});
-        showToast({ message: `${t('chat.auto_translate_on')} ${lang.name}`, type: 'success' });
-    };
-
-    const handleToggleAuto = () => {
-        setChatSettings({ autoTranslate: !autoTranslate });
-    };
 
     const membersMap = useMemo(() => {
         const map: Record<string, MemberResponse> = {};
@@ -278,27 +248,111 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const serverMessages = messagesByRoom[roomId] || [];
     const flatListRef = useRef<FlatList>(null);
 
+    const { mutate: translateMutate } = useMutation({
+        mutationFn: async ({ text, target, id }: any) => {
+            setTranslatingMessageIds(prev => new Set(prev).add(id));
+            try {
+                const res = await instance.post('/api/py/translate', { text, target_lang: target, source_lang: 'auto' });
+                if (!res.data || !res.data.result) throw new Error("No result");
+                return { text: res.data.result.translated_text, id, target };
+            } finally {
+                setTranslatingMessageIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(id);
+                    return next;
+                });
+            }
+        },
+        onSuccess: (data) => {
+            setLocalTranslations((prev: any) => ({
+                ...prev,
+                [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text }
+            }));
+        },
+        onError: (err) => {
+            console.warn("Translation Error:", err);
+        }
+    });
+
+    const triggerBatchTranslate = useCallback((targetLang: string, messageList: any[]) => {
+        if (!messageList || messageList.length === 0) return;
+
+        const messagesToScan = messageList.slice(-10);
+
+        messagesToScan.forEach((msg) => {
+            const msgId = msg.id?.chatMessageId || msg.id;
+            const senderId = msg.senderId;
+            const content = msg.content;
+            const type = msg.messageType;
+
+            if (senderId === currentUserId || type !== 'TEXT' || msg.isDeleted) return;
+
+            const hasLocal = localTranslations[msgId]?.[targetLang];
+            const hasEager = eagerTranslations[msgId]?.[targetLang];
+            const hasDb = (msg.translatedLang === targetLang) ? msg.translatedText : null;
+            const isFetching = translatingMessageIds.has(msgId);
+
+            if (!hasLocal && !hasEager && !hasDb && !isFetching) {
+                translateMutate({ text: content, target: targetLang, id: msgId });
+            }
+        });
+    }, [currentUserId, eagerTranslations, localTranslations, translatingMessageIds, translateMutate]);
+
+    const handleSelectLanguage = (lang: LanguageOption) => {
+        setMessagesToggleState({});
+        setChatSettings({
+            targetLanguage: lang.code,
+            autoTranslate: true
+        });
+        triggerBatchTranslate(lang.code, serverMessages);
+        showToast({ message: `${t('chat.auto_translate_on')} ${lang.name}`, type: 'success' });
+    };
+
+    const handleToggleAuto = () => {
+        const newState = !autoTranslate;
+        setChatSettings({ autoTranslate: newState });
+
+        if (newState) {
+            triggerBatchTranslate(translationTargetLang, serverMessages);
+            showToast({ message: t("chat.auto_translate_enabled"), type: "success" });
+        } else {
+            showToast({ message: t("chat.auto_translate_disabled"), type: "info" });
+        }
+    };
+
     const messages: UIMessage[] = useMemo(() => {
         return serverMessages.map((msg: any) => {
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
 
-            const dbTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
-            const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
+            const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
+            const dbTrans = (msg.translatedLang === translationTargetLang) ? msg.translatedText : null;
 
             const finalTranslation = localTrans || eagerTrans || dbTrans;
-
-            const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
+            const isMine = senderId === currentUserId;
             const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
+            const isDeleted = msg.isDeleted;
+            const manualState = messagesToggleState[messageId];
 
-            const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!eagerTrans);
+            let showTrans = false;
+            if (!isMine && !hasMedia && !isDeleted) {
+                if (manualState === 'translated') {
+                    showTrans = true;
+                } else if (manualState === 'original') {
+                    showTrans = false;
+                } else if (autoTranslate) {
+                    showTrans = true;
+                }
+            }
 
+            const isMissingData = showTrans && !finalTranslation;
+            const isActuallyFetching = translatingMessageIds.has(messageId);
             const senderProfile = msg.senderProfile || membersMap[senderId];
 
             return {
                 id: messageId,
-                sender: senderId === currentUserId ? 'user' : 'other',
+                sender: isMine ? 'user' : 'other',
                 senderId: senderId,
                 timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
                 text: msg.content || '',
@@ -310,25 +364,34 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 user: senderProfile?.fullname || senderProfile?.nickname || 'Unknown',
                 avatar: senderProfile?.avatarUrl || null,
                 sentAt: msg?.id?.sentAt,
-                showTranslation: showTranslation,
+                showTranslation: showTrans,
                 hasTargetLangTranslation: !!finalTranslation,
                 isRead: msg.isRead,
                 isLocal: (msg as any).isLocal,
                 senderProfile: senderProfile,
                 roomId: roomId,
-                isDeleted: msg.isDeleted
+                isDeleted: isDeleted,
+                isLoadingTranslation: isMissingData || isActuallyFetching
             } as UIMessage;
         }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
-    }, [serverMessages, localTranslations, eagerTranslations, translationTargetLang, currentUserId, autoTranslate, membersMap]);
+    }, [serverMessages, localTranslations, eagerTranslations, translationTargetLang, currentUserId, autoTranslate, messagesToggleState, membersMap, translatingMessageIds]);
 
-    useEffect(() => { loadMessages(roomId); }, [roomId]);
+    useEffect(() => { loadMessages(roomId, 0, 10); }, [roomId]);
+
     useEffect(() => {
         if (!messages.length) return;
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
     }, [messages.length]);
+
     useEffect(() => {
         messages.forEach(msg => { if (msg.sender === 'other' && !msg.isRead) markMessageAsRead(roomId, msg.id); });
     }, [messages.length, roomId]);
+
+    useEffect(() => {
+        if (autoTranslate && serverMessages.length > 0) {
+            triggerBatchTranslate(translationTargetLang, serverMessages);
+        }
+    }, [serverMessages.length, autoTranslate, translationTargetLang]);
 
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
@@ -340,52 +403,16 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         }
     };
 
-    const { mutate: translateMutate } = useMutation({
-        mutationFn: async ({ text, target, id }: any) => {
-            setTranslatingMessageId(id);
-            const res = await instance.post('/api/py/translate', { text, target_lang: target, source_lang: 'auto' });
-            if (!res.data || !res.data.result) throw new Error("No translation result");
-            return { text: res.data.result.translated_text, id, target };
-        },
-        onSuccess: (data) => {
-            setLocalTranslations((prev: any) => ({ ...prev, [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text } }));
-            setMessagesToggleState((prev: any) => ({ ...prev, [data.id]: data.target }));
-            setTranslatingMessageId(null);
-        },
-        onError: (err) => {
-            console.error("Translation Error:", err);
-            setTranslatingMessageId(null);
-            showToast({ message: t("error.translation_failed"), type: "error" });
-        }
-    });
-
     const handleTranslateClick = (id: string, text: string) => {
-        const currentView = messagesToggleState[id];
-
-        if (currentView === translationTargetLang) {
-            setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
-        } else if (currentView === 'original') {
-            const eagerTrans = eagerTranslations[id]?.[translationTargetLang];
-            const localTrans = localTranslations[id]?.[translationTargetLang];
-            if (localTrans || eagerTrans) {
-                setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang }));
-            } else {
+        const currentShow = messages.find(m => m.id === id)?.showTranslation;
+        if (currentShow) {
+            setMessagesToggleState(prev => ({ ...prev, [id]: 'original' }));
+        } else {
+            const hasData = localTranslations[id]?.[translationTargetLang] || eagerTranslations[id]?.[translationTargetLang];
+            if (!hasData) {
                 translateMutate({ text, target: translationTargetLang, id });
             }
-        } else {
-            const eagerTrans = eagerTranslations[id]?.[translationTargetLang];
-            const localTrans = localTranslations[id]?.[translationTargetLang];
-            const hasTranslation = !!(localTrans || eagerTrans);
-
-            if (autoTranslate && hasTranslation) {
-                setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
-            } else {
-                if (hasTranslation) {
-                    setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang }));
-                } else {
-                    translateMutate({ text, target: translationTargetLang, id });
-                }
-            }
+            setMessagesToggleState(prev => ({ ...prev, [id]: 'translated' }));
         }
     };
 
@@ -394,24 +421,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
         const isUser = item.sender === 'user';
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
-        const currentView = messagesToggleState[item.id];
+
         let displayText = item.text;
-        let isTranslatedView = false;
-
-        const eagerTrans = eagerTranslations[item.id]?.[translationTargetLang];
-        const localTrans = localTranslations[item.id]?.[translationTargetLang];
-        const dbTrans = item.translatedLang === translationTargetLang ? item.translatedText : null;
-        const availableTranslation = localTrans || eagerTrans || dbTrans;
-
-        if (currentView === translationTargetLang) {
-            displayText = availableTranslation || item.text;
-            isTranslatedView = true;
-        } else if (currentView === 'original') {
-            displayText = item.text;
-            isTranslatedView = false;
-        } else if (autoTranslate && availableTranslation) {
-            displayText = availableTranslation;
-            isTranslatedView = true;
+        if (item.showTranslation && item.translatedText) {
+            displayText = item.translatedText;
         }
 
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
@@ -435,22 +448,27 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 {item.messageType === 'VIDEO' && <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
                                 {item.text ? <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text> : null}
                             </View>
-                        ) : (<Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{displayText}</Text>)}
-
-                        {isTranslatedView && (
-                            <Text style={styles.transTag}>
-                                {translationTargetLang.toUpperCase()}
-                            </Text>
+                        ) : (
+                            <View>
+                                <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{displayText}</Text>
+                                {item.isLoadingTranslation && (
+                                    <View style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center' }}>
+                                        <ActivityIndicator size="small" color={isUser ? "#FFF" : "#9CA3AF"} />
+                                    </View>
+                                )}
+                            </View>
                         )}
-
+                        {item.showTranslation && item.translatedText && (
+                            <Text style={styles.transTag}>{translationTargetLang.toUpperCase()}</Text>
+                        )}
                         <View style={styles.metaRow}>
                             <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
                             {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
                         </View>
                     </View>
                     {!isUser && !isMedia && (
-                        <TouchableOpacity onPress={() => handleTranslateClick(item.id, item.text)} style={styles.transBtn} disabled={translatingMessageId === item.id}>
-                            {translatingMessageId === item.id ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name={isTranslatedView ? "undo" : "translate"} size={16} color={isTranslatedView || (autoTranslate && availableTranslation) ? "#3B82F6" : "#9CA3AF"} />}
+                        <TouchableOpacity onPress={() => handleTranslateClick(item.id, item.text)} style={styles.transBtn}>
+                            <Icon name={item.showTranslation ? "undo" : "translate"} size={16} color={item.showTranslation ? "#3B82F6" : "#9CA3AF"} />
                         </TouchableOpacity>
                     )}
                 </View>
@@ -469,7 +487,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     onToggleAuto={handleToggleAuto}
                 />
             </View>
-
             <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} style={styles.list} renderItem={renderMessageItem} contentContainerStyle={{ paddingTop: 40 }} />
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 90}>
                 {editingMessage && (
@@ -490,86 +507,16 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
 const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: '#FFF' },
-    chatHeaderToolbar: {
-        position: 'absolute',
-        top: 8,
-        right: 16,
-        zIndex: 100,
-        backgroundColor: 'transparent',
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-    },
-    languageSelectorContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        position: 'relative',
-        zIndex: 50,
-    },
-    autoSwitch: {
-        backgroundColor: 'rgba(255,255,255,0.8)',
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        borderRadius: 16,
-        marginRight: 8,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-    },
-    autoSwitchActive: {
-        backgroundColor: '#3B82F6',
-        borderColor: '#3B82F6',
-    },
-    autoText: {
-        fontSize: 10,
-        fontWeight: 'bold',
-        color: '#6B7280',
-    },
-    selectedLanguageButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(243, 244, 246, 0.9)',
-        borderRadius: 20,
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        justifyContent: 'center',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    languageDropdown: {
-        position: 'absolute',
-        top: 45,
-        right: 0,
-        backgroundColor: '#FFF',
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-        shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 5,
-        minWidth: 80,
-        zIndex: 100,
-        paddingVertical: 4,
-    },
-    languageItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'flex-start',
-        padding: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6',
-    },
-    languageFlagWrapper: {
-        marginRight: 8,
-    },
-    languageName: {
-        fontSize: 12,
-        color: '#374151',
-        fontWeight: '500',
-    },
+    chatHeaderToolbar: { position: 'absolute', top: 8, right: 16, zIndex: 100, backgroundColor: 'transparent', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
+    languageSelectorContainer: { flexDirection: 'row', alignItems: 'center', position: 'relative', zIndex: 50 },
+    autoSwitch: { backgroundColor: 'rgba(255,255,255,0.8)', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+    autoSwitchActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+    autoText: { fontSize: 10, fontWeight: 'bold', color: '#6B7280' },
+    selectedLanguageButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(243, 244, 246, 0.9)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
+    languageDropdown: { position: 'absolute', top: 45, right: 0, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, minWidth: 80, zIndex: 100, paddingVertical: 4 },
+    languageItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+    languageFlagWrapper: { marginRight: 8 },
+    languageName: { fontSize: 12, color: '#374151', fontWeight: '500' },
     list: { flex: 1, paddingHorizontal: 16 },
     msgRow: { flexDirection: 'row', marginVertical: 8 },
     rowUser: { justifyContent: 'flex-end' },

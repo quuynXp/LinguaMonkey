@@ -13,13 +13,11 @@ from src.core.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
-# Config GenAI (Load Once at Module Level)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 gemini_model = None
 
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
-    # Update config to favor structured output if supported, but prompt engineering does the heavy lifting
     gemini_model = GenerativeModel(
         'gemini-2.5-flash',
         generation_config={"temperature": 0.1, "max_output_tokens": 1024, "response_mime_type": "application/json"}

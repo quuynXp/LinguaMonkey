@@ -146,8 +146,6 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   const currentUserId = useUserStore.getState().user?.userId;
   if (msg.isDeleted) return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
 
-  // Trigger eager translation for incoming messages from others
-  // FIX: Ensure this runs even if message exists but lacks translation
   if (eagerCallback && msg.senderId !== currentUserId && msg.messageType === 'TEXT' && msg.content) {
     eagerCallback(msg);
   }
@@ -224,11 +222,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   performEagerTranslation: async (messageId: string, text: string) => {
-    // FIX: Get fresh settings directly from store state
     const { nativeLanguage, chatSettings } = useAppStore.getState();
     const targetLang = chatSettings?.targetLanguage || nativeLanguage || 'vi';
 
-    // Prevent duplicate calls
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
 
     try {
