@@ -64,6 +64,9 @@ const WebRTCCallScreen = () => {
   const accessToken = useTokenStore.getState().accessToken;
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
 
+  // STORE: Get settings from AppStore
+  const { callPreferences, setCallPreferences } = useAppStore();
+
   const signalReconnectTimeout = useRef<any>(null);
   const audioReconnectTimeout = useRef<any>(null);
   const isManuallyClosed = useRef(false);
@@ -74,10 +77,13 @@ const WebRTCCallScreen = () => {
 
   const [nativeLang] = useState(defaultNativeLangCode);
   const [spokenLang] = useState('auto');
-  const [subtitleMode, setSubtitleMode] = useState<'dual' | 'native' | 'original' | 'off'>('dual');
+
+  // UI State now backed by Store
   const [showSettings, setShowSettings] = useState(false);
   const [fullSubtitle, setFullSubtitle] = useState<SubtitleData | null>(null);
-  const [isMicOn, setIsMicOn] = useState(true);
+
+  // Local state initialized from store
+  const [isMicOn, setIsMicOn] = useState(callPreferences.micEnabled);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
@@ -299,10 +305,13 @@ const WebRTCCallScreen = () => {
         LiveAudioStream.init(audioOptions);
 
         LiveAudioStream.on('data', (base64Data: string) => {
-          // LOGGING: Check if data is actually generated
-          // console.log(`🎤 Chunk: ${base64Data.length}`); 
+          // IMPORTANT: Check ref/state directly inside callback to ensure we respect mute
+          if (!wsAudio.current || wsAudio.current.readyState !== WebSocket.OPEN) return;
 
-          if (!wsAudio.current || wsAudio.current.readyState !== WebSocket.OPEN || !isMicOn) return;
+          // Send audio only if Mic is enabled
+          // (We use a ref check pattern implicitly via closure if we didn't add it to dependencies)
+          // But since isMicOn is in deps, this callback resets on toggle. 
+          // However, LiveAudioStream.start/stop is cleaner.
           try {
             const binaryString = atob(base64Data);
             const len = binaryString.length;
@@ -312,6 +321,7 @@ const WebRTCCallScreen = () => {
           } catch (err) { console.error("Audio send error", err) }
         });
 
+        // Only start if mic is enabled
         if (isMicOn) {
           LiveAudioStream.start();
           console.log("🎤 LiveAudioStream START command sent");
@@ -441,6 +451,12 @@ const WebRTCCallScreen = () => {
       if (isMounted && stream) {
         setLocalStream(stream);
         localStreamRef.current = stream;
+
+        // Apply Initial Mic State from Store
+        stream.getAudioTracks().forEach(track => {
+          track.enabled = callPreferences.micEnabled;
+        });
+
         connectSignalingSocket();
         connectAudioSocket();
       } else {
@@ -453,6 +469,33 @@ const WebRTCCallScreen = () => {
       cleanupCall();
     };
   }, []);
+
+  // --- TOGGLE FUNCTIONS ---
+
+  const toggleMic = () => {
+    const newState = !isMicOn;
+    setIsMicOn(newState);
+    setCallPreferences({ micEnabled: newState });
+
+    // 1. Toggle WebRTC Audio (Peer)
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = newState;
+      });
+    }
+
+    // 2. Toggle AI Audio Stream (Subtitle)
+    if (newState) {
+      LiveAudioStream.start();
+    } else {
+      LiveAudioStream.stop();
+    }
+  };
+
+  const changeSubtitleMode = (mode: 'dual' | 'native' | 'original' | 'off') => {
+    setCallPreferences({ subtitleMode: mode });
+    setShowSettings(false);
+  };
 
   // --- RENDER ---
   const renderRemoteVideos = () => {
@@ -480,6 +523,8 @@ const WebRTCCallScreen = () => {
   };
 
   const renderSubtitleText = (data: SubtitleData) => {
+    const mode = callPreferences.subtitleMode;
+    if (mode === 'off') return null;
     if (!data.originalFull.trim()) return null;
 
     const isMe = data.senderId === user?.userId;
@@ -495,10 +540,10 @@ const WebRTCCallScreen = () => {
       )
     }
 
-    let displayOriginal = subtitleMode === 'dual' || subtitleMode === 'original' || !translatedText;
-    let displayTranslated = (subtitleMode === 'dual' || subtitleMode === 'native') && !!translatedText;
+    let displayOriginal = mode === 'dual' || mode === 'original' || !translatedText;
+    let displayTranslated = (mode === 'dual' || mode === 'native') && !!translatedText;
 
-    if (subtitleMode === 'native' && !translatedText) displayOriginal = false;
+    if (mode === 'native' && !translatedText) displayOriginal = false;
 
     return (
       <View style={styles.subtitleContainer}>
@@ -525,13 +570,15 @@ const WebRTCCallScreen = () => {
           <Icon name="call-end" size={30} color="white" />
         </TouchableOpacity>
 
-        {subtitleMode !== 'off' && fullSubtitle && renderSubtitleText(fullSubtitle)}
+        {callPreferences.subtitleMode !== 'off' && fullSubtitle && renderSubtitleText(fullSubtitle)}
 
         <View style={styles.controls}>
           <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
             <Icon name="settings" size={24} color="white" />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.iconButton, { backgroundColor: isMicOn ? '#22c55e' : '#ef4444' }]} onPress={() => setIsMicOn(!isMicOn)}>
+          <TouchableOpacity
+            style={[styles.iconButton, { backgroundColor: isMicOn ? '#22c55e' : '#ef4444' }]}
+            onPress={toggleMic}>
             <Icon name={isMicOn ? "mic" : "mic-off"} size={24} color="white" />
           </TouchableOpacity>
         </View>
@@ -542,8 +589,10 @@ const WebRTCCallScreen = () => {
             <Text style={styles.sectionTitle}>{t('subtitle_mode') || 'Chế độ phụ đề'}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               {[{ id: 'dual', icon: '📝' }, { id: 'native', icon: '🎯' }, { id: 'original', icon: '🗣️' }, { id: 'off', icon: '🚫' }].map(m => (
-                <TouchableOpacity key={m.id} onPress={() => { setSubtitleMode(m.id as any); setShowSettings(false) }}
-                  style={[styles.modeButton, subtitleMode === m.id && styles.modeButtonActive]}>
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => changeSubtitleMode(m.id as any)}
+                  style={[styles.modeButton, callPreferences.subtitleMode === m.id && styles.modeButtonActive]}>
                   <Text style={{ color: 'white' }}>{m.icon} {m.id}</Text>
                 </TouchableOpacity>
               ))}

@@ -90,7 +90,7 @@ services:
       - GOOGLE_OAUTH_CLIENT_ID=691949892970-sifep58js9d5a79pfifs3ff471e34v5k.apps.googleusercontent.com
       - SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE=200MB
       - GOOGLE_OAUTH_CLIENT_SECRET=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
-      - GOOGLE_OAUTH_REFRESH_TOKEN=1//04yirHdhFSkvlCgYIARAAGAQSNwF-L9IrqJA90w968n8hZ5ShzKd592q1OTkU0ObdZ67T3DOZwWtB0g-0pbJVLZ2ACRRPy0ftE00
+      - GOOGLE_OAUTH_REFRESH_TOKEN=1//04DWhM7Hk3-6gCgYIARAAGAQSNwF-L9IrnjA0Jg2uZldfSD5PlFpnL-EXfyWecEo27j8jCbxfY8TbGD29KaDrwrqiTAILevbk960
       - SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE=200MB
     volumes:
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/firebase/service-account-key.json:/app/config/service-account-key.json:ro

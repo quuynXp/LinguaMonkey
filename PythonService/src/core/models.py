@@ -104,8 +104,7 @@ class ChatMessage(Base):
     sent_at = Column(
         TIMESTAMP(timezone=True), default=datetime.utcnow, primary_key=True
     )
-    translated_text = Column(Text, nullable=True)
-    translated_lang = Column(String(10), nullable=True)
+    translations = Column(JSONB, default={})
 
 
 class Users(Base):
@@ -306,8 +305,6 @@ class CourseVersionEnrollment(Base):
 
     enrolled_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
     completed_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    # Đã xóa last_accessed_at vì DB không có
 
-    # Relations
     course_version = relationship("CourseVersion", back_populates="enrollments")
     user = relationship("Users")

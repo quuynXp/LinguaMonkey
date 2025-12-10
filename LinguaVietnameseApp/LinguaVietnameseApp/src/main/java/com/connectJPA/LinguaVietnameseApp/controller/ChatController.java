@@ -1,4 +1,3 @@
-
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.ChatMessageBody;
@@ -75,7 +74,6 @@ public class ChatController {
         private String status; // ONLINE or OFFLINE
     }
 
-    // Thêm vào ChatController
     @GetMapping("/status/{userId}")
     public ResponseEntity<AppApiResponse<Boolean>> getUserOnlineStatus(@PathVariable UUID userId, Locale locale) {
         String redisKey = "user:online:" + userId.toString();
@@ -200,27 +198,12 @@ public class ChatController {
 
             Pageable pageable = PageRequest.of(0, 10);
             Page<ChatMessageResponse> historyPage = chatMessageService.getMessagesByRoom(roomId, pageable);
-            List<ChatMessageResponse> history = historyPage.getContent().stream()
-                    .map(msg -> new ChatMessageResponse(
-                            msg.getChatMessageId(),
-                            msg.getRoomId(),
-                            msg.getSenderId(),
-                            msg.getReceiverId(),
-                            msg.getContent(),
-                            msg.getMediaUrl(),
-                            msg.getMessageType(),
-                            msg.getPurpose(),
-                            msg.isRead(),
-                            msg.getTranslatedLang(),
-                            msg.getTranslatedText(),
-                            msg.isDeleted(),
-                            msg.getSentAt(),
-                            msg.getUpdatedAt(),
-                            msg.getDeletedAt()))
-                    .toList();
+            
+            // Fix: Directly use the Content from Page. No need to remap to ChatMessageResponse again 
+            // as this caused the constructor mismatch error with translations field.
+            List<ChatMessageResponse> history = historyPage.getContent();
 
             try {
-                // NOTE: Assumes 'learning.TranslateResponse' is defined and accessible
                 String aiResponseText = grpcClientService.callChatWithAIAsync(
                         token,
                         senderId.toString(),
@@ -245,6 +228,7 @@ public class ChatController {
                 messagingTemplate.convertAndSendToUser(
                         senderId.toString(), "/queue/messages", aiResponse);
             } catch (Exception e) {
+                log.error("AI Chat processing failed", e);
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             }
 
@@ -252,8 +236,7 @@ public class ChatController {
                 String targetLang = "vi";
                 CompletableFuture.runAsync(() -> {
                     try {
-                        // NOTE: Assumes 'learning.TranslateResponse' is defined and accessible
-                        learning.TranslateResponse tr = grpcClientService.callTranslateAsync(token, message.getContent(), "", targetLang).get();
+                        var tr = grpcClientService.callTranslateAsync(token, message.getContent(), "", targetLang).get();
 
                         if (!tr.getError().isEmpty()) {
                             log.warn("Translate returned error: {}", tr.getError());
@@ -288,6 +271,7 @@ public class ChatController {
     @MessageMapping("/chat/message/{messageId}/read")
     public void markMessageAsRead (
             @DestinationVariable UUID messageId,
+            @Payload String reaction, // Placeholder to match signature if needed
             Principal principal){
         ChatMessageResponse updatedMessage = chatMessageService.markAsRead(messageId, UUID.fromString(principal.getName()));
         // Broadcast the update so the sender sees the read status change

@@ -2,7 +2,8 @@ import os
 import logging
 import asyncio
 import json
-from typing import Tuple
+import re
+from typing import Tuple, List
 from langdetect import detect, LangDetectException
 import google.generativeai as genai
 from google.generativeai import GenerativeModel
@@ -13,13 +14,14 @@ from src.core.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
+# Config GenAI (Load Once at Module Level)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 gemini_model = None
 
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
     gemini_model = GenerativeModel(
-        'gemini-2.5-flash',
+        'gemini-2.0-flash', # Upgraded to 2.0-flash for speed if available, or keep 1.5-flash
         generation_config={"temperature": 0.1, "max_output_tokens": 1024, "response_mime_type": "application/json"}
     )
 else:
@@ -44,6 +46,8 @@ class HybridTranslator:
         if lang in ['en', 'english', 'en-us', 'en-uk']: return 'en'
         if lang in ['zh', 'chinese', 'zh-cn', 'cn']: return 'zh-CN'
         if lang in ['zh-tw', 'tw']: return 'zh-TW'
+        if lang in ['ja', 'japanese', 'jp']: return 'ja'
+        if lang in ['ko', 'korean', 'kr']: return 'ko'
         return lang
 
     def detect_language(self, text: str) -> str:
@@ -51,6 +55,24 @@ class HybridTranslator:
             return detect(text)
         except LangDetectException:
             return "en"
+
+    def _tokenize(self, text: str, lang: str) -> List[str]:
+        """
+        Better tokenizer handling punctuation and CJK characters.
+        """
+        if not text: return []
+        
+        # For CJK (Chinese, Japanese, Korean), fallback to character-based splitting
+        # unless specific tokenizer libraries (jieba, mecab) are added.
+        if lang in ['zh-CN', 'zh-TW', 'ja', 'ko', 'zh']:
+            # Simple approach: split by characters for CJK, but keep english words intact
+            # This regex matches CJK ranges
+            return [char for char in text if char.strip()]
+
+        # For Latin/Vietnamese: Split by non-word characters but keep them for reconstruction potentially?
+        # Current logic: Simple splitting by non-alphanumeric to find matches in Redis
+        # \w includes [a-zA-Z0-9_] and unicode characters depending on locale
+        return re.findall(r'\b\w+\b', text) if text else []
 
     async def _save_to_db(self, original_text: str, src_lang: str, target_lang: str, translated_text: str):
         async with AsyncSessionLocal() as db:
@@ -83,7 +105,16 @@ class HybridTranslator:
                 await db.rollback()
 
     async def lpm_translate(self, text: str, src_lang: str, target_lang: str) -> Tuple[str, float]:
-        words = text.split()
+        """
+        Longest Prefix Match translation using Redis.
+        """
+        # Improved tokenization
+        if src_lang in ['zh-CN', 'zh-TW', 'ja', 'zh']:
+             # Use the raw text window sliding for CJK
+             words = list(text) 
+        else:
+             words = text.split() # Simple split preserves spaces logic for reconstruction
+        
         n = len(words)
         translated_chunks = []
         i = 0
@@ -91,10 +122,16 @@ class HybridTranslator:
 
         while i < n:
             matched = False
+            # Look ahead window of up to 8 tokens
             max_window = min(n - i, 8)
             
             for j in range(max_window, 0, -1):
-                phrase = " ".join(words[i : i + j])
+                # Reconstruct phrase based on lang
+                if src_lang in ['zh-CN', 'zh-TW', 'ja', 'zh']:
+                    phrase = "".join(words[i : i + j])
+                else:
+                    phrase = " ".join(words[i : i + j])
+
                 key = self._get_redis_key(src_lang, phrase)
                 
                 cached_val = await self.redis.hget(key, target_lang)
@@ -106,7 +143,8 @@ class HybridTranslator:
                         trans_text = str(cached_val)
 
                     translated_chunks.append(trans_text)
-                    await self.redis.hincrby(key, "usage", 1)
+                    # Async increment usage without waiting
+                    asyncio.create_task(self.redis.hincrby(key, "usage", 1))
                     
                     matched_words_count += j
                     i += j
@@ -117,7 +155,13 @@ class HybridTranslator:
                 translated_chunks.append(words[i])
                 i += 1
         
-        return " ".join(translated_chunks), (matched_words_count / n if n > 0 else 0)
+        # Reconstruction
+        if src_lang in ['zh-CN', 'zh-TW', 'ja', 'zh'] and target_lang in ['zh-CN', 'zh-TW', 'ja', 'zh']:
+             final_text = "".join(translated_chunks)
+        else:
+             final_text = " ".join(translated_chunks)
+
+        return final_text, (matched_words_count / n if n > 0 else 0)
 
     async def translate(self, text: str, source_lang_hint: str, target_lang: str) -> Tuple[str, str]:
         if not text or not text.strip(): return "", source_lang_hint
@@ -141,13 +185,11 @@ class HybridTranslator:
         # Check if LPM result is garbage (e.g. dictionary dump)
         is_dictionary_dump = False
         if len(text.split()) > 1:
-            if len(lpm_result) > len(text) * 3:
-                is_dictionary_dump = True
-            elif "To " in lpm_result and "," in lpm_result:
+            if len(lpm_result) > len(text) * 4: # Loosened threshold
                 is_dictionary_dump = True
         
         # If coverage is high, trust LPM
-        if coverage >= 0.85 and not is_dictionary_dump:
+        if coverage >= 0.90 and not is_dictionary_dump:
             return lpm_result, detected_lang
 
         if not gemini_model:
@@ -160,45 +202,39 @@ class HybridTranslator:
             elif target_lang == 'vi': target_lang_name = "Vietnamese"
 
             prompt = (
-                f"You are an expert translator. Translate the input from {detected_lang} to {target_lang_name}.\n"
-                "Rules:\n"
-                "1) Preserve English words, named entities, technical terms, URLs, and numbers — do NOT translate them.\n"
-                "2) Keep punctuation and spacing natural for the target language.\n"
-                "3) Output STRICTLY a single JSON object with fields: translated_text (string), detected_source_lang (string).\n"
-                "4) If input is mixed-language, translate only the segments that are not in English (or the target language).\n\n"
-                f"INPUT_TEXT: {text}\n\n"
-                "Output JSON example: {\"translated_text\": \"...\", \"detected_source_lang\": \"vi\"}"
+                f"Translate the following text from {detected_lang} to {target_lang_name}.\n"
+                f"Text: {text}\n"
+                "Requirements:\n"
+                "1. Output ONLY JSON.\n"
+                "2. Format: {\"translated_text\": \"string\", \"detected_source_lang\": \"string\"}\n"
+                "3. Keep special characters, emojis, and numbers intact."
             )
             
             response = await gemini_model.generate_content_async(prompt)
             raw = response.text.strip()
 
-            try:
-                # Parse JSON
-                parsed = json.loads(raw)
-                final_text = parsed.get("translated_text", "").strip()
-                detected_from_model = parsed.get("detected_source_lang", detected_lang)
-                
-                if final_text:
-                    # Cache valid result
-                    if len(text.split()) < 15: 
-                        key = self._get_redis_key(detected_lang, text)
-                        await self.redis.hset(key, mapping={target_lang: final_text})
-                        await self.redis.expire(key, 86400 * 7)
-                        asyncio.create_task(self._save_to_db(text, detected_lang, target_lang, final_text))
-                    
-                    return final_text, detected_from_model
-                
-                # If JSON parsed but empty text, fallback
-                logger.warning(f"Gemini returned empty JSON text for: {text}")
-                return lpm_result, detected_lang
+            # Strip markdown code blocks if present
+            if raw.startswith("```json"):
+                raw = raw[7:]
+            if raw.endswith("```"):
+                raw = raw[:-3]
 
-            except json.JSONDecodeError:
-                # Fallback: Check if response is raw text (model ignored JSON instruction)
-                logger.warning(f"Gemini returned non-JSON: {raw[:50]}...")
-                if raw and "{" not in raw:
-                    return raw, detected_lang
-                return lpm_result, detected_lang
+            parsed = json.loads(raw)
+            final_text = parsed.get("translated_text", "").strip()
+            detected_from_model = parsed.get("detected_source_lang", detected_lang)
+            
+            if final_text:
+                # Cache valid result
+                # Only cache short sentences to avoid cache pollution with paragraphs
+                if len(text.split()) < 20: 
+                    key = self._get_redis_key(detected_lang, text)
+                    await self.redis.hset(key, mapping={target_lang: final_text})
+                    await self.redis.expire(key, 86400 * 7) # 7 days
+                    asyncio.create_task(self._save_to_db(text, detected_lang, target_lang, final_text))
+                
+                return final_text, detected_from_model
+            
+            return lpm_result, detected_lang
 
         except Exception as e:
             logger.error(f"External Translation Failed: {e}")

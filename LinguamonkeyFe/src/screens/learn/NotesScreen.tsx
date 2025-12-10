@@ -1,5 +1,3 @@
-// src/screens/NotesScreen.tsx
-
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -57,7 +55,6 @@ const NotesScreen = ({ navigation, route }: any) => {
   const { useCreateReminder } = useReminders();
   const { mutate: createReminder, isPending: isCreatingReminder } = useCreateReminder();
 
-  // --- LOGIC 1: Pre-fill ---
   useEffect(() => {
     if (prefillContent) {
       setNewNote(prefillContent);
@@ -88,6 +85,7 @@ const NotesScreen = ({ navigation, route }: any) => {
     if (showFavoritesOnly) {
       list = list.filter(item => item.isFavorite);
     }
+    // Local filter fallback if API doesn't support keyword perfectly yet
     if (searchQuery && !searchParams.keyword) {
       list = list.filter(n => n.noteText?.toLowerCase().includes(searchQuery.toLowerCase()));
     }
@@ -102,37 +100,36 @@ const NotesScreen = ({ navigation, route }: any) => {
     switch (type) {
       case "word": return Enums.ContentType.VOCABULARY;
       case "grammar": return Enums.ContentType.FORMULA;
+      case "phrase": return Enums.ContentType.NOTE; // Assuming Phrase maps to General Note
       default: return Enums.ContentType.NOTE;
     }
   };
 
-  // --- LOGIC 2: FIX CREATE NOTE (UUID Null Handling) ---
   const handleAddNote = () => {
     if (!newNote.trim()) return;
 
-    // Safety check: User ID bắt buộc phải có
     if (!user?.userId) {
-      Alert.alert("Error", "User session missing. Please restart app.");
+      console.error("❌ Missing UserID in Store");
+      Alert.alert("Error", "User session invalid. Please login again.");
       return;
     }
 
-    // CRITICAL FIX: UUID fields must be null, NEVER empty string ""
-    // Hàm này đảm bảo các trường UUID tùy chọn là null nếu không hợp lệ.
-    const ensureUuidOrNull = (id: string | undefined): string | null => {
-      return (id && typeof id === 'string' && id.length > 0)
-        ? id
-        : null;
-    };
+    // Helper: Valid UUID or NULL (Strictly for Java Backend)
+    const safeContentId = (courseId && typeof courseId === 'string' && courseId.length === 36)
+      ? courseId
+      : null;
 
-    const notePayload: MemorizationRequest = {
+    const payload: MemorizationRequest = {
       userId: user.userId,
       contentType: mapNoteTypeToContentType(selectedNoteType),
-      contentId: ensureUuidOrNull(courseId),
+      contentId: safeContentId,
       noteText: newNote.trim(),
       isFavorite: false,
     };
 
-    createMemorization(notePayload, {
+    console.log("📝 Preparing to create note:", payload);
+
+    createMemorization(payload, {
       onSuccess: (createdNote) => {
         if (isReminderEnabled) {
           handleCreateReminder(createdNote.memorizationId, createdNote.noteText);
@@ -140,31 +137,29 @@ const NotesScreen = ({ navigation, route }: any) => {
           finishAddProcess();
         }
       },
-      onError: (err) => {
-        console.error("Create Note Error:", err);
-        Alert.alert("Error", t("common.error"));
+      onError: (err: any) => {
+        const msg = err?.response?.data?.message || t("common.error");
+        Alert.alert("Failed to create note", msg);
       }
     });
   };
 
-  // --- LOGIC 3: FIX TOGGLE FAVORITE (Clean DTO) ---
   const handleToggleFavorite = (item: MemorizationResponse) => {
-    // Đảm bảo rằng contentId luôn là null nếu nó là undefined/rỗng từ item.
-    const safeContentId = (item.contentId && item.contentId.length > 0) ? item.contentId : null;
+    const safeContentId = (item.contentId && item.contentId.length === 36) ? item.contentId : null;
 
     const cleanPayload: MemorizationRequest = {
       userId: item.userId,
       contentType: item.contentType,
-      contentId: safeContentId, // Đảm bảo null strictness
+      contentId: safeContentId,
       noteText: item.noteText,
-      isFavorite: !item.isFavorite // Toggle logic
+      isFavorite: !item.isFavorite
     };
 
     updateMemorization({
       id: item.memorizationId,
       req: cleanPayload
     }, {
-      onError: () => Alert.alert("Error", "Failed to update favorite status")
+      onError: () => Alert.alert("Error", "Failed to update status")
     });
   };
 
@@ -172,7 +167,7 @@ const NotesScreen = ({ navigation, route }: any) => {
     const timeStringHHMM = `${reminderHour}:${reminderMinute}`;
 
     const reminderPayload: UserReminderRequest = {
-      title: t("notes.reminderTitle") + ": " + noteTitle.substring(0, 20) + "...",
+      title: t("notes.reminderTitle") + ": " + (noteTitle.length > 20 ? noteTitle.substring(0, 20) + "..." : noteTitle),
       message: t("notes.reminderBody") + ": " + noteTitle,
       time: timeStringHHMM,
       date: TimeHelper.formatDateForApi(new Date()),
@@ -187,7 +182,8 @@ const NotesScreen = ({ navigation, route }: any) => {
         Alert.alert(t("common.success"), t("notes.reminderSetSuccess"));
         finishAddProcess();
       },
-      onError: () => {
+      onError: (err: any) => {
+        console.error("Reminder creation failed:", err);
         Alert.alert(t("common.warning"), t("notes.noteSavedReminderFailed"));
         finishAddProcess();
       }
@@ -215,8 +211,8 @@ const NotesScreen = ({ navigation, route }: any) => {
       <View style={styles.noteHeader}>
         <View style={styles.noteTypeTag}>
           <Text style={styles.noteTypeTagText}>
-            {item.contentType === Enums.ContentType.VOCABULARY ? "🔤" :
-              item.contentType === Enums.ContentType.FORMULA ? "📐" : "📝"}
+            {item.contentType === Enums.ContentType.VOCABULARY ? "🔤 Vocabulary" :
+              item.contentType === Enums.ContentType.FORMULA ? "📐 Grammar" : "📝 Note"}
           </Text>
         </View>
         <Text style={styles.noteDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
@@ -227,11 +223,11 @@ const NotesScreen = ({ navigation, route }: any) => {
           onPress={() => handleToggleFavorite(item)}
           style={styles.iconBtn}
         >
-          <Icon name={item.isFavorite ? "star" : "star-border"} size={20} color={item.isFavorite ? "#F59E0B" : "#9CA3AF"} />
+          <Icon name={item.isFavorite ? "star" : "star-border"} size={22} color={item.isFavorite ? "#F59E0B" : "#9CA3AF"} />
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
         <TouchableOpacity onPress={() => handleDelete(item.memorizationId)} style={styles.iconBtn}>
-          <Icon name="delete-outline" size={20} color="#EF4444" />
+          <Icon name="delete-outline" size={22} color="#EF4444" />
         </TouchableOpacity>
       </View>
     </View>
@@ -254,7 +250,7 @@ const NotesScreen = ({ navigation, route }: any) => {
           <Icon name="search" size={20} color="#9CA3AF" />
           <TextInput
             style={styles.searchInput}
-            placeholder={t("notes.searchPlaceholder") ?? "Search..."}
+            placeholder={t("notes.searchPlaceholder") ?? "Search notes..."}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor="#9CA3AF"
@@ -273,8 +269,8 @@ const NotesScreen = ({ navigation, route }: any) => {
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Icon name="post-add" size={48} color="#E5E7EB" />
-                <Text style={styles.emptyText}>{t("notes.empty") ?? "No notes found. Tap + to add."}</Text>
+                <Icon name="note-add" size={48} color="#E5E7EB" />
+                <Text style={styles.emptyText}>{t("notes.empty") ?? "Create your first note"}</Text>
               </View>
             }
           />
@@ -296,6 +292,7 @@ const NotesScreen = ({ navigation, route }: any) => {
               </TouchableOpacity>
             </View>
 
+            {/* Content Type Selector */}
             <View style={styles.typeSelector}>
               {(["word", "phrase", "grammar"] as const).map(type => (
                 <TouchableOpacity
@@ -313,7 +310,7 @@ const NotesScreen = ({ navigation, route }: any) => {
             <TextInput
               style={styles.modalInput}
               multiline
-              placeholder={t("notes.inputPlaceholder") ?? "Type your note here..."}
+              placeholder={t("notes.inputPlaceholder") ?? "Enter text..."}
               value={newNote}
               onChangeText={setNewNote}
               autoFocus
@@ -324,7 +321,7 @@ const NotesScreen = ({ navigation, route }: any) => {
               <View style={styles.reminderHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Icon name="alarm" size={20} color="#37352F" style={{ marginRight: 8 }} />
-                  <Text style={styles.reminderLabel}>{t("notes.enableReminder") ?? "Set Reminder"}</Text>
+                  <Text style={styles.reminderLabel}>{t("notes.enableReminder") ?? "Reminder"}</Text>
                 </View>
                 <Switch
                   value={isReminderEnabled}
@@ -335,7 +332,7 @@ const NotesScreen = ({ navigation, route }: any) => {
 
               {isReminderEnabled && (
                 <View style={styles.reminderControls}>
-                  <Text style={styles.labelSmall}>{t("notes.time") ?? "Select Time"}</Text>
+                  <Text style={styles.labelSmall}>{t("notes.time") ?? "Set Time"}</Text>
                   <View style={styles.timePickerContainer}>
                     <TouchableOpacity
                       style={styles.timeBox}
@@ -360,11 +357,10 @@ const NotesScreen = ({ navigation, route }: any) => {
                       <Text style={styles.timeText}>{reminderMinute}</Text>
                       <Text style={styles.timeLabel}>Min</Text>
                     </TouchableOpacity>
-                    <Text style={styles.hintText}>Tap to increment</Text>
                   </View>
 
                   <View style={styles.repeatContainer}>
-                    <Text style={styles.labelSmall}>{t("notes.repeat") ?? "Repeat"}</Text>
+                    <Text style={styles.labelSmall}>{t("notes.repeat") ?? "Frequency"}</Text>
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                       <TouchableOpacity
                         onPress={() => setReminderRepeat(Enums.RepeatType.DAILY)}
@@ -413,8 +409,8 @@ const styles = createScaledSheet({
   listContent: { padding: 16, paddingBottom: 80 },
   noteCard: { backgroundColor: '#FFFFFF', borderRadius: 8, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E9E9E9', shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 },
   noteHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  noteTypeTag: { backgroundColor: '#F0F0F0', borderRadius: 4, padding: 4 },
-  noteTypeTagText: { fontSize: 12 },
+  noteTypeTag: { backgroundColor: '#F0F0F0', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  noteTypeTagText: { fontSize: 12, fontWeight: '500', color: '#555' },
   noteDate: { fontSize: 12, color: '#9CA3AF' },
   noteText: { fontSize: 15, color: '#37352F', lineHeight: 22, marginBottom: 12 },
   noteFooter: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F7F7F7', paddingTop: 8, gap: 16 },
@@ -428,7 +424,7 @@ const styles = createScaledSheet({
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#37352F' },
   typeSelector: { flexDirection: 'row', marginBottom: 16, gap: 10 },
   typeBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, backgroundColor: '#F7F7F5' },
-  activeTypeBtn: { backgroundColor: '#E6F3FF' },
+  activeTypeBtn: { backgroundColor: '#E6F3FF', borderWidth: 1, borderColor: '#0077D6' },
   typeBtnText: { fontSize: 13, color: '#37352F' },
   activeTypeBtnText: { color: '#0077D6', fontWeight: '600' },
   modalInput: { fontSize: 16, lineHeight: 24, color: '#37352F', minHeight: 80, textAlignVertical: 'top', marginBottom: 10 },
@@ -445,7 +441,6 @@ const styles = createScaledSheet({
   timeText: { fontSize: 24, fontWeight: 'bold', color: '#37352F' },
   timeLabel: { fontSize: 10, color: '#6B7280' },
   timeSeparator: { fontSize: 24, fontWeight: 'bold', marginHorizontal: 10, color: '#37352F' },
-  hintText: { fontSize: 10, color: '#9CA3AF', marginLeft: 10 },
 
   labelSmall: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
   repeatContainer: { marginTop: 10 },

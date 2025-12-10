@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: ./LinguamonkeyFe
     
-    # Globally force the NDK path for all steps in this job
+    # Globally force NDK 26 environment variables
     env:
       ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
       ANDROID_HOME: /usr/local/lib/android/sdk
@@ -27,7 +27,7 @@ jobs:
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22 # Fixed: 24.4 does not exist yet. Used LTS 20.
+          node-version: 20
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
@@ -37,14 +37,11 @@ jobs:
       - name: 🔧 Setup specific NDK (Force v26)
         run: |
           echo "✨ Removing conflicting NDK versions..."
-          # Aggressively remove NDK 27 to prevent Gradle from auto-detecting it
           sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
           
           echo "✨ Installing/Verifying NDK 26.1.10909125..."
-          # Ensure NDK 26 is present using sdkmanager
           sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;26.1.10909125"
           
-          # Verify installation
           if [ -d "$ANDROID_NDK_HOME" ]; then
             echo "✅ NDK 26 found at $ANDROID_NDK_HOME"
           else
@@ -52,16 +49,24 @@ jobs:
             exit 1
           fi
 
-      - name: 📝 Create local.properties (Crucial Fix)
-        # We explicitly write the NDK path to local.properties. 
-        # Gradle ALWAYS prioritizes this file over auto-detection.
+      - name: 📝 Create local.properties
+        # Explicitly tells Gradle where to find SDK and NDK 26
         run: |
           echo "sdk.dir=/usr/local/lib/android/sdk" > android/local.properties
           echo "ndk.dir=/usr/local/lib/android/sdk/ndk/26.1.10909125" >> android/local.properties
-          cat android/local.properties
 
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
+
+      # NEW STEP: Overwrite the project's request for NDK 27 to NDK 26
+      - name: 🚑 Patch Gradle NDK Version
+        run: |
+          echo "✨ Patching build.gradle files to require NDK 26 instead of 27..."
+          # Find any file in ./android containing the NDK 27 version string and replace it with 26
+          grep -rl "27.1.12297006" android | xargs sed -i 's/27.1.12297006/26.1.10909125/g'
+          
+          echo "✅ Patch complete. Verifying:"
+          grep -r "ndkVersion" android || echo "ndkVersion not found in grep (might be okay if dynamically set)"
 
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
@@ -113,7 +118,6 @@ jobs:
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
         run: |
           echo "🔧 Start signed local EAS build..."
-          # Added --clear-cache to ensure no stale Gradle demons use the old NDK
           eas build --platform android --profile production --local --non-interactive --clear-cache --output ./app-release.apk
 
       - name: 📤 Upload signed APK to GitHub Artifacts

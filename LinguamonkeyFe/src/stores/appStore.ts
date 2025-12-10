@@ -9,6 +9,9 @@ export interface CallPreferences {
   nativeLanguage: string;
   learningLanguage: string;
   ageRange: string;
+  // NEW: Settings for call controls
+  subtitleMode: 'dual' | 'native' | 'original' | 'off';
+  micEnabled: boolean;
 }
 
 export interface ChatSettings {
@@ -77,7 +80,7 @@ interface AppState {
   setLanguages: (languages: string[]) => void;
   setTheme: (theme: 'light' | 'dark') => void;
   setSelectedNoteTopic: (topicId: string) => void;
-  setCallPreferences: (preferences: CallPreferences) => void;
+  setCallPreferences: (preferences: Partial<CallPreferences>) => void; // Changed to Partial for easier updates
   setChatSettings: (settings: Partial<ChatSettings>) => void;
 
   setNotificationPreferences: (preferences: NotificationPreferences) => void;
@@ -114,6 +117,8 @@ export const useAppStore = create<AppState>()(
         nativeLanguage: 'en',
         learningLanguage: 'vi',
         ageRange: '18-30',
+        subtitleMode: 'dual', // Default
+        micEnabled: true,     // Default
       },
 
       chatSettings: {
@@ -164,7 +169,10 @@ export const useAppStore = create<AppState>()(
       setLanguages: (langs) => set({ languages: langs }),
       setTheme: (theme) => set({ theme }),
       setSelectedNoteTopic: (topicId) => set({ selectedNoteTopic: topicId }),
-      setCallPreferences: (prefs) => set({ callPreferences: prefs }),
+
+      // Updated to handle partial updates
+      setCallPreferences: (prefs) =>
+        set((state) => ({ callPreferences: { ...state.callPreferences, ...prefs } })),
 
       setChatSettings: (settings) =>
         set((state) => ({ chatSettings: { ...state.chatSettings, ...settings } })),
@@ -242,6 +250,15 @@ export const useAppStore = create<AppState>()(
             profileVisibility: true,
             progressSharing: false,
             searchPrivacy: true,
+          },
+          callPreferences: {
+            interests: [],
+            gender: 'any',
+            nativeLanguage: 'en',
+            learningLanguage: 'vi',
+            ageRange: '18-30',
+            subtitleMode: 'dual',
+            micEnabled: true,
           },
           selectedGrammarTopic: null,
           selectedVideo: null,

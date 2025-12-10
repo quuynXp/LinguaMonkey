@@ -23,11 +23,9 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
 
     long  countBySenderIdAndIsDeletedFalse(UUID senderId);
 
-
     Page<ChatMessage> findByRoomIdAndIsDeletedFalse(UUID roomId, Pageable pageable);
 
     Page<ChatMessage> findByRoomIdAndIsDeletedFalseOrderById_SentAtDesc(UUID roomId, Pageable pageable);
-
 
     @Query("SELECT cm FROM ChatMessage cm WHERE cm.id.chatMessageId = :chatMessageId AND cm.isDeleted = false")
     Optional<ChatMessage> findByIdChatMessageIdAndIsDeletedFalse(@Param("chatMessageId") UUID chatMessageId);
@@ -40,17 +38,11 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE (cm.senderId = :userId OR cm.receiverId = :userId) AND cm.isDeleted = false")
     long countMessagesForUser(@Param("userId") UUID userId);
 
-    @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.senderId = :userId AND cm.messageType = com.connectJPA.LinguaVietnameseApp.enums.MessageType.TRANSLATION AND cm.isDeleted = false")
+    // CHANGED: Query count logic might need adjustment if you want to count total translated messages, 
+    // but typically counting non-null translations field is enough.
+    @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.senderId = :userId AND cm.translations IS NOT NULL AND cm.isDeleted = false")
     long countTranslationsForUser(@Param("userId") UUID userId);
 
-    @Modifying
-@Query("UPDATE ChatMessage m SET m.translatedText = :text, m.translatedLang = :lang WHERE m.id.chatMessageId = :id")
-void updateTranslation(@Param("id") UUID id, @Param("text") String text, @Param("lang") String lang);
-
-    /**
-     * THÊM: Phương thức tìm kiếm tin nhắn thay thế Elasticsearch.
-     * Sử dụng LIKE cho nội dung và lọc tùy chọn theo RoomId.
-     */
     @Query("SELECT cm FROM ChatMessage cm WHERE " +
             "LOWER(cm.content) LIKE LOWER(CONCAT('%', :keyword, '%')) AND " +
             "(:roomId IS NULL OR cm.roomId = :roomId) AND " +
@@ -61,5 +53,5 @@ void updateTranslation(@Param("id") UUID id, @Param("text") String text, @Param(
             @Param("roomId") UUID roomId,
             Pageable pageable);
 
-            Optional<ChatMessage> findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(UUID roomId);
+    Optional<ChatMessage> findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(UUID roomId);
 }

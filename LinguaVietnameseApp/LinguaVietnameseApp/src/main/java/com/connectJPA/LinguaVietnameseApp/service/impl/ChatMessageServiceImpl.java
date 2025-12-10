@@ -5,11 +5,11 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
+import com.connectJPA.LinguaVietnameseApp.enums.MessageType;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -23,6 +23,7 @@ import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
 import learning.TranslateResponse;
 import lombok.RequiredArgsConstructor;
@@ -36,12 +37,15 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Type;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -66,6 +70,29 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final BadgeService badgeService;
 
     private static final UUID AI_BOT_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
+    private Map<String, String> parseTranslations(String json) {
+        if (json == null || json.isEmpty()) return new HashMap<>();
+        try {
+            Type type = new TypeToken<Map<String, String>>(){}.getType();
+            return gson.fromJson(json, type);
+        } catch (Exception e) {
+            log.error("Failed to parse translations JSON: {}", json, e);
+            return new HashMap<>();
+        }
+    }
+
+    private String serializeTranslations(Map<String, String> map) {
+        if (map == null) return "{}";
+        return gson.toJson(map);
+    }
+
+    private ChatMessageResponse mapToResponse(ChatMessage entity, RoomPurpose purpose) {
+        ChatMessageResponse response = chatMessageMapper.toResponse(entity);
+        response.setTranslations(parseTranslations(entity.getTranslations()));
+        response.setPurpose(purpose);
+        return response;
+    }
 
     @Override
     public Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size) {
@@ -102,7 +129,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
+        
+        // Initialize as empty JSON object
+        message.setTranslations("{}");
 
+        // --- TRANSLATION LOGIC ---
         if (request.getContent() != null && !request.getContent().isEmpty() 
             && (request.getMessageType() == null || request.getMessageType().name().equals("TEXT"))) {
             
@@ -121,31 +152,33 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                         shouldTranslate = true;
                     }
                 }
-            } else {
-                shouldTranslate = false;
-            }
+            } 
+            // Optional: Add logic for GROUP_CHAT auto-translate based on room settings if needed
 
             if (shouldTranslate) {
                 try {
                     CompletableFuture<TranslateResponse> future = grpcClientService.callTranslateAsync(
                         null, request.getContent(), "auto", targetLang
                     );
-                    TranslateResponse aiResponse = future.join();
+                    
+                    // CRITICAL FIX: Add timeout to prevent blocking thread indefinitely
+                    TranslateResponse aiResponse = future.get(3000, TimeUnit.MILLISECONDS);
+                    
                     String detectedSource = aiResponse.getSourceLanguageDetected();
                     String translatedText = aiResponse.getTranslatedText();
                     
-                    if (detectedSource != null && !detectedSource.equalsIgnoreCase(targetLang)) {
-                        message.setTranslatedText(translatedText);
-                        message.setTranslatedLang(targetLang);
-                    } else {
-                        message.setTranslatedText(null); 
-                        message.setTranslatedLang(null);
+                    if (detectedSource != null && !detectedSource.equalsIgnoreCase(targetLang) && translatedText != null && !translatedText.isEmpty()) {
+                        Map<String, String> transMap = new HashMap<>();
+                        transMap.put(targetLang, translatedText);
+                        message.setTranslations(serializeTranslations(transMap));
                     }
                 } catch (Exception e) {
-                    log.error("Auto-translation failed: {}", e.getMessage());
+                    log.error("Auto-translation failed or timed out: {}", e.getMessage());
+                    // Do not fail the message save, just skip translation
                 }
             }
         }
+        // -------------------------
         
         ChatMessage savedMessage = chatMessageRepository.save(message);
         room.setUpdatedAt(OffsetDateTime.now());
@@ -158,13 +191,16 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             } catch (Exception e) { log.warn("Stats update failed", e); }
         }
 
-        ChatMessageResponse response = chatMessageMapper.toResponse(savedMessage);
-        response.setPurpose(room.getPurpose());
+        ChatMessageResponse response = mapToResponse(savedMessage, room.getPurpose());
+        
         if (isAiBot) response.setSenderProfile(null); 
         else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
         try {
+            // STOMP Broadcast
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
+            
+            // Notification Logic
             List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
                 .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(request.getSenderId())).toList();
 
@@ -190,8 +226,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     public Page<ChatMessageResponse> getMessagesByRoom(UUID roomId, Pageable pageable) {
+        Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId).orElse(null);
+        RoomPurpose purpose = room != null ? room.getPurpose() : RoomPurpose.GROUP_CHAT;
+        
         return chatMessageRepository.findByRoomIdAndIsDeletedFalseOrderById_SentAtDesc(roomId, pageable)
-                .map(chatMessageMapper::toResponse);
+                .map(entity -> mapToResponse(entity, purpose));
     }
 
     @Override
@@ -231,10 +270,12 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
 
             message.setContent(newContent);
+            // Invalidate translations on edit
+            message.setTranslations("{}"); 
             message.setUpdatedAt(OffsetDateTime.now());
             message = chatMessageRepository.save(message);
 
-            ChatMessageResponse response = chatMessageMapper.toResponse(message);
+            ChatMessageResponse response = mapToResponse(message, null);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
             response.setPurpose(room.getPurpose());
@@ -254,11 +295,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             MessageReaction messageReaction = MessageReaction.builder()
                     .reactionId(UUID.randomUUID()).chatMessageId(messageId).sentAt(OffsetDateTime.now()).userId(userId).reaction(reaction).build();
             messageReactionRepository.save(messageReaction);
-            ChatMessageResponse response = chatMessageMapper.toResponse(message);
+            
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-            response.setPurpose(room.getPurpose());
-            return response;
+            return mapToResponse(message, room.getPurpose());
         } catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
@@ -274,11 +314,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 message.setRead(true);
                 message = chatMessageRepository.save(message);
             }
-            ChatMessageResponse response = chatMessageMapper.toResponse(message);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-            response.setPurpose(room.getPurpose());
-            return response;
+            return mapToResponse(message, room.getPurpose());
         } catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
@@ -290,13 +328,13 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .id(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()))
                     .roomId(userMessage.getRoomId()).senderId(AI_BOT_ID)
                     .content("AI response to: " + userMessage.getContent())
-                    .messageType(userMessage.getMessageType()).isRead(false).build();
+                    .messageType(userMessage.getMessageType()).isRead(false)
+                    .translations("{}") 
+                    .build();
             aiMessage = chatMessageRepository.save(aiMessage);
-            ChatMessageResponse response = chatMessageMapper.toResponse(aiMessage);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(userMessage.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-            response.setPurpose(room.getPurpose());
-            return response;
+            return mapToResponse(aiMessage, room.getPurpose());
         } catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
 
@@ -328,20 +366,28 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
 
+            Map<String, String> translations = parseTranslations(message.getTranslations());
+            
+            translations.put(targetLang, translatedText);
+            
+            message.setTranslations(serializeTranslations(translations));
+            
+            ChatMessage saved = chatMessageRepository.save(message);
+
             MessageTranslation mt = MessageTranslation.builder()
                     .chatMessageId(messageId)
                     .targetLang(targetLang)
                     .translatedText(translatedText)
                     .build();
-
             messageTranslationRepository.save(mt);
 
-            ChatMessageResponse response = chatMessageMapper.toResponse(message);
-            response.setPurpose(roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId()).orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND)).getPurpose());
+            Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
+                    .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-            response.setTranslatedText(translatedText);
-            response.setTranslatedLang(targetLang);
-            
+            // BROADCAST UPDATE to others in room
+            ChatMessageResponse response = mapToResponse(saved, room.getPurpose());
+            messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), response);
+
             return response;
         } catch (Exception e) {
             log.error("Error saving translation for message {}", messageId, e);

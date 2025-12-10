@@ -41,13 +41,25 @@ const getCommonHeaders = async () => {
     };
 };
 
-const DEV_LOG_ENABLED = typeof (global as any).__DEV__ !== 'undefined' && (global as any).__DEV__;
+// 🔥 DEBUG MODE: Force TRUE để xem log. Sửa lại logic cũ sau khi fix xong lỗi.
+const DEV_LOG_ENABLED = true;
+// const DEV_LOG_ENABLED = typeof (global as any).__DEV__ !== 'undefined' && (global as any).__DEV__;
 
 const logRequest = (config: CustomAxiosRequestConfig) => {
     if (!DEV_LOG_ENABLED) return;
-    const { method, url, headers } = config;
-    const isFormData = config.data instanceof FormData;
-    console.log(`🚀 [REQ] ${method?.toUpperCase()} ${url} ${isFormData ? '(FormData)' : ''}`, { headers });
+    const { method, url, headers, data } = config;
+    const isFormData = data instanceof FormData;
+
+    console.log(`🚀 [REQ] ${method?.toUpperCase()} ${url} ${isFormData ? '(FormData)' : ''}`);
+
+    // 🔥 LOG PAYLOAD: Để kiểm tra bạn đang gửi gì lên (VD: contentId có bị rỗng không?)
+    if (data && !isFormData) {
+        try {
+            console.log('📦 [REQ BODY]:', JSON.stringify(data, null, 2));
+        } catch (e) {
+            console.log('📦 [REQ BODY]:', data);
+        }
+    }
 };
 
 const logResponse = (response: AxiosResponse) => {
@@ -57,10 +69,24 @@ const logResponse = (response: AxiosResponse) => {
 };
 
 const logError = (error: AxiosError) => {
-    if (!DEV_LOG_ENABLED) return;
+    // Luôn log lỗi kể cả khi tắt DEV mode để debug production nếu cần
+    // if (!DEV_LOG_ENABLED) return; 
+
     const config = error.config as CustomAxiosRequestConfig;
     const status = error.response?.status;
-    console.log(`🔥 [ERR] ${status || 'Unknown'} ${config?.url}`, error.message);
+    const data = error.response?.data;
+
+    console.log(`🔥 [ERR] ${status || 'Unknown'} ${config?.url}`);
+    console.log(`❌ [ERR MSG]: ${error.message}`);
+
+    // 🔥 LOG SERVER RESPONSE: Đây là cái bạn cần để biết tại sao 400 Bad Request
+    if (data) {
+        try {
+            console.log('❌ [SERVER RESPONSE]:', JSON.stringify(data, null, 2));
+        } catch (e) {
+            console.log('❌ [SERVER RESPONSE]:', data);
+        }
+    }
 };
 
 export const publicClient = axios.create({
@@ -189,6 +215,7 @@ const setupInterceptors = (client: any) => {
             const originalRequest = error.config as CustomAxiosRequestConfig;
             const httpStatus = error.response?.status;
 
+            // 🔥 LOG ERROR HERE
             logError(error);
 
             if (httpStatus !== 401 && httpStatus !== 403) {

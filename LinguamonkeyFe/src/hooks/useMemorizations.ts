@@ -23,17 +23,18 @@ export const useMemorizations = () => {
   // === QUERIES ===
   // ==========================================
 
-  // GET /api/v1/memorizations
   const useUserMemorizations = (params?: {
     content_type?: string;
     page?: number;
     size?: number;
+    keyword?: string;
   }) => {
     return useQuery({
       queryKey: memorizationKeys.list(params),
       queryFn: async () => {
         const qp = new URLSearchParams();
         if (params?.content_type) qp.append("contentType", params.content_type);
+        if (params?.keyword) qp.append("keyword", params.keyword);
         if (params?.page !== undefined) qp.append("page", String(params.page));
         if (params?.size !== undefined) qp.append("size", String(params.size));
 
@@ -41,7 +42,6 @@ export const useMemorizations = () => {
           `/api/v1/memorizations?${qp.toString()}`
         );
 
-        // Map response standard
         return {
           data: data.result?.content || [],
           pagination: {
@@ -60,27 +60,30 @@ export const useMemorizations = () => {
     });
   };
 
-  // Note: Controller does NOT have getById endpoint explicitly listed in snippet provided!
-  // It only has save, update, delete, getAll.
-  // Assuming getAll filters sufficiently or Client filters from list.
-  // If getById is needed, backend should add: @GetMapping("/{id}")
-  // I will disable useMemorization hook or map it to getAll filtering if possible, 
-  // but strictly following controller, it's missing.
-  // I'll remove useMemorization to stay strict to provided controller.
-
   // ==========================================
   // === MUTATIONS ===
   // ==========================================
 
-  // POST /api/v1/memorizations
   const useCreateMemorization = () => {
     return useMutation({
       mutationFn: async (req: MemorizationRequest) => {
-        const { data } = await instance.post<AppApiResponse<MemorizationResponse>>(
-          "/api/v1/memorizations",
-          req
-        );
-        return data.result!;
+        try {
+          // LOGGING PAYLOAD BEFORE SEND
+          console.log("🔥 [POST] Sending Memorization Payload:", JSON.stringify(req, null, 2));
+
+          const { data } = await instance.post<AppApiResponse<MemorizationResponse>>(
+            "/api/v1/memorizations",
+            req
+          );
+          return data.result!;
+        } catch (error: any) {
+          // LOGGING SERVER ERROR DETAILS
+          if (error.response) {
+            console.error("🔥 [ERR] Server Response Data:", JSON.stringify(error.response.data, null, 2));
+            console.error("🔥 [ERR] Status:", error.response.status);
+          }
+          throw error;
+        }
       },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: memorizationKeys.lists() });
@@ -88,25 +91,29 @@ export const useMemorizations = () => {
     });
   };
 
-  // PUT /api/v1/memorizations/{id}
   const useUpdateMemorization = () => {
     return useMutation({
       mutationFn: async ({ id, req }: { id: string; req: MemorizationRequest }) => {
-        const { data } = await instance.put<AppApiResponse<MemorizationResponse>>(
-          `/api/v1/memorizations/${id}`,
-          req
-        );
-        return data.result!;
+        try {
+          console.log(`🔥 [PUT] Updating ID: ${id} with Payload:`, JSON.stringify(req, null, 2));
+          const { data } = await instance.put<AppApiResponse<MemorizationResponse>>(
+            `/api/v1/memorizations/${id}`,
+            req
+          );
+          return data.result!;
+        } catch (error: any) {
+          if (error.response) {
+            console.error("🔥 [ERR] Update Failed Response:", JSON.stringify(error.response.data, null, 2));
+          }
+          throw error;
+        }
       },
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: memorizationKeys.lists() });
-        // Invalidate detail if caching individually
-        // queryClient.invalidateQueries({ queryKey: memorizationKeys.detail(data.memorizationId) });
       },
     });
   };
 
-  // DELETE /api/v1/memorizations/{id}
   const useDeleteMemorization = () => {
     return useMutation({
       mutationFn: async (id: string) => {
@@ -118,10 +125,6 @@ export const useMemorizations = () => {
     });
   };
 
-  // Toggle Favorite Logic (Helper using Update)
-  // Since controller has no specific toggle endpoint, we fetch the item (or use passed data), flip boolean, and call update.
-  // This hook requires passing the FULL current object to be safe, or at least enough fields to make a valid PUT request.
-  // Simplest way: UI passes current isFavorite and other required fields.
   const useToggleFavorite = () => {
     return useMutation({
       mutationFn: async ({ id, currentReq }: { id: string; currentReq: MemorizationRequest }) => {

@@ -97,7 +97,8 @@ interface UseChatState {
   rejectIncomingCall: () => void;
   updateUserStatus: (userId: string, isOnline: boolean, lastActiveAt?: string) => void;
 
-  performEagerTranslation: (messageId: string, text: string) => Promise<void>;
+  performEagerTranslation: (messageId: string, text: string, targetLang?: string) => Promise<void>;
+  translateLastNMessages: (roomId: string, targetLang: string, count?: number) => Promise<void>;
 }
 
 const normalizeMessage = (msg: any): Message => {
@@ -106,9 +107,27 @@ const normalizeMessage = (msg: any): Message => {
       id: { chatMessageId: 'unknown-' + Math.random(), sentAt: new Date().toISOString() },
     } as Message;
   }
+
+  let parsedTranslations: Record<string, string> = {};
+  if (msg.translations) {
+    try {
+      if (typeof msg.translations === 'string') {
+        // Check if string is a valid JSON before parsing
+        if (msg.translations.trim().startsWith('{')) {
+          parsedTranslations = JSON.parse(msg.translations);
+        }
+      } else if (typeof msg.translations === 'object') {
+        parsedTranslations = msg.translations;
+      }
+    } catch (e) {
+      console.warn('Failed to parse message translations', e);
+      parsedTranslations = {};
+    }
+  }
+
   const mapTranslationFields = (source: any) => ({
-    translatedText: source.translatedText || source.translated_text || null,
-    translatedLang: source.translatedLang || source.translated_lang || null,
+    translationsMap: parsedTranslations,
+    translatedText: source.translatedText || null,
   });
 
   if (msg?.id?.chatMessageId) {
@@ -153,19 +172,26 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   let workingList = [...list];
 
   if (msg.senderId === currentUserId && !msg.isLocal) {
+    // Replace local optimistic message with real server message
     workingList = workingList.filter(m => !(m.isLocal && m.content === msg.content));
   }
 
-  const exists = workingList.find((m) => m.id.chatMessageId === msg.id.chatMessageId);
-  if (exists) {
-    workingList = workingList.map((m) => (m.id.chatMessageId === msg.id.chatMessageId ? msg : m));
+  const existsIndex = workingList.findIndex((m) => m.id.chatMessageId === msg.id.chatMessageId);
+  if (existsIndex > -1) {
+    workingList[existsIndex] = msg;
   } else {
     workingList = [msg, ...workingList];
   }
+
   return workingList.sort((a, b) => {
     const timeA = parseDate(a.id?.sentAt);
     const timeB = parseDate(b.id?.sentAt);
-    if (timeA === timeB) return (b.id?.chatMessageId || '').localeCompare(a.id?.chatMessageId || '');
+    if (timeA === timeB) {
+      // Stabilize sort order for messages with same timestamp
+      const idA = a.id?.chatMessageId || '';
+      const idB = b.id?.chatMessageId || '';
+      return idB.localeCompare(idA);
+    }
     return timeB - timeA;
   });
 }
@@ -221,24 +247,69 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     }));
   },
 
-  performEagerTranslation: async (messageId: string, text: string) => {
+  performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
     const { nativeLanguage, chatSettings } = useAppStore.getState();
-    const targetLang = chatSettings?.targetLanguage || nativeLanguage || 'vi';
+    const targetLang = overrideTargetLang || chatSettings?.targetLanguage || nativeLanguage || 'vi';
 
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
 
+    const allMessages = Object.values(get().messagesByRoom).flat();
+    const msg = allMessages.find(m => m.id.chatMessageId === messageId);
+
+    // Check if message already has this translation from backend
+    if (msg && (msg as any).translationsMap?.[targetLang]) {
+      set(state => ({
+        eagerTranslations: {
+          ...state.eagerTranslations,
+          [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: (msg as any).translationsMap[targetLang] }
+        }
+      }));
+      return;
+    }
+
     try {
-      const res = await instance.post('/api/py/translate', { text, target_lang: targetLang, source_lang: 'auto' });
+      // 1. Get Translation from Python (Fast, checks Lexicon cache)
+      const res = await instance.post('/api/py/translate', {
+        text,
+        target_lang: targetLang,
+        source_lang: 'auto',
+        message_id: messageId.startsWith('local') ? undefined : messageId
+      });
+
       const translatedText = res.data.result.translated_text;
 
+      // 2. Update UI State Immediately
       set(state => ({
         eagerTranslations: {
           ...state.eagerTranslations,
           [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: translatedText }
         }
       }));
+
+      // 3. Persist to Java Backend is handled by the Python endpoint calling Java or implicit flow?
+      // In current logic, Python translation endpoint is purely functional. 
+      // We must explicitly save to Java if we want it persisted for other devices.
+      if (!messageId.startsWith('local')) {
+        instance.put(`/api/v1/chat/messages/${messageId}/translation`, null, {
+          params: { targetLang, translatedText }
+        }).catch(err => console.warn("Failed to persist translation to Java", err));
+      }
+
     } catch (e) {
-      console.warn("Eager translation failed silently", e);
+      console.warn("Eager translation failed", e);
+    }
+  },
+
+  translateLastNMessages: async (roomId: string, targetLang: string, count = 10) => {
+    const messages = get().messagesByRoom[roomId] || [];
+    const currentUserId = useUserStore.getState().user?.userId;
+
+    const candidates = messages
+      .filter(m => m.messageType === 'TEXT' && m.senderId !== currentUserId && !m.isDeleted)
+      .slice(0, count);
+
+    for (const msg of candidates) {
+      await get().performEagerTranslation(msg.id.chatMessageId, msg.content, targetLang);
     }
   },
 

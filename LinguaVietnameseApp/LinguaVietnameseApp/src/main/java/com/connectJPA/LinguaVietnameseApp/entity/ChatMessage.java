@@ -9,25 +9,19 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-//import org.springframework.data.elasticsearch.annotations.Document;
-// import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
-
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
 @Entity
 @Data
 @Table(name = "chat_messages")
-// @Document(indexName = "chat_messages")
-// @EntityListeners(ElasticsearchEntityListener.class)
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
-public class ChatMessage{
+public class ChatMessage {
     @EmbeddedId
     private ChatMessagesId id;
 
@@ -60,9 +54,7 @@ public class ChatMessage{
     @Column(name = "is_read", nullable = false)
     private boolean isRead;
 
-    @Column(name = "translated_text", columnDefinition = "TEXT")
-    private String translatedText;
-
-    @Column(name = "translated_lang", length = 10)
-    private String translatedLang;
+    // Format: {"vi": "xin chao", "zh": "ni hao", "en": "hello"}
+    @Column(name = "translations", columnDefinition = "TEXT")
+    private String translations;
 }

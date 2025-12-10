@@ -9,6 +9,7 @@ import struct
 import math
 import io
 import wave
+import time
 import webrtcvad
 import regex as re
 from datetime import datetime
@@ -27,6 +28,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from dotenv import load_dotenv, find_dotenv
 from redis.asyncio import Redis
+from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 from src.core.azure_stt import AzureTranscriber
 from src.core.session import get_db, AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,6 +51,9 @@ AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 SILENCE_THRESHOLD = 60
 MIN_BUFFER_SIZE_TO_PROCESS = 3200 
 MAX_TEXT_CACHE_LENGTH = 300
+
+# Time in seconds to reset the accumulated text buffer if user stops speaking
+RESET_BUFFER_TIMEOUT = 2.5 
 
 VAD = webrtcvad.Vad(2)
 PROCESS_SEMAPHORE = Semaphore(3)
@@ -81,6 +87,7 @@ class TranslationRequest(BaseModel):
     text: str
     source_lang: str
     target_lang: str
+    message_id: Optional[str] = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -121,7 +128,6 @@ class ConnectionManager:
             for dead in to_remove:
                 self.disconnect(dead["ws"], room_id)
 
-    # FIX: Updated signature to handle exclude_user_id cleanly
     async def broadcast_subtitle(self, message: dict, room_id: str, exclude_user_id: str = None):
         if room_id not in self.active_connections: return
         to_remove = []
@@ -130,7 +136,6 @@ class ConnectionManager:
             conn = meta["ws"]
             uid = str(meta.get("user_id"))
             
-            # If exclude_user_id is provided and matches, skip
             if exclude_user_id and uid == str(exclude_user_id):
                 continue
             
@@ -138,7 +143,6 @@ class ConnectionManager:
                 user_native = meta.get("native_lang", "vi")
                 payload = dict(message)
                 
-                # Logic: Don't translate if original lang matches user native lang
                 if user_native and payload.get("originalLang") and user_native.lower().startswith(payload["originalLang"].lower()):
                     payload["translated"] = ""
                 
@@ -150,11 +154,11 @@ class ConnectionManager:
         for dead in to_remove:
             self.disconnect(dead["ws"], room_id)
 
-# Separate managers for Signal and Audio to avoid cross-talk
 signal_manager = ConnectionManager()
 audio_manager = ConnectionManager()
 
 user_text_cache: Dict[str, str] = defaultdict(str)
+user_last_speech_time: Dict[str, float] = defaultdict(float)
 
 def frame_bytes_from_pcm(pcm_bytes: bytes, sample_rate=16000, frame_ms=20):
     samples = int(sample_rate * frame_ms / 1000)
@@ -229,10 +233,34 @@ async def trigger_hf_ingest():
     return {"status": "Hugging Face ingestion task sent to worker", "task_id": str(task.id)}
 
 @protected_router.post("/translate")
-async def translate(request: TranslationRequest, redis: Redis = Depends(get_redis_client)):
+async def translate(
+    request: TranslationRequest, 
+    redis: Redis = Depends(get_redis_client),
+    db: AsyncSession = Depends(get_db)
+):
     try:
         translator = get_translator(redis)
         translated_text, detected_lang = await translator.translate(request.text, request.source_lang, request.target_lang)
+        
+        if request.message_id:
+            try:
+                msg_uuid = uuid.UUID(request.message_id)
+                stmt = select(ChatMessage).where(ChatMessage.chat_message_id == msg_uuid)
+                result = await db.execute(stmt)
+                message = result.scalar_one_or_none()
+                
+                if message:
+                    current_map = dict(message.translations) if message.translations else {}
+                    current_map[request.target_lang] = translated_text
+                    message.translations = current_map
+                    flag_modified(message, "translations")
+                    await db.commit()
+            except ValueError:
+                logger.warning(f"Invalid UUID for message_id: {request.message_id}")
+            except Exception as e:
+                logger.error(f"Failed to save translation to DB: {e}")
+                await db.rollback()
+
         return {"code": 200, "result": {"translated_text": translated_text, "detected_lang": detected_lang}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -392,7 +420,7 @@ async def audio_endpoint(
 
 
     async def handle_interim_result(text: str):
-        # Broadcast to everyone including sender so sender sees "Processing..."
+        # We don't update time here, we just show the immediate guess
         await audio_manager.broadcast_subtitle({
             "type": "subtitle",
             "status": "processing",
@@ -408,11 +436,24 @@ async def audio_endpoint(
             clean_text = text.strip()
             if not clean_text: return
 
+            # --- Logic to Reset Buffer on Silence ---
+            current_time = time.time()
+            last_speech = user_last_speech_time[buffer_key]
+            
+            # If gap > RESET_BUFFER_TIMEOUT (2.5s), clear previous context
+            if last_speech > 0 and (current_time - last_speech) > RESET_BUFFER_TIMEOUT:
+                user_text_cache[buffer_key] = ""
+            
+            # Update last speech time
+            user_last_speech_time[buffer_key] = current_time
+            # ----------------------------------------
+
             current_full = user_text_cache[buffer_key]
             new_full = (current_full + " " + clean_text).strip()
             user_text_cache[buffer_key] = new_full
 
-            if len(new_full) > 200: 
+            # Hard reset if too long (safety net)
+            if len(new_full) > 300: 
                 user_text_cache[buffer_key] = ""
 
             await audio_manager.broadcast_subtitle({
@@ -457,12 +498,9 @@ async def audio_endpoint(
             
             if "bytes" in msg and msg["bytes"]:
                 data_bytes = msg["bytes"]
-                # Optional: Log data arrival (spammy, but good for debug)
-                # logger.info(f"Got {len(data_bytes)} bytes from {user_id}")
                 transcriber.write_stream(data_bytes)
                 
             elif "text" in msg:
-                # Handle any text commands if needed
                 pass
                 
     except WebSocketDisconnect:

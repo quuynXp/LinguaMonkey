@@ -7,7 +7,7 @@ import httpx # Dùng để download file từ URL
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 async def download_media(url: str):
     """Hàm helper để download file từ URL"""

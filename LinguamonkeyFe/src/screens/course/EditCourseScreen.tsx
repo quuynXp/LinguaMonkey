@@ -11,28 +11,30 @@ import {
   Platform,
   FlatList,
   Modal,
-  StyleSheet,
-  ScrollView
+  StyleSheet
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
 import { useCourses } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { DifficultyLevel, VersionStatus } from "../../types/enums";
-import { getCourseImage, getLessonImage } from "../../utils/courseUtils";
+import { getLessonImage } from "../../utils/courseUtils";
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
 import {
   LessonResponse,
   CourseVersionDiscountResponse,
   CourseVersionDiscountRequest,
-  CourseResponse,
-  CourseVersionResponse
+  CourseResponse
 } from "../../types/dto";
 import FileUploader from "../../components/common/FileUploader";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+
+// --- Sub Components ---
 
 interface DiscountModalProps {
   visible: boolean;
@@ -106,7 +108,6 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
         onClose();
       },
       onError: (error: any) => {
-        console.error("Discount Error:", error);
         const errorMessage = error?.response?.data?.message || t("course.discountFailed");
         Alert.alert(t("error"), errorMessage);
       }
@@ -226,6 +227,8 @@ const PublishReasonModal = ({ visible, onClose, onConfirm }: { visible: boolean;
   );
 };
 
+// --- Main Screen ---
+
 const EditCourseScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -261,7 +264,7 @@ const EditCourseScreen = () => {
     useCreateCourse
   } = useCourses();
 
-  const { data: courseData, isLoading: isLoadingCourse } = useCourse(activeCourseId || null);
+  const { data: courseData } = useCourse(activeCourseId || null);
   const { data: versionsData, refetch: refetchVersions, isLoading: isLoadingVersions } = useCourseVersions(activeCourseId || null);
   const deleteDiscount = useDeleteDiscount();
 
@@ -294,7 +297,6 @@ const EditCourseScreen = () => {
     return (pages.flatMap((page: any) => page.data || []) as LessonResponse[]);
   }, [lessonsData]);
 
-  // FIX: This calls getAllCourseVersionDiscounts without percentage param, which should now return ALL discounts via backend fix.
   const { data: discountsData, refetch: refetchDiscounts } = useDiscounts({
     versionId: workingVersion?.versionId,
     page: 0,
@@ -334,13 +336,47 @@ const EditCourseScreen = () => {
 
   const isSaving = isCreatingCourse || isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isPublishing;
 
-  // FIX: Logic for image source to handle Drive URLs simply
-  const imageSource = useMemo(() => {
-    if (localThumbnailUrl) {
-      return { uri: localThumbnailUrl };
-    }
-    return getCourseImage(workingVersion?.thumbnailUrl);
+  // --- MEDIA HANDLING ---
+
+  const processedMediaUrl = useMemo(() => {
+    const rawUrl = localThumbnailUrl || workingVersion?.thumbnailUrl;
+    return getDirectMediaUrl(rawUrl);
   }, [localThumbnailUrl, workingVersion?.thumbnailUrl]);
+
+  const isVideo = useMemo(() => {
+    if (!processedMediaUrl) return false;
+    const lower = processedMediaUrl.toLowerCase();
+    return lower.endsWith('.mp4') || lower.includes('video') || lower.includes('format=mp4');
+  }, [processedMediaUrl]);
+
+  const player = useVideoPlayer(isVideo && processedMediaUrl ? processedMediaUrl : "", player => {
+    player.loop = true;
+    player.muted = true; // Thumbnails usually auto-play muted
+    if (isVideo) player.play();
+  });
+
+  // --- UPLOAD HANDLER ---
+
+  const handleUploadSuccess = (result: any) => {
+    // 1. Try Cloudinary secure URL first
+    let finalUrl = result.secure_url || result.url;
+
+    // 2. If not found, check for Google Drive ID (legacy support)
+    if (!finalUrl && result.id) {
+      finalUrl = `https://drive.google.com/uc?export=download&id=${result.id}`;
+    }
+
+    // 3. Fallback: if result itself is a string (rare)
+    if (!finalUrl && typeof result === 'string') {
+      finalUrl = result;
+    }
+
+    if (finalUrl) {
+      setLocalThumbnailUrl(finalUrl);
+    } else {
+      Alert.alert(t("error"), "Could not retrieve file URL.");
+    }
+  };
 
   const renderLessonItem = ({ item, index }: { item: LessonResponse; index: number }) => (
     <TouchableOpacity
@@ -366,19 +402,29 @@ const EditCourseScreen = () => {
   const headerElement = useMemo(() => (
     <View style={styles.contentContainer}>
       <View style={styles.thumbnailContainer}>
-        {/* FIX: Using calculated imageSource to avoid breaking Drive links */}
-        <Image
-          source={imageSource}
-          style={styles.thumbnail}
-          resizeMode="cover"
-        />
+        {isVideo && processedMediaUrl ? (
+          <VideoView
+            player={player}
+            style={styles.thumbnail}
+            contentFit="cover"
+          />
+        ) : (
+          <Image
+            source={processedMediaUrl ? { uri: processedMediaUrl } : require("../../assets/images/ImagePlacehoderCourse.png")}
+            style={styles.thumbnail}
+            resizeMode="cover"
+          />
+        )}
+
         <View style={styles.thumbnailOverlay} />
+
         <FileUploader
-          mediaType="image"
+          mediaType="all" // Allow both Image and Video
           style={styles.editThumbBtn}
-          onUploadSuccess={(res: any) => setLocalThumbnailUrl(`https://drive.google.com/uc?export=download&id=${res.id}`)}
+          onUploadSuccess={handleUploadSuccess}
           onUploadStart={() => setIsUploadingThumb(true)}
           onUploadEnd={() => setIsUploadingThumb(false)}
+          maxSizeMB={50}
         >
           {isUploadingThumb ? (
             <ActivityIndicator color="#FFF" />
@@ -485,7 +531,9 @@ const EditCourseScreen = () => {
       )}
     </View>
   ), [
-    imageSource, // Updated dependency
+    processedMediaUrl,
+    isVideo,
+    player,
     isUploadingThumb,
     title,
     price,
@@ -614,7 +662,6 @@ const EditCourseScreen = () => {
       return;
     }
 
-    // --- VALIDATION LOGIC MATCHING BACKEND ---
     if (!workingVersion.description || workingVersion.description.length < 20) {
       Alert.alert(t("error"), "Description is too short (min 20 chars). Please update and save.");
       return;

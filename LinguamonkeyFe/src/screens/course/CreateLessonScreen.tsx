@@ -107,7 +107,8 @@ const CreateLessonScreen = () => {
     const [targetVersionId, setTargetVersionId] = useState<string | undefined>(route.params?.versionId);
 
     const user = useUserStore(state => state.user);
-    const { useCreateLesson, useUpdateLesson, useLesson, useAllQuestions, useDeleteQuestion } = useLessons();
+    // REMOVED: useAllQuestions (không cần thiết nữa vì lessonData đã có questions)
+    const { useCreateLesson, useUpdateLesson, useLesson, useDeleteQuestion } = useLessons();
     const { useCourseVersions } = useCourses();
 
     const createLessonMutation = useCreateLesson();
@@ -115,22 +116,7 @@ const CreateLessonScreen = () => {
     const deleteQuestionMutation = useDeleteQuestion();
 
     const isEditMode = !!lessonId;
-    const { data: lessonData } = useLesson(sanitizeId(lessonId));
-
-    const questionsQueryParams = useMemo(() => {
-        // Luôn trả về object có lessonId, nếu lessonId null thì là chuỗi rỗng
-        // Enabled flag sẽ chặn việc fetch
-        return {
-            lessonId: sanitizeId(lessonId) || "",
-            size: 100
-        };
-    }, [lessonId]);
-
-    // FIX: Truyền thêm tham số enabled: isEditMode
-    const { data: questionsData, isLoading: isLoadingQuestions } = useAllQuestions(
-        questionsQueryParams,
-        isEditMode // Chỉ fetch khi đang ở chế độ Edit
-    );
+    const { data: lessonData, isLoading: isLoadingLesson } = useLesson(sanitizeId(lessonId));
 
     const { data: versionsData } = useCourseVersions(courseId, !targetVersionId);
 
@@ -155,6 +141,7 @@ const CreateLessonScreen = () => {
     const [isEditingIndex, setIsEditingIndex] = useState<number | null>(null);
     const [currentQ, setCurrentQ] = useState<LocalQuestionState>(defaultQ);
 
+    // --- FIX: GỘP LOGIC MAPPING QUESTIONS VÀO USEEFFECT CỦA LESSONDATA ---
     useEffect(() => {
         if (isEditMode && lessonData) {
             setLessonName(lessonData.title);
@@ -163,42 +150,49 @@ const CreateLessonScreen = () => {
             setLessonType(type);
             setThumbnailUrl(lessonData.thumbnailUrl || '');
             setMediaUrls(lessonData.videoUrls || []);
+
+            // XỬ LÝ QUESTIONS TỪ LESSONDATA (Thay vì dùng useAllQuestions)
+            // lessonData.questions được trả về từ Backend LessonServiceImpl.getLessonById
+            if (lessonData.questions && Array.isArray(lessonData.questions)) {
+                console.log("Questions Loaded from LessonData:", lessonData.questions.length);
+                const mapped = lessonData.questions.map((q: LessonQuestionResponse) => {
+                    let options = { A: '', B: '', C: '', D: '' };
+                    let pairs = [{ key: '', value: '' }];
+                    let orderItems = ['', ''];
+                    try {
+                        if (q.optionsJson) {
+                            const parsed = JSON.parse(q.optionsJson);
+                            if (q.questionType === QuestionType.MATCHING) pairs = Array.isArray(parsed) ? parsed : pairs;
+                            else if (q.questionType === QuestionType.ORDERING) orderItems = Array.isArray(parsed) ? parsed : orderItems;
+                            else if (q.questionType === QuestionType.MULTIPLE_CHOICE) options = { ...options, ...parsed };
+                        }
+                    } catch (e) {
+                        console.warn("Error parsing optionsJson for question:", q.lessonQuestionId);
+                    }
+                    return {
+                        id: q.lessonQuestionId,
+                        question: q.question,
+                        questionType: q.questionType,
+                        options, pairs, orderItems,
+                        correctOption: q.correctOption || '',
+                        transcript: q.transcript || '',
+                        explainAnswer: q.explainAnswer || '',
+                        weight: String(q.weight || '1'),
+                        mediaUrl: q.mediaUrl || ''
+                    };
+                });
+
+                // Sort by orderIndex nếu backend chưa sort
+                mapped.sort((a: any, b: any) => {
+                    const idxA = lessonData.questions!.find(original => original.lessonQuestionId === a.id)?.orderIndex || 0;
+                    const idxB = lessonData.questions!.find(original => original.lessonQuestionId === b.id)?.orderIndex || 0;
+                    return idxA - idxB;
+                });
+
+                setQuestions(mapped);
+            }
         }
     }, [isEditMode, lessonData]);
-
-    useEffect(() => {
-        if (isEditMode && questionsData && questionsData.data) {
-            console.log("Questions Loaded in Screen:", questionsData.data.length);
-            const mapped = questionsData.data.map((q: LessonQuestionResponse) => {
-                let options = { A: '', B: '', C: '', D: '' };
-                let pairs = [{ key: '', value: '' }];
-                let orderItems = ['', ''];
-                try {
-                    if (q.optionsJson) {
-                        const parsed = JSON.parse(q.optionsJson);
-                        if (q.questionType === QuestionType.MATCHING) pairs = Array.isArray(parsed) ? parsed : pairs;
-                        else if (q.questionType === QuestionType.ORDERING) orderItems = Array.isArray(parsed) ? parsed : orderItems;
-                        else if (q.questionType === QuestionType.MULTIPLE_CHOICE) options = { ...options, ...parsed };
-                    }
-                } catch (e) {
-                    console.warn("Error parsing optionsJson for question:", q.lessonQuestionId);
-                }
-                return {
-                    id: q.lessonQuestionId,
-                    question: q.question,
-                    questionType: q.questionType,
-                    options, pairs, orderItems,
-                    correctOption: q.correctOption || '',
-                    transcript: q.transcript || '',
-                    explainAnswer: q.explainAnswer || '',
-                    weight: String(q.weight || '1'),
-                    mediaUrl: q.mediaUrl || ''
-                };
-            });
-            // Chỉ set questions nếu mảng hiện tại rỗng (initial load) để tránh overwrite thay đổi của user
-            setQuestions(prev => prev.length === 0 ? mapped : prev);
-        }
-    }, [isEditMode, questionsData]);
 
     const formatDriveUrl = (id: string) => `https://drive.google.com/uc?export=download&id=${id}`;
 
@@ -449,7 +443,7 @@ const CreateLessonScreen = () => {
                             <Ionicons name="add" size={24} color="#FFF" />
                         </TouchableOpacity>
                     </View>
-                    {isLoadingQuestions && <ActivityIndicator color="#4ECDC4" />}
+                    {isLoadingLesson && questions.length === 0 && <ActivityIndicator color="#4ECDC4" />}
                     {questions.map((q, i) => (
                         <View key={i} style={styles.questionCard}>
                             <View style={styles.rowBetween}>
