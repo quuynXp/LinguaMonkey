@@ -343,6 +343,7 @@
         "generic_message": "Đã xảy ra lỗi. Vui lòng thử lại sau."
     },
     "common": {
+        "items" : "Items",
         "connect": "Connect",
         "connected": "Connected",
         "seeAll": "See all",
@@ -622,7 +623,10 @@
         "nativeLanguage": "Native Language",
         "learningLanguage": "Learning Language",
         "selectLanguages": "Select Languages",
-        "changed": "Language changed successfully"
+        "changed": "Language changed successfully",
+        "vietnamese": "Vietnamese",
+        "english" : "English",
+        "chinese" : "Chinese"
     },
     "languageSelection": {
         "title": "Select Your Languages",

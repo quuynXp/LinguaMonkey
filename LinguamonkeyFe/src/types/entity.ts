@@ -179,13 +179,13 @@ export interface ChatMessage {
     deletedAt?: string;
     senderProfile?: UserProfileResponse
     isRead: boolean;
-    translatedText?: string; // Bản dịch được cache trong DB
-    translatedLang?: string; // Mã ngôn ngữ của bản dịch (ví dụ: 'vi', 'en')
 
+    translations?: string;
+
+    translationsMap?: Record<string, string>;
     // Local UI state (không từ DB)
     isLocal?: boolean;
 }
-
 export interface Couple extends BaseEntity {
     id: string;
     user1: User; // Relation Lazy

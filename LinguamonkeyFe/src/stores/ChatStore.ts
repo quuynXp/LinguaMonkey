@@ -112,7 +112,6 @@ const normalizeMessage = (msg: any): Message => {
   if (msg.translations) {
     try {
       if (typeof msg.translations === 'string') {
-        // Check if string is a valid JSON before parsing
         if (msg.translations.trim().startsWith('{')) {
           parsedTranslations = JSON.parse(msg.translations);
         }
@@ -165,6 +164,7 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   const currentUserId = useUserStore.getState().user?.userId;
   if (msg.isDeleted) return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
 
+  // Trigger translation for incoming text messages from others
   if (eagerCallback && msg.senderId !== currentUserId && msg.messageType === 'TEXT' && msg.content) {
     eagerCallback(msg);
   }
@@ -172,12 +172,15 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   let workingList = [...list];
 
   if (msg.senderId === currentUserId && !msg.isLocal) {
-    // Replace local optimistic message with real server message
     workingList = workingList.filter(m => !(m.isLocal && m.content === msg.content));
   }
 
   const existsIndex = workingList.findIndex((m) => m.id.chatMessageId === msg.id.chatMessageId);
   if (existsIndex > -1) {
+    const existing = workingList[existsIndex];
+    if (Object.keys(existing.translationsMap || {}).length > Object.keys(msg.translationsMap || {}).length) {
+      msg.translationsMap = { ...msg.translationsMap, ...existing.translationsMap };
+    }
     workingList[existsIndex] = msg;
   } else {
     workingList = [msg, ...workingList];
@@ -187,7 +190,6 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
     const timeA = parseDate(a.id?.sentAt);
     const timeB = parseDate(b.id?.sentAt);
     if (timeA === timeB) {
-      // Stabilize sort order for messages with same timestamp
       const idA = a.id?.chatMessageId || '';
       const idB = b.id?.chatMessageId || '';
       return idB.localeCompare(idA);
@@ -248,27 +250,16 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
+    if (!text || !messageId) return;
     const { nativeLanguage, chatSettings } = useAppStore.getState();
     const targetLang = overrideTargetLang || chatSettings?.targetLanguage || nativeLanguage || 'vi';
 
+    // Check if we already have it
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
 
-    const allMessages = Object.values(get().messagesByRoom).flat();
-    const msg = allMessages.find(m => m.id.chatMessageId === messageId);
-
-    // Check if message already has this translation from backend
-    if (msg && (msg as any).translationsMap?.[targetLang]) {
-      set(state => ({
-        eagerTranslations: {
-          ...state.eagerTranslations,
-          [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: (msg as any).translationsMap[targetLang] }
-        }
-      }));
-      return;
-    }
-
     try {
-      // 1. Get Translation from Python (Fast, checks Lexicon cache)
+      // 1. Call Python API (Fastest Path)
+      // Note: The Python backend automatically updates the DB with the result.
       const res = await instance.post('/api/py/translate', {
         text,
         target_lang: targetLang,
@@ -276,23 +267,16 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         message_id: messageId.startsWith('local') ? undefined : messageId
       });
 
-      const translatedText = res.data.result.translated_text;
+      const translatedText = res.data.result?.translated_text;
 
-      // 2. Update UI State Immediately
-      set(state => ({
-        eagerTranslations: {
-          ...state.eagerTranslations,
-          [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: translatedText }
-        }
-      }));
-
-      // 3. Persist to Java Backend is handled by the Python endpoint calling Java or implicit flow?
-      // In current logic, Python translation endpoint is purely functional. 
-      // We must explicitly save to Java if we want it persisted for other devices.
-      if (!messageId.startsWith('local')) {
-        instance.put(`/api/v1/chat/messages/${messageId}/translation`, null, {
-          params: { targetLang, translatedText }
-        }).catch(err => console.warn("Failed to persist translation to Java", err));
+      if (translatedText) {
+        // 2. Update Local State immediately for UI
+        set(state => ({
+          eagerTranslations: {
+            ...state.eagerTranslations,
+            [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: translatedText }
+          }
+        }));
       }
 
     } catch (e) {
@@ -308,9 +292,10 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       .filter(m => m.messageType === 'TEXT' && m.senderId !== currentUserId && !m.isDeleted)
       .slice(0, count);
 
-    for (const msg of candidates) {
-      await get().performEagerTranslation(msg.id.chatMessageId, msg.content, targetLang);
-    }
+    // Run mostly parallel
+    Promise.all(candidates.map(msg =>
+      get().performEagerTranslation(msg.id.chatMessageId, msg.content, targetLang)
+    ));
   },
 
   initStompClient: () => {
@@ -336,7 +321,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
           const triggerEager = (m: Message) => {
             const { chatSettings } = useAppStore.getState();
-            if (chatSettings.autoTranslate) {
+            // Automatically translate incoming messages if setting is on
+            if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
               get().performEagerTranslation(m.id.chatMessageId, m.content);
             }
           };
@@ -359,7 +345,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
             const triggerEager = (m: Message) => {
               const { chatSettings } = useAppStore.getState();
-              if (chatSettings.autoTranslate) {
+              if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
                 get().performEagerTranslation(m.id.chatMessageId, m.content);
               }
             };
@@ -391,7 +377,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
         const triggerEager = (m: Message) => {
           const { chatSettings } = useAppStore.getState();
-          if (chatSettings.autoTranslate) {
+          if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
             get().performEagerTranslation(m.id.chatMessageId, m.content);
           }
         };
@@ -552,6 +538,18 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       const rawMessages = res.data.result?.content || [];
       const newMessages = rawMessages.map(normalizeMessage);
       const totalPages = res.data.result?.totalPages || 0;
+
+      // Trigger eager translation for loaded messages
+      const { chatSettings } = useAppStore.getState();
+      if (chatSettings.autoTranslate && newMessages.length > 0) {
+        // Only trigger for first few to avoid spamming
+        newMessages.slice(0, 5).forEach((m: Message) => {
+          if (m.senderId !== useUserStore.getState().user?.userId) {
+            get().performEagerTranslation(m.id.chatMessageId, m.content);
+          }
+        });
+      }
+
       set((currentState) => {
         const currentMsgs = currentState.messagesByRoom[roomId] || [];
         const updatedList = page === 0 ? newMessages : [...currentMsgs, ...newMessages];
@@ -594,7 +592,10 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const room = state.rooms[roomId];
     const payload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null };
     const optimisticMsg = { id: { chatMessageId: `local-${Date.now()}`, sentAt: new Date().toISOString() }, senderId: useUserStore.getState().user?.userId, content, messageType: type, mediaUrl: mediaUrl || null, isLocal: true, translatedText: null, translatedLang: null } as any;
+
+    // Add optimistic message instantly
     set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], optimisticMsg) } }));
+
     const dest = `/app/chat/room/${roomId}`;
     if (stompService.isConnected) {
       try { stompService.publish(dest, payload); }

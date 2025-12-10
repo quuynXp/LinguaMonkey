@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert, Platform, PermissionsAndroid
+  ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert,
+  Platform, PermissionsAndroid
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
-import { useAudioRecorder, RecordingPresets } from 'expo-audio';
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import { useLessons } from "../../hooks/useLessons";
 import { useSkillLessons } from "../../hooks/useSkillLessons";
 import { useUserStore } from "../../stores/UserStore";
@@ -67,33 +68,22 @@ const LessonScreen = ({ navigation, route }: any) => {
   const [showSummary, setShowSummary] = useState(false);
   const [aiAnalysisResult, setAiAnalysisResult] = useState<any>(null);
 
-  // Trạng thái xử lý Recording
+  // Recording State
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const [isWaitingForAudioUri, setIsWaitingForAudioUri] = useState(false); // [FIX] Cờ đợi URI
+  const audioRecorderPlayer = useRef(new AudioRecorderPlayer()).current;
 
   const [isRetryWrongMode, setIsRetryWrongMode] = useState(false);
 
-  // [FIX] Khởi tạo Recorder
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-
   const { data: testData, isLoading, refetch } = useLessonTest(lesson.lessonId, userId!, !!userId);
 
-  // [FIX] useEffect lắng nghe recorder.uri thay đổi
-  // Đây là chìa khóa để fix lỗi "No URI". React sẽ chạy effect này khi recorder.uri được cập nhật sau khi stop()
+  // Cleanup recorder on unmount
   useEffect(() => {
-    const processAudio = async () => {
-      if (isWaitingForAudioUri && recorder.uri && !recorder.isRecording) {
-        console.log("✅ Audio URI detected:", recorder.uri);
-        setIsWaitingForAudioUri(false); // Reset cờ
-
-        // Bắt đầu gửi API
-        await handleSendAudio(recorder.uri);
-      }
+    return () => {
+      audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
     };
-
-    processAudio();
-  }, [recorder.uri, recorder.isRecording, isWaitingForAudioUri]);
+  }, []);
 
   useEffect(() => {
     if (testData?.questions) {
@@ -216,95 +206,111 @@ const LessonScreen = ({ navigation, route }: any) => {
     setAiAnalysisResult(null);
     setReviewMode(false);
     setIsProcessingAI(false);
-    setIsWaitingForAudioUri(false);
-  };
-
-  // [FIX] Logic gửi Audio tách biệt
-  const handleSendAudio = async (uri: string) => {
-    if (!uri) return;
-
-    setIsProcessingAI(true);
-    setIsAnswered(true);
-
-    try {
-      await streamPronunciationMutation.mutateAsync({
-        audioUri: uri,
-        lessonQuestionId: currentQuestion.lessonQuestionId,
-        languageCode: 'vi',
-        onChunk: (chunk) => {
-          if (chunk.type === 'final') {
-            const passed = (chunk.score || 0) > 60;
-            setAiAnalysisResult(chunk);
-            setFeedbackMessage(chunk.feedback || `Score: ${chunk.score}`);
-            setIsCorrect(passed);
-            setIsProcessingAI(false);
-            if (passed) setCorrectCount(c => c + 1);
-            setUserAnswers(prev => ({ ...prev, [currentQuestion.lessonQuestionId]: "Audio Recorded" }));
-          }
-        }
-      });
-    } catch (e) {
-      console.error("Send audio failed:", e);
-      setFeedbackMessage("Error analyzing audio.");
-      setIsProcessingAI(false);
+    // Ensure recording is stopped if user skips quickly
+    if (isRecording) {
+      handleStopRecording();
     }
   };
 
-  // [FIX] Xin quyền Android thủ công
   const checkPermissions = async () => {
     if (Platform.OS === 'android') {
       try {
         const grants = await PermissionsAndroid.requestMultiple([
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
         ]);
-        if (grants['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED) {
+
+        if (
+          grants['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED &&
+          (grants['android.permission.WRITE_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED ||
+            grants['android.permission.READ_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED)
+        ) {
           return true;
-        } else {
-          Alert.alert('Permission Required', 'Microphone access is needed for this lesson.');
-          return false;
         }
+        console.log('Permissions not granted');
+        return false;
       } catch (err) {
         console.warn(err);
         return false;
       }
     }
-    return true; // iOS usually handled by Expo automatically or Info.plist
+    return true; // iOS permissions handled by Info.plist usually
   };
 
   const handleStartRecording = async () => {
-    if (isRecording || isProcessingAI) return;
+    if (isProcessingAI) return;
 
     const hasPerm = await checkPermissions();
-    if (!hasPerm) return;
+    if (!hasPerm) {
+      Alert.alert("Permission Error", "Please grant microphone permissions to record.");
+      return;
+    }
 
     try {
       setIsRecording(true);
-      setIsWaitingForAudioUri(false); // Reset trước khi ghi âm mới
-      await recorder.record();
+      // Start recording, returns uri on some platforms, or just starts
+      await audioRecorderPlayer.startRecorder();
+      audioRecorderPlayer.addRecordBackListener((e) => {
+        // You can update a state here if you want to show duration: e.currentPosition
+        return;
+      });
+      console.log('Recording started...');
     } catch (e) {
       console.error("Start recording failed:", e);
       setIsRecording(false);
-      Alert.alert("Error", "Could not start recording.");
     }
   };
 
-  // [FIX] Stop Recording chỉ dừng và bật cờ đợi URI
   const handleStopRecording = async () => {
     if (!isRecording) return;
+
     try {
-      if (recorder.isRecording) {
-        await recorder.stop();
-      }
+      console.log('Stopping recording...');
+      const result = await audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
       setIsRecording(false);
 
-      // Bật cờ để useEffect bên trên bắt lấy URI khi nó sẵn sàng
-      setIsWaitingForAudioUri(true);
-      console.log("🛑 Stopped. Waiting for URI update...");
+      // result contains the file path (URI)
+      // On Android, explicitly ensure 'file://' prefix for FormData
+      let uri = result;
+      if (Platform.OS === 'android' && !uri.startsWith('file://')) {
+        uri = `file://${uri}`;
+      }
 
+      console.log("Recording Stopped. URI:", uri);
+
+      if (uri) {
+        setIsProcessingAI(true);
+        setIsAnswered(true);
+
+        // Optimistically set status
+        setFeedbackMessage("AI is analyzing pronunciation...");
+
+        await streamPronunciationMutation.mutateAsync({
+          audioUri: uri,
+          lessonQuestionId: currentQuestion.lessonQuestionId,
+          languageCode: 'vi',
+          onChunk: (chunk) => {
+            if (chunk.type === 'final') {
+              const passed = (chunk.score || 0) > 60;
+              setAiAnalysisResult(chunk);
+              setFeedbackMessage(chunk.feedback || `Score: ${chunk.score}`);
+              setIsCorrect(passed);
+              setIsProcessingAI(false);
+              if (passed) setCorrectCount(c => c + 1);
+              setUserAnswers(prev => ({ ...prev, [currentQuestion.lessonQuestionId]: "Audio Recorded" }));
+            }
+          }
+        });
+      } else {
+        console.warn("No URI found after stop");
+        setIsRecording(false);
+      }
     } catch (e) {
       console.error("Stop recording failed:", e);
       setIsRecording(false);
-      setIsWaitingForAudioUri(false);
+      setIsProcessingAI(false);
     }
   };
 

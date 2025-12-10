@@ -41,14 +41,12 @@ type UIMessage = {
     translatedText?: string;
     user: string;
     avatar: string | null;
-    hasTargetLangTranslation: boolean;
     sentAt: string;
     isRead: boolean;
     senderId: string;
     translatedLang?: string;
     isLocal?: boolean;
     senderProfile?: UserProfileResponse;
-    showTranslation?: boolean;
     roomId?: string;
     isDeleted?: boolean;
 };
@@ -113,7 +111,6 @@ const ChatLanguageSelector = ({
 
     return (
         <View style={styles.languageSelectorContainer}>
-            {/* Switch Auto Translate */}
             <TouchableOpacity
                 style={[styles.autoSwitch, isAutoTranslateOn && styles.autoSwitchActive]}
                 onPress={onToggleAuto}
@@ -123,7 +120,6 @@ const ChatLanguageSelector = ({
                 </Text>
             </TouchableOpacity>
 
-            {/* Flag Dropdown */}
             <TouchableOpacity
                 style={[styles.selectedLanguageButton, !canExpand && { paddingRight: 8 }]}
                 onPress={() => canExpand && setIsExpanded(!isExpanded)}
@@ -134,12 +130,7 @@ const ChatLanguageSelector = ({
                     {selectedLanguage.flag}
                 </View>
                 {canExpand && (
-                    <Icon
-                        name={isExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                        size={20}
-                        color="#6B7280"
-                        style={{ marginLeft: 0 }}
-                    />
+                    <Icon name={isExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={20} color="#6B7280" style={{ marginLeft: 0 }} />
                 )}
             </TouchableOpacity>
 
@@ -190,14 +181,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const translateLastNMessages = useChatStore(s => s.translateLastNMessages);
 
     const [inputText, setInputText] = useState("");
-    const [localTranslations, setLocalTranslations] = useState<any>({});
-    const [messagesToggleState, setMessagesToggleState] = useState<any>({});
-
-    const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
-    const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | MemberResponse | null>(null);
     const [isPopupVisible, setIsPopupVisible] = useState(false);
+    const [translatingId, setTranslatingId] = useState<string | null>(null);
 
     const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
         code: langCode,
@@ -239,19 +226,15 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             targetLanguage: lang.code,
             autoTranslate: true
         });
-        setMessagesToggleState({});
         showToast({ message: `${t('chat.auto_translate_on')} ${lang.name}`, type: 'success' });
-
-        // TRIGGER BATCH TRANSLATION FOR NEW LANGUAGE
-        translateLastNMessages(roomId, lang.code, 10);
+        translateLastNMessages(roomId, lang.code, 15);
     };
 
     const handleToggleAuto = () => {
         const newState = !autoTranslate;
         setChatSettings({ autoTranslate: newState });
         if (newState) {
-            // Trigger batch translation if turning ON
-            translateLastNMessages(roomId, translationTargetLang, 10);
+            translateLastNMessages(roomId, translationTargetLang, 15);
         }
     };
 
@@ -271,6 +254,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const editMessage = useChatStore(s => s.editMessage);
     const markMessageAsRead = useChatStore(s => s.markMessageAsRead);
     const messagesByRoom = useChatStore(s => s.messagesByRoom);
+    const performEagerTranslation = useChatStore(s => s.performEagerTranslation);
 
     const serverMessages = messagesByRoom[roomId] || [];
     const flatListRef = useRef<FlatList>(null);
@@ -280,21 +264,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
 
-            // Priority: Local (just fetched) > Eager Store > DB (Multi-lang JSON) > DB (Legacy)
+            // Priority: Eager Store > DB (Multi-lang JSON)
             const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
-            const localTrans = localTranslations[messageId]?.[translationTargetLang];
-
-            // Check multi-lang map from DB
             const dbMapTrans = msg.translationsMap ? msg.translationsMap[translationTargetLang] : null;
-            // Legacy check
-            const dbLegacyTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
-
-            const finalTranslation = localTrans || eagerTrans || dbMapTrans || dbLegacyTrans;
-
-            const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
-            const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
-
-            const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!eagerTrans);
+            const finalTranslation = eagerTrans || dbMapTrans;
 
             const senderProfile = msg.senderProfile || membersMap[senderId];
 
@@ -312,8 +285,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 user: senderProfile?.fullname || senderProfile?.nickname || 'Unknown',
                 avatar: senderProfile?.avatarUrl || null,
                 sentAt: msg?.id?.sentAt,
-                showTranslation: showTranslation,
-                hasTargetLangTranslation: !!finalTranslation,
                 isRead: msg.isRead,
                 isLocal: (msg as any).isLocal,
                 senderProfile: senderProfile,
@@ -321,7 +292,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 isDeleted: msg.isDeleted
             } as UIMessage;
         }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
-    }, [serverMessages, localTranslations, eagerTranslations, translationTargetLang, currentUserId, autoTranslate, membersMap]);
+    }, [serverMessages, eagerTranslations, translationTargetLang, currentUserId, membersMap]);
 
     useEffect(() => { loadMessages(roomId); }, [roomId]);
     useEffect(() => {
@@ -342,59 +313,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         }
     };
 
-    const { mutate: translateMutate } = useMutation({
-        mutationFn: async ({ text, target, id }: any) => {
-            setTranslatingMessageId(id);
-            // FIX: Pass message_id to ensure translation is saved on server
-            const res = await instance.post('/api/py/translate', {
-                text,
-                target_lang: target,
-                source_lang: 'auto',
-                message_id: id.includes('local') ? undefined : id
-            });
-            if (!res.data || !res.data.result) throw new Error("No translation result");
-            return { text: res.data.result.translated_text, id, target };
-        },
-        onSuccess: (data) => {
-            setLocalTranslations((prev: any) => ({ ...prev, [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text } }));
-            setMessagesToggleState((prev: any) => ({ ...prev, [data.id]: data.target }));
-            setTranslatingMessageId(null);
-        },
-        onError: (err) => {
-            console.error("Translation Error:", err);
-            setTranslatingMessageId(null);
-            showToast({ message: t("error.translation_failed"), type: "error" });
-        }
-    });
-
-    const handleTranslateClick = (id: string, text: string) => {
-        const currentView = messagesToggleState[id];
-
-        if (currentView === translationTargetLang) {
-            setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
-        } else if (currentView === 'original') {
-            const eagerTrans = eagerTranslations[id]?.[translationTargetLang];
-            const localTrans = localTranslations[id]?.[translationTargetLang];
-            if (localTrans || eagerTrans) {
-                setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang }));
-            } else {
-                translateMutate({ text, target: translationTargetLang, id });
-            }
-        } else {
-            const eagerTrans = eagerTranslations[id]?.[translationTargetLang];
-            const localTrans = localTranslations[id]?.[translationTargetLang];
-            const hasTranslation = !!(localTrans || eagerTrans);
-
-            if (autoTranslate && hasTranslation) {
-                setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
-            } else {
-                if (hasTranslation) {
-                    setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang }));
-                } else {
-                    translateMutate({ text, target: translationTargetLang, id });
-                }
-            }
-        }
+    const handleManualTranslate = async (id: string, text: string) => {
+        setTranslatingId(id);
+        await performEagerTranslation(id, text, translationTargetLang);
+        setTranslatingId(null);
     };
 
     const handleAvatarPress = (profile?: UserProfileResponse) => { if (profile) { setSelectedProfile(profile); setIsPopupVisible(true); } };
@@ -402,30 +324,14 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
         const isUser = item.sender === 'user';
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
-        const currentView = messagesToggleState[item.id];
-        let displayText = item.text;
-        let isTranslatedView = false;
-
-        const eagerTrans = eagerTranslations[item.id]?.[translationTargetLang];
-        const localTrans = localTranslations[item.id]?.[translationTargetLang];
-        // Priority check again for render
-        const availableTranslation = item.translatedText;
-
-        if (currentView === translationTargetLang) {
-            displayText = availableTranslation || item.text;
-            isTranslatedView = true;
-        } else if (currentView === 'original') {
-            displayText = item.text;
-            isTranslatedView = false;
-        } else if (autoTranslate && availableTranslation) {
-            displayText = availableTranslation;
-            isTranslatedView = true;
-        }
-
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
+        // Display Dual Line if translation exists
+        const showDual = !isMedia && !!item.translatedText;
+        const isTranslating = translatingId === item.id;
+
         return (
-            <Pressable onLongPress={() => isUser && !isMedia && setEditingMessage(item)} style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther, highlightedMessageId === item.id && styles.highlighted]}>
+            <Pressable onLongPress={() => isUser && !isMedia && setEditingMessage(item)} style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther]}>
                 {!isUser && (
                     <TouchableOpacity onPress={() => handleAvatarPress(item.senderProfile)}>
                         <View>
@@ -443,12 +349,22 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 {item.messageType === 'VIDEO' && <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
                                 {item.text ? <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text> : null}
                             </View>
-                        ) : (<Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{displayText}</Text>)}
+                        ) : (
+                            <View>
+                                {/* Original Text Line */}
+                                <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
 
-                        {isTranslatedView && (
-                            <Text style={styles.transTag}>
-                                {translationTargetLang.toUpperCase()}
-                            </Text>
+                                {/* Translated Text Line (Dual View) */}
+                                {showDual && (
+                                    <View style={styles.dualLineContainer}>
+                                        <View style={styles.separator} />
+                                        <Text style={[styles.translatedText, isUser ? styles.textUserTrans : styles.textOtherTrans]}>
+                                            {item.translatedText}
+                                        </Text>
+                                        <Text style={styles.langTag}>{translationTargetLang.toUpperCase()}</Text>
+                                    </View>
+                                )}
+                            </View>
                         )}
 
                         <View style={styles.metaRow}>
@@ -456,9 +372,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                             {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
                         </View>
                     </View>
-                    {!isUser && !isMedia && (
-                        <TouchableOpacity onPress={() => handleTranslateClick(item.id, item.text)} style={styles.transBtn} disabled={translatingMessageId === item.id}>
-                            {translatingMessageId === item.id ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name={isTranslatedView ? "undo" : "translate"} size={16} color={isTranslatedView || (autoTranslate && availableTranslation) ? "#3B82F6" : "#9CA3AF"} />}
+
+                    {!isUser && !isMedia && !showDual && (
+                        <TouchableOpacity onPress={() => handleManualTranslate(item.id, item.text)} style={styles.transBtn} disabled={isTranslating}>
+                            {isTranslating ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name="translate" size={16} color="#9CA3AF" />}
                         </TouchableOpacity>
                     )}
                 </View>
@@ -498,91 +415,20 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
 const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: '#FFF' },
-    chatHeaderToolbar: {
-        position: 'absolute',
-        top: 8,
-        right: 16,
-        zIndex: 100,
-        backgroundColor: 'transparent',
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-    },
-    languageSelectorContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        position: 'relative',
-        zIndex: 50,
-    },
-    autoSwitch: {
-        backgroundColor: 'rgba(255,255,255,0.8)',
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        borderRadius: 16,
-        marginRight: 8,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-    },
-    autoSwitchActive: {
-        backgroundColor: '#3B82F6',
-        borderColor: '#3B82F6',
-    },
-    autoText: {
-        fontSize: 10,
-        fontWeight: 'bold',
-        color: '#6B7280',
-    },
-    selectedLanguageButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(243, 244, 246, 0.9)',
-        borderRadius: 20,
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        justifyContent: 'center',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    languageDropdown: {
-        position: 'absolute',
-        top: 45,
-        right: 0,
-        backgroundColor: '#FFF',
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-        shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 5,
-        minWidth: 80,
-        zIndex: 100,
-        paddingVertical: 4,
-    },
-    languageItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'flex-start',
-        padding: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6',
-    },
-    languageFlagWrapper: {
-        marginRight: 8,
-    },
-    languageName: {
-        fontSize: 12,
-        color: '#374151',
-        fontWeight: '500',
-    },
+    chatHeaderToolbar: { position: 'absolute', top: 8, right: 16, zIndex: 100, backgroundColor: 'transparent', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
+    languageSelectorContainer: { flexDirection: 'row', alignItems: 'center', position: 'relative', zIndex: 50 },
+    autoSwitch: { backgroundColor: 'rgba(255,255,255,0.8)', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 16, marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+    autoSwitchActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+    autoText: { fontSize: 10, fontWeight: 'bold', color: '#6B7280' },
+    selectedLanguageButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(243, 244, 246, 0.9)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
+    languageDropdown: { position: 'absolute', top: 45, right: 0, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, minWidth: 80, zIndex: 100, paddingVertical: 4 },
+    languageItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+    languageFlagWrapper: { marginRight: 8 },
+    languageName: { fontSize: 12, color: '#374151', fontWeight: '500' },
     list: { flex: 1, paddingHorizontal: 16 },
     msgRow: { flexDirection: 'row', marginVertical: 8 },
     rowUser: { justifyContent: 'flex-end' },
     rowOther: { justifyContent: 'flex-start' },
-    highlighted: { backgroundColor: 'rgba(255, 235, 59, 0.3)', borderRadius: 8 },
     msgAvatarImg: { width: 32, height: 32, borderRadius: 16, marginRight: 8, marginTop: 4 },
     msgContent: { maxWidth: '75%' },
     senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2 },
@@ -594,7 +440,6 @@ const styles = createScaledSheet({
     text: { fontSize: 16, lineHeight: 22 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
-    transTag: { fontSize: 10, color: '#9CA3AF', fontStyle: 'italic', marginTop: 2, textAlign: 'right' },
     metaRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 },
     time: { fontSize: 10 },
     timeUser: { color: 'rgba(255,255,255,0.7)' },
@@ -610,7 +455,15 @@ const styles = createScaledSheet({
     popupName: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 10 },
     viewProfileBtn: { padding: 10, alignItems: 'center', borderTopWidth: 1, borderColor: '#EEE' },
     viewProfileText: { color: '#6B7280', fontSize: 14 },
-    activeDot: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderColor: '#FFF' }
+    activeDot: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderColor: '#FFF' },
+
+    // Dual Line Styles
+    dualLineContainer: { marginTop: 6, paddingTop: 6 },
+    separator: { height: 1, backgroundColor: 'rgba(0,0,0,0.1)', width: '100%', marginBottom: 4 },
+    translatedText: { fontSize: 15, fontStyle: 'italic', lineHeight: 20 },
+    textUserTrans: { color: '#E0F2FE' },
+    textOtherTrans: { color: '#4B5563' },
+    langTag: { fontSize: 8, color: 'rgba(0,0,0,0.4)', textAlign: 'right', marginTop: 2 }
 });
 
 export default ChatInnerView;

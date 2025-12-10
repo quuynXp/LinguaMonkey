@@ -25,7 +25,6 @@ import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import learning.TranslateResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -44,8 +43,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -130,56 +127,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
         
-        // Initialize as empty JSON object
+        // Performance optimization: No synchronous translation here.
+        // Translation is now handled asynchronously by the client or background worker
+        // to prevent blocking the STOMP websocket flow.
         message.setTranslations("{}");
 
-        // --- TRANSLATION LOGIC ---
-        if (request.getContent() != null && !request.getContent().isEmpty() 
-            && (request.getMessageType() == null || request.getMessageType().name().equals("TEXT"))) {
-            
-            String targetLang = "en"; 
-            boolean shouldTranslate = false;
-
-            if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
-                UUID receiverId = request.getReceiverId(); 
-                if (receiverId == null) {
-                      receiverId = roomMemberRepository.findOtherMemberId(roomId, request.getSenderId());
-                }
-                if (receiverId != null) {
-                    User receiver = userRepository.findById(receiverId).orElse(null);
-                    if (receiver != null && receiver.getNativeLanguageCode() != null) {
-                        targetLang = receiver.getNativeLanguageCode();
-                        shouldTranslate = true;
-                    }
-                }
-            } 
-            // Optional: Add logic for GROUP_CHAT auto-translate based on room settings if needed
-
-            if (shouldTranslate) {
-                try {
-                    CompletableFuture<TranslateResponse> future = grpcClientService.callTranslateAsync(
-                        null, request.getContent(), "auto", targetLang
-                    );
-                    
-                    // CRITICAL FIX: Add timeout to prevent blocking thread indefinitely
-                    TranslateResponse aiResponse = future.get(3000, TimeUnit.MILLISECONDS);
-                    
-                    String detectedSource = aiResponse.getSourceLanguageDetected();
-                    String translatedText = aiResponse.getTranslatedText();
-                    
-                    if (detectedSource != null && !detectedSource.equalsIgnoreCase(targetLang) && translatedText != null && !translatedText.isEmpty()) {
-                        Map<String, String> transMap = new HashMap<>();
-                        transMap.put(targetLang, translatedText);
-                        message.setTranslations(serializeTranslations(transMap));
-                    }
-                } catch (Exception e) {
-                    log.error("Auto-translation failed or timed out: {}", e.getMessage());
-                    // Do not fail the message save, just skip translation
-                }
-            }
-        }
-        // -------------------------
-        
         ChatMessage savedMessage = chatMessageRepository.save(message);
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);
@@ -197,7 +149,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
         try {
-            // STOMP Broadcast
+            // STOMP Broadcast - Fast and immediate
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
             
             // Notification Logic
@@ -270,7 +222,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
 
             message.setContent(newContent);
-            // Invalidate translations on edit
             message.setTranslations("{}"); 
             message.setUpdatedAt(OffsetDateTime.now());
             message = chatMessageRepository.save(message);
@@ -384,7 +335,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-            // BROADCAST UPDATE to others in room
+            // BROADCAST UPDATE to others in room so their UI updates if they are watching
             ChatMessageResponse response = mapToResponse(saved, room.getPurpose());
             messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), response);
 

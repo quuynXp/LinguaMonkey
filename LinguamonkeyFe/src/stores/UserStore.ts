@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import type { UserResponse, Character3dResponse } from '../types/dto';
-import {privateClient, mediaClient } from '../api/axiosClient';
+import { privateClient, mediaClient } from '../api/axiosClient';
 
 interface DailyGoal {
   completedLessons: number;
@@ -112,6 +112,8 @@ const defaultUserState: any = {
 };
 
 let heartbeatInterval: number | null = null;
+let lastHeartbeatTime = 0;
+const HEARTBEAT_DELAY = 5 * 60 * 1000; // 5 minutes
 
 export const useUserStore = create<UserState>()(
   persist(
@@ -125,6 +127,7 @@ export const useUserStore = create<UserState>()(
       setUser: (user, detectedLanguage) => {
         if (!user) {
           if (heartbeatInterval) clearInterval(heartbeatInterval);
+          lastHeartbeatTime = 0;
           set({ ...defaultUserState });
           return;
         }
@@ -170,6 +173,8 @@ export const useUserStore = create<UserState>()(
           set({ nativeLanguageId: detectedLanguage });
         }
 
+        // Reset heartbeat timer on new login to allow immediate status update
+        lastHeartbeatTime = 0;
         get().initOnlineStatusTracker();
       },
 
@@ -177,6 +182,7 @@ export const useUserStore = create<UserState>()(
       setProfileData: (data) => set((state) => ({ ...state, ...data })),
       logout: () => {
         if (heartbeatInterval) clearInterval(heartbeatInterval);
+        lastHeartbeatTime = 0;
         set({ ...defaultUserState });
       },
 
@@ -190,7 +196,6 @@ export const useUserStore = create<UserState>()(
         if (!user?.userId) return;
 
         try {
-          // FIXED: Use privateClient
           await privateClient.patch(`/api/v1/users/${user.userId}/native-language`, null, {
             params: { nativeLanguageCode: languageId },
           });
@@ -201,7 +206,6 @@ export const useUserStore = create<UserState>()(
 
       saveProfileToServer: async (userId, payload) => {
         try {
-          // FIXED: Use privateClient
           const res = await privateClient.put<any>(`/api/v1/users/${userId}`, payload);
           if (res?.data?.result) {
             get().setUser(res.data.result);
@@ -217,7 +221,6 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return null;
         try {
-          // FIXED: Use privateClient
           const res = await privateClient.get<any>(`/api/v1/users/${user.userId}/character3d`);
           if (res.data.code === 200 && res.data.result) {
             return res.data.result;
@@ -252,7 +255,6 @@ export const useUserStore = create<UserState>()(
 
       deleteTempFile: async (path: string) => {
         try {
-          // FIXED: Use privateClient
           await privateClient.delete('/api/v1/files/temp', { params: { path } });
         } catch (error) {
           console.error('Delete temp file failed:', error);
@@ -264,7 +266,6 @@ export const useUserStore = create<UserState>()(
         if (!user || !user.userId) throw new Error('User not authenticated');
 
         try {
-          // FIXED: Use privateClient
           const res = await privateClient.patch<any>(`/api/v1/users/${user.userId}/avatar`, null, {
             params: { tempPath },
           });
@@ -287,8 +288,6 @@ export const useUserStore = create<UserState>()(
           throw new Error("User ID missing");
         }
 
-        // REMOVE TRY/CATCH: Let the error bubble up to SetupInitScreen
-        // FIXED: Use privateClient
         const res = await privateClient.patch(`/api/v1/users/${user.userId}/setup-status`, null, {
           params: { isFinished: true },
         });
@@ -305,7 +304,6 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
-          // FIXED: Use privateClient
           const res = await privateClient.patch(`/api/v1/users/${user.userId}/placement-test-status`, null, {
             params: { isDone: true },
           });
@@ -321,7 +319,6 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
-          // FIXED: Use privateClient
           const res = await privateClient.patch(`/api/v1/users/${user.userId}/daily-welcome`);
           if (res.data.code === 200) {
             get().setUser(res.data.result);
@@ -333,7 +330,6 @@ export const useUserStore = create<UserState>()(
 
       updateStreakAndDailyGoal: async (id: string) => {
         try {
-          // FIXED: Use privateClient
           const res = await privateClient.patch<any>(`/api/v1/users/${id}/streak`);
           if (res.data && res.data.code === 200 && res.data.result) {
             const updatedUser = res.data.result;
@@ -359,7 +355,6 @@ export const useUserStore = create<UserState>()(
             description: 'VIP 14-Day Trial Activation',
             returnUrl: 'yourapp://vip-result'
           };
-          // FIXED: Use privateClient
           const res = await privateClient.post('/api/v1/transactions/payment-url', payload);
           if (res.data && res.data.result) {
             return res.data.result;
@@ -375,7 +370,6 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
-          // FIXED: Use privateClient
           const res = await privateClient.get<any>(`/api/v1/users/${user.userId}`);
           if (res.data && res.data.code === 200 && res.data.result) {
             get().setUser(res.data.result);
@@ -388,23 +382,33 @@ export const useUserStore = create<UserState>()(
       sendHeartbeat: async () => {
         const { user } = get();
         if (!user?.userId) return;
+
+        const now = Date.now();
+        // Check if 5 minutes have passed since last successful call
+        if (now - lastHeartbeatTime < HEARTBEAT_DELAY) {
+          return;
+        }
+
         try {
-          // FIXED: Use privateClient
+          lastHeartbeatTime = now;
           await privateClient.patch(`/api/v1/users/${user.userId}/last-active`);
         } catch (e) {
+          // If call fails, we just wait for next cycle. 
         }
       },
 
       initOnlineStatusTracker: () => {
         if (heartbeatInterval) clearInterval(heartbeatInterval);
 
+        // Try to send immediately (will respect throttle)
         get().sendHeartbeat();
 
+        // Check regularly
         heartbeatInterval = setInterval(() => {
           if (AppState.currentState === 'active') {
             get().sendHeartbeat();
           }
-        }, 120000);
+        }, HEARTBEAT_DELAY);
 
         AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
           if (nextAppState === 'active') {

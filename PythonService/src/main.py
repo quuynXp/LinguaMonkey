@@ -47,22 +47,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
-
-SILENCE_THRESHOLD = 60
-MIN_BUFFER_SIZE_TO_PROCESS = 3200 
-MAX_TEXT_CACHE_LENGTH = 300
-
-# Time in seconds to reset the accumulated text buffer if user stops speaking
 RESET_BUFFER_TIMEOUT = 2.5 
-
-VAD = webrtcvad.Vad(2)
-PROCESS_SEMAPHORE = Semaphore(3)
-
-HALLUCINATION_FILTERS = [
-    "you", "you.", "you?", "thank you", "thank you.", "bye", "bye.", 
-    "i", "subtitles by", "watched", "watching", ".", "?", "!", "", 
-    "vietsub", "copyright"
-]
 
 security = HTTPBearer()
 PUBLIC_KEY = None
@@ -143,8 +128,10 @@ class ConnectionManager:
                 user_native = meta.get("native_lang", "vi")
                 payload = dict(message)
                 
-                if user_native and payload.get("originalLang") and user_native.lower().startswith(payload["originalLang"].lower()):
-                    payload["translated"] = ""
+                # Check based on detected language from payload
+                if user_native and payload.get("originalLang"):
+                     if payload["originalLang"].lower().startswith(user_native.lower()):
+                        payload["translated"] = ""
                 
                 await conn.send_text(json.dumps(payload))
             except Exception as e:
@@ -160,12 +147,6 @@ audio_manager = ConnectionManager()
 user_text_cache: Dict[str, str] = defaultdict(str)
 user_last_speech_time: Dict[str, float] = defaultdict(float)
 
-def frame_bytes_from_pcm(pcm_bytes: bytes, sample_rate=16000, frame_ms=20):
-    samples = int(sample_rate * frame_ms / 1000)
-    bytes_per_frame = samples * 2
-    for i in range(0, len(pcm_bytes), bytes_per_frame):
-        yield pcm_bytes[i:i+bytes_per_frame]
-
 def create_wav_bytes(pcm_data: bytes, sample_rate=16000, channels=1, sampwidth=2) -> bytes:
     io_buf = io.BytesIO()
     with wave.open(io_buf, "wb") as wav:
@@ -178,15 +159,12 @@ def create_wav_bytes(pcm_data: bytes, sample_rate=16000, channels=1, sampwidth=2
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     redis = await get_redis_client()
-    logger.info("Redis client initialized.")
     try:
         get_translator(redis)
-        logger.info("Translator singleton initialized & warmed up.")
     except Exception as e:
         logger.error(f"Translator warmup warning: {e}")
     yield
     await close_redis_client()
-    logger.info("Redis client closed.")
 
 app = FastAPI(lifespan=lifespan)
 
@@ -255,8 +233,6 @@ async def translate(
                     message.translations = current_map
                     flag_modified(message, "translations")
                     await db.commit()
-            except ValueError:
-                logger.warning(f"Invalid UUID for message_id: {request.message_id}")
             except Exception as e:
                 logger.error(f"Failed to save translation to DB: {e}")
                 await db.rollback()
@@ -399,8 +375,7 @@ async def audio_endpoint(
     websocket: WebSocket,
     token: str = Query(...),
     roomId: str = Query(...),
-    nativeLang: str = Query(None),
-    spokenLang: str = Query(None)
+    nativeLang: str = Query(None)
 ):
     normalized_room_id = str(roomId).strip().lower()
     user_id = await validate_websocket_token(websocket, token)
@@ -415,44 +390,34 @@ async def audio_endpoint(
     buffer_key = f"{normalized_room_id}_{user_id}"
 
     user_native_lang = nativeLang or "vi"
-    target_spoken_lang = "en-US" if (not spokenLang or spokenLang == 'en') else "vi-VN" 
-    if spokenLang == 'vi': target_spoken_lang = 'vi-VN'
-
-
-    async def handle_interim_result(text: str):
-        # We don't update time here, we just show the immediate guess
+    
+    async def handle_interim_result(text: str, detected_lang_code: str):
         await audio_manager.broadcast_subtitle({
             "type": "subtitle",
             "status": "processing",
             "original": text,
             "originalFull": user_text_cache[buffer_key] + " " + text,
-            "originalLang": spokenLang,
+            "originalLang": detected_lang_code,
             "translated": "",
             "senderId": user_id
         }, normalized_room_id, exclude_user_id=None) 
 
-    async def handle_final_result(text: str):
+    async def handle_final_result(text: str, detected_lang_code: str):
         try:
             clean_text = text.strip()
             if not clean_text: return
 
-            # --- Logic to Reset Buffer on Silence ---
             current_time = time.time()
             last_speech = user_last_speech_time[buffer_key]
             
-            # If gap > RESET_BUFFER_TIMEOUT (2.5s), clear previous context
             if last_speech > 0 and (current_time - last_speech) > RESET_BUFFER_TIMEOUT:
                 user_text_cache[buffer_key] = ""
             
-            # Update last speech time
             user_last_speech_time[buffer_key] = current_time
-            # ----------------------------------------
-
             current_full = user_text_cache[buffer_key]
             new_full = (current_full + " " + clean_text).strip()
             user_text_cache[buffer_key] = new_full
 
-            # Hard reset if too long (safety net)
             if len(new_full) > 300: 
                 user_text_cache[buffer_key] = ""
 
@@ -461,19 +426,19 @@ async def audio_endpoint(
                 "status": "processing",
                 "original": clean_text,
                 "originalFull": new_full,
-                "originalLang": spokenLang,
+                "originalLang": detected_lang_code,
                 "translated": "...",
                 "senderId": user_id
             }, normalized_room_id, exclude_user_id=None)
 
-            translated_text, _ = await translator.translate(clean_text, spokenLang, user_native_lang)
+            translated_text, _ = await translator.translate(clean_text, detected_lang_code, user_native_lang)
             
             await audio_manager.broadcast_subtitle({
                 "type": "subtitle",
                 "status": "complete",
                 "original": clean_text,
                 "originalFull": new_full,
-                "originalLang": spokenLang,
+                "originalLang": detected_lang_code,
                 "translated": translated_text,
                 "senderId": user_id
             }, normalized_room_id, exclude_user_id=None)
@@ -481,28 +446,23 @@ async def audio_endpoint(
         except Exception as e:
             logger.error(f"Translation logic error: {e}")
 
-    azure_lang_code = "vi-VN" if "vi" in str(spokenLang) else "en-US"
-    
+    # FIX: Limit to 4 languages as per Azure Error 1007
     transcriber = AzureTranscriber(
         callback_final=handle_final_result,
         callback_interim=handle_interim_result,
-        language=azure_lang_code
+        candidate_languages=["vi-VN", "en-US", "zh-CN", "ja-JP"]
     )
     
     transcriber.start()
-    logger.info(f"🎙️ Azure Stream Started for User {user_id} [{azure_lang_code}]")
+    logger.info(f"🎙️ Azure Auto-Detect Stream Started for User {user_id}")
 
     try:
         while True:
             msg = await websocket.receive()
-            
             if "bytes" in msg and msg["bytes"]:
-                data_bytes = msg["bytes"]
-                transcriber.write_stream(data_bytes)
-                
+                transcriber.write_stream(msg["bytes"])
             elif "text" in msg:
-                pass
-                
+                pass     
     except WebSocketDisconnect:
         audio_manager.disconnect(websocket, normalized_room_id)
     except Exception as e:

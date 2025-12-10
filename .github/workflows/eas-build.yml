@@ -27,7 +27,7 @@ jobs:
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
@@ -58,15 +58,38 @@ jobs:
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # NEW STEP: Overwrite the project's request for NDK 27 to NDK 26
+      # FIXED STEP: Overwrite the project's request for NDK 27 to NDK 26
       - name: 🚑 Patch Gradle NDK Version
+        # Target the main project's build.gradle and the problematic react-native-worklets module's build files
         run: |
-          echo "✨ Patching build.gradle files to require NDK 26 instead of 27..."
-          # Find any file in ./android containing the NDK 27 version string and replace it with 26
-          grep -rl "27.1.12297006" android | xargs sed -i 's/27.1.12297006/26.1.10909125/g'
+          OLD_NDK="27.1.12297006"
+          NEW_NDK="26.1.10909125"
           
-          echo "✅ Patch complete. Verifying:"
-          grep -r "ndkVersion" android || echo "ndkVersion not found in grep (might be okay if dynamically set)"
+          echo "✨ Patching references from ${OLD_NDK} to ${NEW_NDK}..."
+          
+          # 1. Patch android.ndkVersion in the main project's build.gradle
+          # This is the line that failed in the build log: NDK from ndk.dir... disagrees with android.ndkVersion [27.1.12297006]
+          
+          # Use find to list all files that contain the string, then pass them to sed
+          find ./android -type f -print0 | xargs -0 grep -l "${OLD_NDK}" | while IFS= read -r FILE; do
+            echo "   Patching file: ${FILE}"
+            sed -i "s/${OLD_NDK}/${NEW_NDK}/g" "${FILE}"
+          done
+          
+          # 2. Add an explicit NDK version override to the main project's build.gradle
+          # This ensures that even if a dependency tries to set it, we enforce 26.
+          GRADLE_PATCH_CONTENT='
+// START PATCH: Forced NDK version override for compatibility with GitHub Actions runner
+buildscript {
+    ext {
+        ndkVersion = "26.1.10909125"
+    }
+}
+// END PATCH'
+          # Insert the patch content at the beginning of the root build.gradle
+          sed -i "1s/^/${GRADLE_PATCH_CONTENT}\n/" android/build.gradle
+          
+          echo "✅ NDK version patches applied."
 
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4

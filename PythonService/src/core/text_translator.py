@@ -21,7 +21,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 else:
-    logger.error("Missing GOOGLE_API_KEY. Translation fallback will fail.")
+    logger.error("Missing GOOGLE_API_KEY. Text translation fallback will fail.")
 
 # Model tiers for translation, prioritized from most capable/fastest down to fallbacks
 TRANSLATION_MODEL_TIERS = [
@@ -30,10 +30,10 @@ TRANSLATION_MODEL_TIERS = [
     {"name": "gemini-2.0-flash", "purpose": "Legacy Flash - Cost Effective Fallback"},
 ]
 
-class HybridTranslator:
+class TextTranslator:
     def __init__(self, redis_client: Redis):
         self.redis = redis_client
-        logger.info("HybridTranslator initialized.")
+        logger.info("TextTranslator initialized.")
 
     def _normalize(self, text: str) -> str:
         if not text: return ""
@@ -242,15 +242,15 @@ class HybridTranslator:
                 logger.error(f"Generic error with {current_model_name}: {str(e)}")
                 continue 
 
-        logger.error(f"External Translation Failed for '{text}': All model tiers failed.")
+        logger.error(f"External Text Translation Failed for '{text}': All model tiers failed.")
         return lpm_result, detected_lang
 
-_translator = None
+_text_translator = None
 
-def get_translator(redis_client: Redis) -> HybridTranslator:
-    global _translator
-    if _translator is None:
-        _translator = HybridTranslator(redis_client)
+def get_text_translator(redis_client: Redis) -> TextTranslator:
+    global _text_translator
+    if _text_translator is None:
+        _text_translator = TextTranslator(redis_client)
     else:
-        _translator.redis = redis_client
-    return _translator
+        _text_translator.redis = redis_client
+    return _text_translator
