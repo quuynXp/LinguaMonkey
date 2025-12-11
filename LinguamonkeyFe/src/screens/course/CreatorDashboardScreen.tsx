@@ -7,7 +7,6 @@ import {
     RefreshControl,
     Image,
     StatusBar,
-    Dimensions,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
