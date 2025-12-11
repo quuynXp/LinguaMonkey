@@ -84,10 +84,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   } = useCourses();
 
   const { useLessonProgresses } = useLessons();
-
   const { useCreateTransaction } = useTransactionsApi();
   const { mutate: requestRefund, isPending: isRequestingRefund } = useCreateTransaction();
-
   const { useCourseRoom } = useRooms();
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
@@ -107,13 +105,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }, [user?.userId, refetchEnrollments, refetchUserProgress])
   );
 
-  // FIX: Detect if course's latest public version changes (e.g. backend update) and sync UI
-  // Also initialize if viewingVersionId is null.
   useEffect(() => {
     if (course?.latestPublicVersion) {
-      // If no version is selected yet, select the latest.
-      // Or, if the latest version from API is DIFFERENT from what we thought was latest (and user hasn't explicitly picked an old one)
-      // Determining "explicitly picked" is hard, so we just default to latest on load.
       if (!viewingVersionId) {
         setViewingVersionId(course.latestPublicVersion.versionId);
       }
@@ -145,14 +138,13 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     return allLessons.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   }, [lessonsInfinite]);
 
+  // LOGIC FIX: Map includes completedAt timestamp
   const progressMap = useMemo(() => {
-    const map: Record<string, { score: number; completedAt: string }> = {};
-
+    const map: Record<string, { score: number; completedAt: string | null }> = {};
     if (!userProgressData?.data) return map;
 
     userProgressData.data.forEach((p: any) => {
-      const lId = p.lessonId || p.id?.lessonId;
-
+      const lId = p.id?.lessonId || p.lessonId;
       if (lId) {
         map[lId] = {
           score: p.score,
@@ -548,9 +540,14 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     const isUnlocked = hasAccess || item.isFree;
     const isLocked = !isUnlocked;
 
+    // LOGIC FIX: Check outdated
     const progressItem = progressMap[item.lessonId];
     const score = progressItem?.score;
-    const isOutdated = progressItem?.completedAt && item.updatedAt && dayjs(item.updatedAt).isAfter(dayjs(progressItem.completedAt));
+
+    // Check if lesson is outdated (updatedAt > completedAt)
+    const isOutdated = progressItem?.completedAt && item.updatedAt
+      && dayjs(item.updatedAt).isAfter(dayjs(progressItem.completedAt));
+
     const isLessonCompleted = score !== undefined && score >= 50 && !isOutdated;
 
     return (
@@ -577,7 +574,14 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
                 {Math.ceil((item.durationSeconds || 0) / 60)} min • {item.lessonType || 'LESSON'}
               </Text>
 
-              {score !== undefined && (
+              {isOutdated && (
+                <View style={[styles.progressTag, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA', borderWidth: 1 }]}>
+                  <Icon name="update" size={10} color="#F97316" />
+                  <Text style={[styles.progressTagText, { color: "#F97316" }]}>Updated</Text>
+                </View>
+              )}
+
+              {!isOutdated && score !== undefined && (
                 <View style={[styles.progressTag, { backgroundColor: isLessonCompleted ? '#ECFDF5' : '#FEF2F2' }]}>
                   <Icon name={isLessonCompleted ? "check-circle" : "cancel"} size={12} color={isLessonCompleted ? "#10B981" : "#EF4444"} />
                   <Text style={[styles.progressTagText, { color: isLessonCompleted ? "#10B981" : "#EF4444" }]}>
@@ -641,7 +645,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <FlatList
         data={displayLessons}
-        extraData={progressMap}
+        extraData={progressMap} // Fix re-render
         renderItem={renderLessonItem}
         keyExtractor={(item) => item.lessonId || String(item.orderIndex)}
         ListHeaderComponent={renderHeader}
@@ -654,7 +658,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         contentContainerStyle={{ paddingBottom: 40, backgroundColor: "#FFF" }}
       />
 
-      {/* Loading Overlay for Enrollment */}
       {isEnrolling && (
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingBox}>
