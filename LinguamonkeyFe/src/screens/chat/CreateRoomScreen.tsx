@@ -99,27 +99,32 @@ const CreateRoomScreen = () => {
       return;
     }
 
-    // FIX: Clean payload logic to avoid 400 Bad Request (Error 1001)
-    // Convert empty strings to null for optional fields
+    // FIX: Ensure payload is strictly typed and clean
     const roomPayload: RoomRequest = {
       roomName: roomName.trim(),
       creatorId: user.userId,
       description: description.trim(),
-      maxMembers: parseInt(maxMembers, 10) || 20, // Ensure integer
+      maxMembers: parseInt(maxMembers, 10) || 20,
       purpose: roomPurpose,
       roomType: isPrivate ? RoomType.PRIVATE : RoomType.PUBLIC,
-      password: (isPrivate && roomPassword.trim()) ? roomPassword.trim() : null, // Send null if empty/public
-      roomCode: null, // Send null instead of empty string
+      password: (isPrivate && roomPassword.trim()) ? roomPassword.trim() : null,
+      roomCode: null,
       isDeleted: false,
       memberIds: Array.from(selectedUsers)
-    } as any; // Cast to any to bypass strict TS check if interface doesn't allow nulls
+    } as any;
 
     createRoom(roomPayload, {
       onSuccess: (newRoom) => {
-        navigation.replace('GroupChatScreen', {
-          roomId: newRoom.roomId,
-          roomName: newRoom.roomName
-        });
+        // Validation: Ensure we got a valid room with a UUID before navigating
+        if (newRoom && newRoom.roomId) {
+            navigation.replace('GroupChatScreen', {
+                roomId: newRoom.roomId,
+                roomName: newRoom.roomName
+            });
+        } else {
+            console.error("Created room but received invalid response:", newRoom);
+            Alert.alert(t('common.error'), "Room created but ID is missing.");
+        }
       },
       onError: (error: any) => {
         console.error("Create Room Error:", error?.response?.data || error);
@@ -618,7 +623,7 @@ const styles = createScaledSheet({
   },
   userItemSelectedCheckbox: {
     opacity: 1
-  },
+  }, 
   emptyText: {
     textAlign: 'center',
     padding: 20,

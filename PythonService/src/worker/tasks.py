@@ -3,21 +3,19 @@ import logging
 import os
 import json
 from celery import Celery
+from celery.signals import worker_ready
 from sqlalchemy import select, update, func, desc
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Import core modules
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.models import TranslationLexicon
 from src.core.session import AsyncSessionLocal
 from src.worker.huggingface_loader import ingest_huggingface_data
 
-# Logger Configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Config Celery
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "redisPass123")
 REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:6379/0"
@@ -33,7 +31,6 @@ celery_app.conf.update(
 )
 
 def run_async(coro):
-    """Helper to run async code in sync Celery worker"""
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -45,6 +42,14 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
         
     return loop.run_until_complete(coro)
+
+# --- TRIGGER ON STARTUP ---
+@worker_ready.connect
+def trigger_startup_tasks(sender, **kwargs):
+    """Tự động chạy task ingest khi worker khởi động"""
+    with sender.app.connection() as conn:
+        sender.app.send_task("src.worker.tasks.ingest_huggingface_task", connection=conn)
+        logger.info("🚀 [Startup] Triggered ingest_huggingface_task automatically.")
 
 # ==============================================================================
 #  TASK 1: INGEST DATA FROM HUGGING FACE
@@ -78,7 +83,6 @@ def sync_translation_to_db_task(original_text: str, src_lang: str, translations:
     async def _logic():
         async with AsyncSessionLocal() as session:
             try:
-                # Upsert Logic: Insert or Update on Conflict
                 stmt = insert(TranslationLexicon).values(
                     original_text=original_text,
                     original_lang=src_lang,
@@ -86,8 +90,7 @@ def sync_translation_to_db_task(original_text: str, src_lang: str, translations:
                     usage_count=1
                 )
                 stmt = stmt.on_conflict_do_update(
-                    index_elements=['id'], # Note: Cần unique constraint ở original_text + original_lang nếu muốn chuẩn.
-                    # Tuy nhiên, nếu model chưa có Unique Constraint composite, ta dùng logic Select-Update thủ công an toàn hơn:
+                    index_elements=['id'],
                     set_={
                         "translations": translations,
                         "usage_count": TranslationLexicon.usage_count + 1,
@@ -95,8 +98,6 @@ def sync_translation_to_db_task(original_text: str, src_lang: str, translations:
                     }
                 )
                 
-                # FALLBACK MANUAL CHECK (Vì bảng hiện tại id là PK, text/lang chưa chắc unique)
-                # Để an toàn nhất với schema hiện tại:
                 existing = await session.execute(
                     select(TranslationLexicon).where(
                         TranslationLexicon.original_text == original_text,
@@ -129,14 +130,10 @@ def sync_translation_to_db_task(original_text: str, src_lang: str, translations:
     run_async(_logic())
 
 # ==============================================================================
-#  TASK 3: BACKUP REDIS TO DB (PERIODIC / TRIGGER)
+#  TASK 3: BACKUP REDIS TO DB
 # ==============================================================================
 @celery_app.task(name="src.worker.tasks.backup_redis_to_db_task")
 def backup_redis_to_db_task():
-    """
-    Quét Redis lấy các từ vựng (lex:*) và lưu vào DB.
-    Giúp bảo toàn dữ liệu usage_count và các từ mới học được.
-    """
     logger.info("💾 [Backup] Starting Redis -> DB Backup...")
     
     async def _logic():
@@ -144,25 +141,21 @@ def backup_redis_to_db_task():
         async with AsyncSessionLocal() as session:
             cursor = b'0'
             count = 0
-            batch_data = []
             BATCH_SIZE = 500
 
             while cursor:
                 cursor, keys = await redis.scan(cursor, match="lex:*", count=1000)
                 for key in keys:
-                    # Key format: lex:{lang}:{text}
                     key_str = key.decode("utf-8")
                     parts = key_str.split(":")
                     if len(parts) < 3: continue
                     
                     lang = parts[1]
-                    text = parts[2] # Đã normalized
+                    text = parts[2]
 
-                    # Lấy hash data
                     data = await redis.hgetall(key)
                     if not data: continue
 
-                    # Convert Redis Hash (bytes/str) to Python Dict
                     translations = {}
                     usage = 0
                     
@@ -179,13 +172,6 @@ def backup_redis_to_db_task():
                     
                     if not translations: continue
 
-                    # Prepare batch upsert
-                    # Vì SQLAlchemy async insert many hơi phức tạp với logic check exist,
-                    # ta sẽ check từng cái hoặc dùng logic Insert on Conflict nếu DB support.
-                    # Ở đây ta dùng logic đơn giản: Select -> Update/Insert
-                    
-                    # Để tối ưu performance, ta gom lại xử lý sau, nhưng ở đây demo loop đơn giản
-                    # để đảm bảo tính đúng đắn với schema hiện tại.
                     stmt = select(TranslationLexicon).where(
                         TranslationLexicon.original_text == text,
                         TranslationLexicon.original_lang == lang
@@ -194,11 +180,9 @@ def backup_redis_to_db_task():
                     entry = res.scalar_one_or_none()
 
                     if entry:
-                        # Merge translations
                         current_trans = dict(entry.translations) if entry.translations else {}
                         current_trans.update(translations)
                         entry.translations = current_trans
-                        # Update usage (lấy max để không bị giảm nếu DB lớn hơn)
                         entry.usage_count = max(entry.usage_count, usage)
                         entry.last_used_at = func.now()
                     else:
@@ -221,19 +205,15 @@ def backup_redis_to_db_task():
     run_async(_logic())
 
 # ==============================================================================
-#  TASK 4: RESTORE DB TO REDIS (WARM UP)
+#  TASK 4: RESTORE DB TO REDIS
 # ==============================================================================
 @celery_app.task(name="src.worker.tasks.restore_db_to_redis_task")
 def restore_db_to_redis_task():
-    """
-    Load Top N từ vựng được dùng nhiều nhất từ DB lên Redis.
-    """
     logger.info("🔥 [Restore] Starting DB -> Redis Warmup...")
     
     async def _logic():
         redis = await get_redis_client()
         async with AsyncSessionLocal() as session:
-            # Lấy 50,000 từ dùng nhiều nhất
             stmt = select(TranslationLexicon).order_by(
                 desc(TranslationLexicon.usage_count)
             ).limit(50000)
@@ -244,14 +224,13 @@ def restore_db_to_redis_task():
             pipeline = redis.pipeline()
             for entry in entries:
                 key = f"lex:{entry.original_lang}:{entry.original_text}"
-                
                 mapping_data = dict(entry.translations) if entry.translations else {}
-                mapping_data["usage"] = str(entry.usage_count) # Redis lưu số dạng string
+                mapping_data["usage"] = str(entry.usage_count)
                 
                 pipeline.hset(key, mapping=mapping_data)
-                pipeline.expire(key, 60*60*24*30) # 30 ngày
+                pipeline.expire(key, 60*60*24*30)
             
             await pipeline.execute()
             logger.info(f"✅ Restored {len(entries)} 'hot' words to Redis.")
-
+ 
     run_async(_logic())

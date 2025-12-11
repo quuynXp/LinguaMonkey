@@ -108,6 +108,7 @@ const normalizeMessage = (msg: any): Message => {
     } as Message;
   }
 
+  // Parse translations safely
   let parsedTranslations: Record<string, string> = {};
   if (msg.translations) {
     try {
@@ -129,9 +130,13 @@ const normalizeMessage = (msg: any): Message => {
     translatedText: source.translatedText || null,
   });
 
+  // CRITICAL FIX: Robust ID Extraction
+  // Priority 1: Nested id.chatMessageId (Standard Entity)
   if (msg?.id?.chatMessageId) {
     return { ...msg, ...mapTranslationFields(msg) } as Message;
   }
+
+  // Priority 2: Flat chatMessageId (DTO / Projection)
   if (msg?.chatMessageId) {
     return {
       ...msg,
@@ -141,6 +146,17 @@ const normalizeMessage = (msg: any): Message => {
       ...mapTranslationFields(msg)
     } as Message;
   }
+
+  // Priority 3: 'id' field as string (Simplified DTO)
+  if (msg?.id && typeof msg.id === 'string') {
+    return {
+      ...msg,
+      id: { chatMessageId: msg.id, sentAt: msg.sentAt || new Date().toISOString() },
+      ...mapTranslationFields(msg)
+    } as Message;
+  }
+
+  // Fallback (Should rarely happen if backend is correct)
   return {
     ...msg,
     id: { chatMessageId: 'unknown-' + Math.random(), sentAt: new Date().toISOString() }
@@ -162,7 +178,10 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   if (!rawMsg) return list;
   const msg = normalizeMessage(rawMsg);
   const currentUserId = useUserStore.getState().user?.userId;
-  if (msg.isDeleted) return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
+
+  if (msg.isDeleted) {
+    return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
+  }
 
   // Trigger translation for incoming text messages from others
   if (eagerCallback && msg.senderId !== currentUserId && msg.messageType === 'TEXT' && msg.content) {
@@ -171,21 +190,41 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
 
   let workingList = [...list];
 
+  // CRITICAL FIX: Remove local optimistic message when server message arrives
+  // Logic: If I am sender, and this new msg is NOT local (from server),
+  // find any local message with similar content and remove it before adding the real one.
   if (msg.senderId === currentUserId && !msg.isLocal) {
-    workingList = workingList.filter(m => !(m.isLocal && m.content === msg.content));
+    // We filter out any LOCAL message that has same content (trimmed)
+    workingList = workingList.filter(m => {
+      const isMyLocal = m.isLocal === true;
+      const contentMatch = m.content?.trim() === msg.content?.trim();
+      // If it's my local message and content matches, DELETE IT (return false to filter out)
+      // because we are about to add the authoritative server version.
+      return !(isMyLocal && contentMatch);
+    });
   }
 
   const existsIndex = workingList.findIndex((m) => m.id.chatMessageId === msg.id.chatMessageId);
+
   if (existsIndex > -1) {
+    // Update existing message
     const existing = workingList[existsIndex];
+    // Preserve translation map if existing has more data
     if (Object.keys(existing.translationsMap || {}).length > Object.keys(msg.translationsMap || {}).length) {
       msg.translationsMap = { ...msg.translationsMap, ...existing.translationsMap };
     }
+    // Preserve local status if for some reason we are updating a local message
+    if (existing.isLocal && !msg.id.chatMessageId.startsWith('local')) {
+      // If we matched ID but existing was local, it means ID was generated correctly client side? 
+      // Rare case, usually we swap. Let's trust the new msg unless it's strictly an update.
+    }
     workingList[existsIndex] = msg;
   } else {
+    // Add new message
     workingList = [msg, ...workingList];
   }
 
+  // Sort Descending (Newest first) for Store storage
   return workingList.sort((a, b) => {
     const timeA = parseDate(a.id?.sentAt);
     const timeB = parseDate(b.id?.sentAt);
@@ -259,7 +298,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     try {
       // 1. Call Python API (Fastest Path)
-      // Note: The Python backend automatically updates the DB with the result.
       const res = await instance.post('/api/py/translate', {
         text,
         target_lang: targetLang,
@@ -292,7 +330,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       .filter(m => m.messageType === 'TEXT' && m.senderId !== currentUserId && !m.isDeleted)
       .slice(0, count);
 
-    // Run mostly parallel
     Promise.all(candidates.map(msg =>
       get().performEagerTranslation(msg.id.chatMessageId, msg.content, targetLang)
     ));
@@ -321,7 +358,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
           const triggerEager = (m: Message) => {
             const { chatSettings } = useAppStore.getState();
-            // Automatically translate incoming messages if setting is on
             if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
               get().performEagerTranslation(m.id.chatMessageId, m.content);
             }
@@ -331,6 +367,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
             if (state.currentViewedRoomId !== roomId && !(state.isBubbleOpen && state.activeBubbleRoomId === roomId)) {
               if (state.appIsActive) { await playInAppSound(); state.openBubble(roomId); }
             }
+            // IMPORTANT: Ensure roomId is correct type
             set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], rawMsg, triggerEager) } }));
           }
         });
@@ -349,6 +386,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
                 get().performEagerTranslation(m.id.chatMessageId, m.content);
               }
             };
+
+            // Inject roomId if missing in payload
+            if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
 
             set((state) => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg, triggerEager) } }));
           });
@@ -542,7 +582,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       // Trigger eager translation for loaded messages
       const { chatSettings } = useAppStore.getState();
       if (chatSettings.autoTranslate && newMessages.length > 0) {
-        // Only trigger for first few to avoid spamming
         newMessages.slice(0, 5).forEach((m: Message) => {
           if (m.senderId !== useUserStore.getState().user?.userId) {
             get().performEagerTranslation(m.id.chatMessageId, m.content);
@@ -591,7 +630,19 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const state = get();
     const room = state.rooms[roomId];
     const payload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null };
-    const optimisticMsg = { id: { chatMessageId: `local-${Date.now()}`, sentAt: new Date().toISOString() }, senderId: useUserStore.getState().user?.userId, content, messageType: type, mediaUrl: mediaUrl || null, isLocal: true, translatedText: null, translatedLang: null } as any;
+
+    // Optimistic ID must strictly start with 'local-' for detection logic
+    const optimisticId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const optimisticMsg = {
+      id: { chatMessageId: optimisticId, sentAt: new Date().toISOString() },
+      senderId: useUserStore.getState().user?.userId,
+      content,
+      messageType: type,
+      mediaUrl: mediaUrl || null,
+      isLocal: true,
+      translatedText: null,
+      translatedLang: null
+    } as any;
 
     // Add optimistic message instantly
     set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], optimisticMsg) } }));

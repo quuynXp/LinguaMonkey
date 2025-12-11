@@ -264,7 +264,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const messages: UIMessage[] = useMemo(() => {
         return serverMessages.map((msg: any) => {
             const senderId = msg?.senderId ?? 'unknown';
-            const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
+            // Safe ID access
+            const messageId = msg?.id?.chatMessageId || (typeof msg?.id === 'string' ? msg.id : `${senderId}_${msg.sentAt}`);
 
             const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
             const dbMapTrans = msg.translationsMap ? msg.translationsMap[translationTargetLang] : null;
@@ -296,10 +297,16 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     }, [serverMessages, eagerTranslations, translationTargetLang, currentUserId, membersMap]);
 
     useEffect(() => { loadMessages(roomId); }, [roomId]);
+
     useEffect(() => {
         if (!messages.length) return;
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
+        // Debounce scroll to end to allow layout to calculate
+        const timer = setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+        }, 200);
+        return () => clearTimeout(timer);
     }, [messages.length]);
+
     useEffect(() => {
         messages.forEach(msg => { if (msg.sender === 'other' && !msg.isRead) markMessageAsRead(roomId, msg.id); });
     }, [messages.length, roomId]);
@@ -335,9 +342,15 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
-        // VISIBILITY LOGIC FIX:
-        // 1. Show Translated Text IF: AutoTranslate is ON AND Translation Exists AND Not Media AND NOT USER (Self)
-        const showTranslatedText = autoTranslate && !!item.translatedText && !isMedia && !isUser;
+        // VISIBILITY LOGIC:
+        // Check if the translated text is effectively the same as the original text (case-insensitive).
+        // The backend returns the original text if source_lang == target_lang.
+        // If they are the same, we hide the translation line to improve UX.
+        const isTranslationSameAsOriginal = item.text?.trim().toLowerCase() === item.translatedText?.trim().toLowerCase();
+
+        // 1. Show Translated Text IF: AutoTranslate is ON AND Translation Exists AND Not Media AND NOT USER (Self) AND Translation != Original
+        const showTranslatedText = autoTranslate && !!item.translatedText && !isMedia && !isUser && !isTranslationSameAsOriginal;
+
         // 2. Show Manual Button IF: AutoTranslate is OFF AND Not Media AND Not User
         const showManualButton = !autoTranslate && !isMedia && !isUser;
 
@@ -373,7 +386,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 {/* Original Text Line */}
                                 <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
 
-                                {/* Translated Text Line (Only if Auto is ON AND Not User) */}
+                                {/* Translated Text Line (Only if Auto is ON AND Not User AND Not Same as Original) */}
                                 {showTranslatedText && (
                                     <View style={styles.dualLineContainer}>
                                         <View style={styles.separator} />
@@ -422,6 +435,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 style={styles.list}
                 renderItem={renderMessageItem}
                 contentContainerStyle={{ paddingTop: 40, paddingBottom: 10 }}
+                onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                removeClippedSubviews={false} // Improves stability for chat
+                initialNumToRender={15}
             />
 
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 90}>

@@ -27,7 +27,8 @@ DATASET_SOURCES = [
 
 BATCH_SIZE = 2000
 REDIS_EXPIRY = 60 * 60 * 24 * 60
-INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v4" 
+# UPDATE: Bumped version to v5 to force re-ingestion
+INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v5" 
 
 def normalize_text(text: str) -> str:
     if not text: return ""
@@ -37,10 +38,6 @@ def get_redis_key(lang: str, text: str) -> str:
     return f"lex:{lang}:{normalize_text(text)}"
 
 async def clean_old_lexicon_keys(redis: Redis):
-    """
-    Hàm dọn dẹp toàn bộ key lex:* cũ (dạng String) để tránh lỗi WRONGTYPE
-    khi chuyển sang dùng Hash.
-    """
     logger.info("🧹 scanning and cleaning old 'lex:*' keys to prevent collision...")
     cursor = b"0"
     count = 0
@@ -62,6 +59,7 @@ async def clean_old_lexicon_keys(redis: Redis):
 
 async def ingest_huggingface_data(redis: Redis):
     try:
+        # Check flag v5
         if await redis.exists(INGESTION_FLAG_KEY):
             logger.info(f"⚡ [SKIP] Hugging Face data already ingested (Key: {INGESTION_FLAG_KEY}).")
             return

@@ -32,6 +32,7 @@ export default ({ config }) => {
       },
       android: {
         usesCleartextTraffic: true,
+
         config: {
           facebook: {
             appId: "1230650165201263",
@@ -40,6 +41,7 @@ export default ({ config }) => {
             advertiserIDCollectionEnabled: true,
           },
         },
+
         icon: "./src/assets/images/icon.png",
         adaptiveIcon: {
           foregroundImage: "./src/assets/images/icon.png",
@@ -73,7 +75,7 @@ export default ({ config }) => {
       web: {
         build: {
           babel: true,
-          jsEngine: "jsc",
+          jsEngine: "hermes",
           newArchEnabled: false,
         },
         bundler: "metro",
@@ -93,11 +95,11 @@ export default ({ config }) => {
           "expo-build-properties",
           {
             android: {
-              compileSdkVersion: 34,
-              targetSdkVersion: 34,
-              buildToolsVersion: "34.0.0",
               ndkVersion: "26.1.10909125",
               cmakeVersion: "3.22.1",
+              gradleProperties: {
+                "org.gradle.jvmargs": "-Xmx3072m -XX:MaxMetaspaceSize=512m",
+              },
             },
           },
         ],

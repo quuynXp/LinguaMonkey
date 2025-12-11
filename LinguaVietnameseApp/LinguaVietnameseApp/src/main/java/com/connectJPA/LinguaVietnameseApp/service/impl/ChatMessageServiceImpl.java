@@ -131,6 +131,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
         
+        message.setTranslations("{}");
+
         ChatMessage savedMessage = chatMessageRepository.save(message);
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);
