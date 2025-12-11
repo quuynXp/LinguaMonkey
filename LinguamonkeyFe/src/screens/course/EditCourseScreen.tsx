@@ -377,34 +377,38 @@ const EditCourseScreen = () => {
     }
   };
 
-  const renderLessonItem = ({ item, index, drag, isActive }: RenderItemParams<LessonResponse>) => (
-    <ScaleDecorator>
-      <TouchableOpacity
-        style={[
-          styles.lessonItem,
-          { backgroundColor: isActive ? '#EEF2FF' : '#FFF', opacity: isActive ? 0.9 : 1 }
-        ]}
-        onPress={() => navigateToLesson(item.lessonId)}
-        onLongPress={drag}
-        disabled={isActive}
-      >
-        <Ionicons name="menu" size={24} color="#CCC" style={{ marginRight: 10 }} />
-        <Image
-          source={getLessonImage(item.thumbnailUrl)}
-          style={styles.lessonThumb}
-        />
-        <View style={styles.lessonContent}>
-          <Text style={styles.lessonTitle} numberOfLines={1}>
-            {index + 1}. {item.title || item.lessonName}
-          </Text>
-          <Text style={styles.lessonMeta}>
-            {item.isFree ? "Free Preview" : "Locked"} • {item.lessonType}
-          </Text>
-        </View>
-        <Icon name="chevron-right" size={24} color="#9CA3AF" />
-      </TouchableOpacity>
-    </ScaleDecorator>
-  );
+  const renderLessonItem = ({ item, getIndex, drag, isActive }: RenderItemParams<LessonResponse>) => {
+    const index = getIndex() ?? 0;
+
+    return (
+      <ScaleDecorator>
+        <TouchableOpacity
+          style={[
+            styles.lessonItem,
+            { backgroundColor: isActive ? '#EEF2FF' : '#FFF', opacity: isActive ? 0.9 : 1 }
+          ]}
+          onPress={() => navigateToLesson(item.lessonId)}
+          onLongPress={drag}
+          disabled={isActive}
+        >
+          <Ionicons name="menu" size={24} color="#CCC" style={{ marginRight: 10 }} />
+          <Image
+            source={getLessonImage(item.thumbnailUrl)}
+            style={styles.lessonThumb}
+          />
+          <View style={styles.lessonContent}>
+            <Text style={styles.lessonTitle} numberOfLines={1}>
+              {index + 1}. {item.title || item.lessonName}
+            </Text>
+            <Text style={styles.lessonMeta}>
+              {item.isFree ? "Free Preview" : "Locked"} • {item.lessonType}
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={24} color="#9CA3AF" />
+        </TouchableOpacity>
+      </ScaleDecorator>
+    );
+  };
 
   const headerElement = useMemo(() => (
     <View style={styles.contentContainer}>

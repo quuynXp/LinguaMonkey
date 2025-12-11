@@ -92,25 +92,23 @@ public class MatchmakingController {
         }
     }
     
-    private void sendMatchNotificationToPartner(UUID partnerId, RoomResponse room, int score) {
-        try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("type", "MATCH_FOUND");
-            payload.put("status", "MATCHED");
-            payload.put("room", room);
-            payload.put("score", score);
-            
-            // Gửi vào queue cá nhân của user
-            messagingTemplate.convertAndSendToUser(
-                partnerId.toString(),
-                "/queue/notifications",
-                payload
-            );
-            log.info("Sent MATCH_FOUND notification to user {}", partnerId);
-        } catch (Exception e) {
-            log.error("Failed to send match notification via socket: {}", e.getMessage());
-        }
+   private void sendMatchNotificationToPartner(UUID partnerId, RoomResponse room, int score) {
+    try {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("type", "MATCH_FOUND");
+        payload.put("status", "MATCHED");
+        payload.put("room", room);
+        payload.put("score", score);
+        
+        String destination = "/topic/match-updates/" + partnerId.toString();
+        
+        messagingTemplate.convertAndSend(destination, payload);
+        
+        log.info("Sent MATCH_FOUND notification to destination: {}", destination);
+    } catch (Exception e) {
+        log.error("Failed to send match notification via socket: {}", e.getMessage());
     }
+}
 
     private AppApiResponse<Map<String, Object>> buildMatchedResponse(RoomResponse room, int score) {
     Map<String, Object> responseData = new HashMap<>();

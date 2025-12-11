@@ -50,7 +50,7 @@ interface FinalCallPreferences extends Omit<CallPreferences, 'learningLanguage'>
   learningLanguages: string[];
   proficiency: string;
   learningPace: string;
-  gender: string;
+  gender: 'any' | 'male' | 'female';
 }
 
 const CallSetupScreen = ({ navigation }: any) => {
@@ -78,12 +78,14 @@ const CallSetupScreen = ({ navigation }: any) => {
 
   const defaultPreferences: FinalCallPreferences = {
     interests: [],
-    gender: (user.gender as string) || "any",
+    gender: "any",
     nativeLanguage: user?.nativeLanguageCode || "en",
     learningLanguages: user?.languages || ["vi"],
     ageRange: (user?.ageRange || AgeRange.AGE_18_24) as string,
     proficiency: (user?.proficiency || ProficiencyLevel.INTERMEDIATE) as string,
     learningPace: (user?.learningPace || LearningPace.NORMAL) as string,
+    subtitleMode: 'dual', // Giá trị mặc định
+    micEnabled: true,     // Giá trị mặc định
   }
 
   const initialPreferences: FinalCallPreferences = {
@@ -251,7 +253,6 @@ const CallSetupScreen = ({ navigation }: any) => {
       setIsSearching(false);
       navigation.navigate("WebRTCCall", { // Đổi tên thành WebRTCCall như file trước bạn gửi
         roomId: room.roomId,
-        videoCallId: room.videoCallId || "", // Thêm field nếu backend có
         isCaller: false, // Logic vào cùng lúc thì vai trò không quan trọng lắm cho UI
         preferences: preferences
       })

@@ -26,8 +26,7 @@ const compressMedia = async (uri: string, type: string): Promise<string> => {
       // Với bài giảng online: 720p và Bitrate thấp là đủ nét và nhẹ.
       const result = await CompressorVideo.compress(uri, {
         compressionMethod: 'manual',
-        maxWidth: 1280, // 720p
-        quality: 0.7,   // Giảm quality chút
+        maxSize: 1280, // 720p
         bitrate: 1000 * 1000, // Giới hạn 1Mbps (Video 1 tiếng ~ 450MB) -> Upload rất nhanh
       }, (progress) => {
         console.log(`Compression: ${(progress * 100).toFixed(0)}%`);

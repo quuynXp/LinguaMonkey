@@ -134,14 +134,15 @@ services:
   - name: java-upload-service
     url: http://linguavietnameseapp:10000
     connect_timeout: 60000
-    write_timeout: 300000
-    read_timeout: 300000
+    write_timeout: 600000
+    read_timeout: 600000
     routes:
       - name: java-upload-route
         strip_path: false
         methods: [POST, OPTIONS]
         paths:
           - /api/v1/files/upload-temp
+        regex_priority: 100
     plugins:
       - name: jwt
         config:
@@ -149,7 +150,7 @@ services:
           key_claim_name: kid
       - name: request-size-limiting
         config:
-          allowed_payload_size: 200
+          allowed_payload_size: 2048
 
   - name: java-websocket-service
     url: http://linguavietnameseapp:10000

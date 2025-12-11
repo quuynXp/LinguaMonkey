@@ -646,10 +646,13 @@ const formatDriveUrl = (id: string) => `https://drive.google.com/uc?export=downl
 // --- COMPONENTS ---
 
 const MediaPreviewItem = ({ url, onDelete }: any) => {
+    const isImage = url
+        ? (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) || url.includes('googleusercontent') || url.includes('export=download'))
+        : false;
+
+    const player = useVideoPlayer((url && !isImage) ? url : null, (p) => { p.loop = false; });
+
     if (!url) return null;
-    const isImage = (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) || url.includes('googleusercontent') || url.includes('export=download'));
-    // Nếu là video mp4/mov... dùng VideoView, nếu không cứ hiển thị Image
-    const player = useVideoPlayer(!isImage ? url : null, (p) => { p.loop = false; });
 
     return (
         <View style={styles.mediaItemContainer}>
@@ -666,7 +669,6 @@ const MediaPreviewItem = ({ url, onDelete }: any) => {
         </View>
     );
 };
-
 // --- MAIN SCREEN ---
 
 const CreateLessonScreen = () => {
