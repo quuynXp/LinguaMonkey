@@ -150,5 +150,7 @@ coin:
   exchange:
     rate: 1000
 app:
+  backend:
+    url: ${APP_BACKEND_URL}
   system:
     token: monkeylingua

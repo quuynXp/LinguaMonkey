@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
@@ -24,6 +25,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
 
+import java.io.IOException;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -51,11 +53,10 @@ public class TransactionController {
 
     @Operation(summary = "Handle VNPAY Return URL")
     @GetMapping("/vnpay-return")
-    public RedirectView vnpayReturn(HttpServletRequest request) {
+    public void vnpayReturn(HttpServletRequest request, HttpServletResponse response) throws IOException {
         String appRedirectUrl = transactionService.processVnPayReturn(request);
-        RedirectView redirectView = new RedirectView();
-        redirectView.setUrl(appRedirectUrl);
-        return redirectView;
+
+        response.sendRedirect(appRedirectUrl);
     }
 
     @Operation(summary = "Handle payment webhook")

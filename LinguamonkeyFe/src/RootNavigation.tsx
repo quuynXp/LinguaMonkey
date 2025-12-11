@@ -37,34 +37,72 @@ const RootNavigation = () => {
     if (accessToken) {
       initStompClient();
     }
-
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       appState.current = nextAppState;
       const isActive = nextAppState === "active";
       setAppIsActive(isActive);
-
-      if (accessToken) {
-        if (isActive) {
-          initStompClient();
-        }
+      if (accessToken && isActive) {
+        initStompClient();
       }
     });
-
     return () => { subscription.remove(); };
   }, [accessToken, initStompClient, disconnectStompClient, setAppIsActive]);
 
+  // --- CẤU HÌNH DEEP LINKING ---
   const linking = useMemo(() => ({
-    prefixes: [Linking.createURL("/"), "monkeylingua://", "https://monkeylingua.vercel.app"],
+    // 1. Prefixes phải trùng với AndroidManifest.xml
+    prefixes: [
+      Linking.createURL("/"),
+      "monkeylingua://",
+      "https://monkeylingua.vercel.app"
+    ],
     config: {
+      // Cấu hình fallback cho màn hình chưa login
       screens: {
-        AppLaunchScreen: "welcome",
         LoginScreen: "login",
+        RegisterScreen: "register",
+
+        // Cấu hình cho MainStack (Sau khi login)
+        // RootNavigation sẽ tự tìm screen trong stack đang active
+
+        // 1. Tab Bar
         TabApp: {
-          screens: { Home: "home", Chat: "chats" },
+          screens: {
+            Home: "home",
+            Chat: "chats",
+            Profile: "profile",
+          },
         },
-        ChatStack: "chat-full",
+
+        // 2. Payment Stack (Quan trọng cho VNPAY)
+        // URL: monkeylingua://payment/...
+        PaymentStack: {
+          path: 'payment',
+          screens: {
+            // WalletScreen: 'wallet',
+            TopUpScreen: 'topup',
+            WithdrawScreen: 'withdraw',
+            DepositScreen: 'deposit',
+            TransactionHistoryScreen: 'history',
+
+            // Hứng link: monkeylingua://payment/result?...
+            WalletScreen: 'result',
+          },
+        },
+
+        // 3. Các Stack khác (Optional - map để support mở từ noti sau này)
+        CourseStack: {
+          path: 'course',
+          screens: {
+            CourseDetail: 'detail/:courseId', // monkeylingua://course/detail/123
+          }
+        },
+
+        // Catch-all cho Chat
+        ChatStack: 'chat-full',
       },
     },
+    // Đảm bảo listener hoạt động chuẩn
     subscribe(listener: (url: string) => void) {
       const onReceiveURL = ({ url }: { url: string }) => listener(url);
       const eventListener = Linking.addEventListener("url", onReceiveURL);
@@ -81,9 +119,9 @@ const RootNavigation = () => {
 
   const HEALTH_CHECK_ENDPOINT = "/actuator/health";
 
+  // ... (Giữ nguyên logic boot và check server của bạn) ...
   useEffect(() => {
     let mounted = true;
-
     const waitForConnectivity = async () => {
       while (mounted) {
         const netState = await NetInfo.fetch();
@@ -92,7 +130,6 @@ const RootNavigation = () => {
           await new Promise((resolve) => setTimeout(resolve, 2000));
           continue;
         }
-
         try {
           const response = await instance.get(HEALTH_CHECK_ENDPOINT, { timeout: 5000 });
           if (response.status === 200) {
@@ -113,9 +150,7 @@ const RootNavigation = () => {
     const boot = async () => {
       try {
         setIsLoading(true);
-
         await initializeTokens();
-
         const isHealthy = await waitForConnectivity();
         if (!mounted || !isHealthy) return;
 
@@ -129,11 +164,9 @@ const RootNavigation = () => {
         if (i18n.language !== savedLanguage) await i18n.changeLanguage(savedLanguage);
 
         const currentToken = useTokenStore.getState().accessToken;
-
         if (currentToken) {
           const userIsAdmin = isAdmin(currentToken);
           setIsUserAdmin(userIsAdmin);
-
           const payload = decodeToken(currentToken);
           if (payload?.userId) {
             try {
@@ -161,7 +194,6 @@ const RootNavigation = () => {
         if (mounted) setIsLoading(false);
       }
     };
-
     boot();
     return () => { mounted = false; };
   }, [initializeTokens, setUser, setLocalNativeLanguage]);
@@ -172,7 +204,7 @@ const RootNavigation = () => {
     <View style={{ flex: 1 }}>
       <NavigationContainer
         ref={RootNavigationRef}
-        linking={linking}
+        linking={linking} // Đã cập nhật linking
         fallback={<SplashScreen serverError={serverErrorMsg} />}
         onReady={() => {
           flushPendingActions();

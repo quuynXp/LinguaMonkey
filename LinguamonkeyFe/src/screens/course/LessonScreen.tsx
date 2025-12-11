@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View, Text, Image, TouchableOpacity, ScrollView,
   ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert,
@@ -21,9 +21,9 @@ import { getDirectMediaUrl } from "../../utils/mediaUtils";
 
 // --- Constants for Audio Recorder (Bypassing Library TS Exports) ---
 const ANDROID_AUDIO_CONFIG = {
-  AudioEncoderAndroid: 3, // AAC
-  AudioSourceAndroid: 1,  // MIC
-  OutputFormatAndroid: 2, // MPEG_4
+  AudioEncoderAndroid: 3,
+  AudioSourceAndroid: 1,
+  OutputFormatAndroid: 2,
 };
 
 // --- Helper Components (UniversalQuestionView) ---
@@ -180,8 +180,12 @@ const LessonScreen = ({ navigation, route }: any) => {
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [recordPath, setRecordPath] = useState<string>('');
 
-  // FIX: Cast to 'any' to bypass TypeScript "no construct signatures" error
-  const audioRecorderPlayer = useRef(new (AudioRecorderPlayer as any)()).current;
+  // FIX: Use useMemo and REMOVE 'new' based on TypeScript error 2351, 
+  // as the library may be exporting an instance directly or an object that isn't a class constructor.
+  const audioRecorderPlayer = useMemo(() => {
+    // Cast to 'any' to handle potential mismatch if it's not a direct function call
+    return AudioRecorderPlayer as any;
+  }, []);
 
   const [isRetryWrongMode, setIsRetryWrongMode] = useState(false);
 
@@ -190,10 +194,13 @@ const LessonScreen = ({ navigation, route }: any) => {
   // Cleanup recorder
   useEffect(() => {
     return () => {
-      audioRecorderPlayer.stopRecorder();
-      audioRecorderPlayer.removeRecordBackListener();
+      // Need to check if it's the actual instance or a function before calling methods
+      if (typeof audioRecorderPlayer.stopRecorder === 'function') {
+        audioRecorderPlayer.stopRecorder();
+        audioRecorderPlayer.removeRecordBackListener();
+      }
     };
-  }, []);
+  }, [audioRecorderPlayer]);
 
   useEffect(() => {
     if (testData?.questions) {

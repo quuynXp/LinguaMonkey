@@ -86,6 +86,7 @@ const PaymentScreen = ({ navigation, route }: any) => {
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
       const { url } = event;
+      console.log("Deep link received:", url);
       if (url.includes('payment/result')) {
         const queryParams = Linking.parse(url).queryParams;
         WebBrowser.dismissBrowser();

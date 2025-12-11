@@ -512,7 +512,7 @@ public class TransactionServiceImpl implements TransactionService {
         String signValue = hashAllFields(fields);
         String txnRef = request.getParameter("vnp_TxnRef");
         
-        String baseDeepLink = "linguamonkey://payment/result";
+        String baseDeepLink = "monkeylingua://payment/result";
 
         if (signValue.equals(vnp_SecureHash)) {
             String responseCode = request.getParameter("vnp_ResponseCode");
