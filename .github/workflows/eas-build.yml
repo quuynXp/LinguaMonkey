@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Final Stable)
+name: LinguamonkeyFe - Signed APK Build (Direct Gradle Install)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
-      # --- 1. SETUP NODE & JAVA ---
+      # --- 1. SETUP JAVA & NODE ---
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
@@ -41,25 +41,17 @@ jobs:
           ndk-version: r26b
           add-to-path: false 
 
-      # --- 3. FIX NDK: THAY THẾ VẬT LÝ ---
+      # --- 3. FIX NDK: THAY THẾ VẬT LÝ (Giữ nguyên vì nó hiệu quả) ---
       - name: 🔄 SWAP SYSTEM NDK
         run: |
-          echo "🛑 Stopping Gradle Daemon..."
-          ./gradlew --stop || true
-          
           echo "🧹 Wiping System NDK folder..."
-          # Xóa sạch thư mục NDK mặc định để script RN không tìm thấy bản 27
           sudo rm -rf $ANDROID_HOME/ndk
           sudo mkdir -p $ANDROID_HOME/ndk
           
           echo "🔗 Linking NDK 26 into System Path..."
-          # Tạo symlink: Buộc hệ thống phải thấy bản 26.1.10909125
+          # Ép hệ thống dùng bản 26.1
           sudo ln -s ${{ steps.setup-ndk.outputs.ndk-path }} $ANDROID_HOME/ndk/26.1.10909125
           
-          echo "✅ Verification: Listing NDK folder content (Should only show 26.1)"
-          ls -al $ANDROID_HOME/ndk/
-          
-          # Thiết lập biến môi trường trỏ thẳng vào symlink này
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
           echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
@@ -73,21 +65,13 @@ jobs:
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # --- 5. FIX LỖI MẠNG GRADLE (NEW) & FORCE LOCAL.PROPERTIES ---
-      - name: 🔧 Fix Gradle URL & Force Properties
+      # --- 5. CẤU HÌNH LOCAL.PROPERTIES ---
+      - name: 📍 FORCE local.properties
         run: |
-          echo "📝 Writing local.properties..."
           echo "ndk.dir=$ANDROID_HOME/ndk/26.1.10909125" >> ./android/local.properties
           echo "sdk.dir=$ANDROID_HOME" >> ./android/local.properties
           
-          echo "🌐 Fixing Gradle Distribution URL (Fix 504 Error)..."
-          # Sửa file wrapper để tải từ services.gradle.org thay vì github
-          cd android/gradle/wrapper
-          sed -i 's|https://github.com/gradle/gradle-distributions/releases/download/|https://services.gradle.org/distributions/|g' gradle-wrapper.properties
-          cat gradle-wrapper.properties
-          
-          echo "🧹 Cleaning native build caches..."
-          cd ../../..
+          # Xóa cache cũ để tránh xung đột
           rm -rf ./node_modules/react-native-worklets/android/.cxx
           rm -rf ./android/.gradle
 
@@ -101,8 +85,15 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ./android/app/my-release-key.keystore
 
-      # --- 6. BUILD ---
-      - name: ⚙️ Build APK with Gradle
+      # --- 6. SETUP GRADLE CHÍNH CHỦ (FIX LỖI 504) ---
+      # Bước này sẽ cài Gradle 8.8 trực tiếp, không cần tải qua wrapper bị lỗi
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.8 # Bản ổn định, thay thế cho bản 8.14 ảo ma
+          
+      # --- 7. BUILD BẰNG LỆNH GRADLE (KHÔNG DÙNG ./gradlew) ---
+      - name: ⚙️ Build APK
         env:
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_FILE: my-release-key.keystore
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -110,13 +101,8 @@ jobs:
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cd android
-          chmod +x gradlew
-          
-          echo "🔨 Building with FORCED NDK Path..."
-          
-          # --offline: Nếu đã tải dependency rồi thì không tải lại (nếu có cache)
-          # Nhưng ở đây ta cần tải Gradle distribution nên không dùng offline
-          ./gradlew assembleRelease --no-daemon \
+          # Dùng lệnh 'gradle' (đã cài ở trên) thay vì './gradlew'
+          gradle assembleRelease --no-daemon \
             -Pandroid.ndkVersion=26.1.10909125 \
             -PdownloadNdk=false \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \

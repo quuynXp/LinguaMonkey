@@ -498,7 +498,7 @@ import binascii
 import regex as re
 from datetime import datetime
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from contextlib import asynccontextmanager
 from asyncio import Queue, Semaphore
 import numpy as np
@@ -507,8 +507,6 @@ import uvicorn
 from fastapi import (
     FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query
 )
-from src.core.models import VideoCall, VideoCallStatus
-from src.core.video_call_service import start_or_join_call, end_call_if_empty
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from cryptography.hazmat.primitives import serialization
@@ -517,12 +515,16 @@ from dotenv import load_dotenv, find_dotenv
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# --- IMPORT MODULES ---
+# Đảm bảo đường dẫn import đúng với cấu trúc dự án của bạn
+from src.core.models import VideoCall, VideoCallStatus, ChatMessage, MessageType, TranslationLexicon
+from src.core.video_call_service import start_or_join_call, end_call_if_empty
 from src.core.azure_stt import AzureTranscriber
 from src.core.session import get_db, AsyncSessionLocal
-from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.user_profile_service import get_user_profile
-from src.core.models import ChatMessage, MessageType
 from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
 from src.api.speech_to_text import speech_to_text
 from src.api.tts_generator import generate_tts
@@ -533,13 +535,15 @@ load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-VOLUME_GAIN_FACTOR = 1.5
+# --- CONFIG ---
+VOLUME_GAIN_FACTOR = 1.5 
 MAX_INT16 = 32767
 MIN_INT16 = -32768
+RESET_BUFFER_TIMEOUT = 2.0 
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
-RESET_BUFFER_TIMEOUT = 2.0
 
-vad = webrtcvad.Vad(1)
+# VAD Mode 2: Cân bằng (Mode 1 quá nhạy, Mode 3 lọc quá gắt)
+vad = webrtcvad.Vad(2)
 
 security = HTTPBearer()
 PUBLIC_KEY = None
@@ -549,13 +553,14 @@ try:
         PUBLIC_KEY = serialization.load_pem_public_key(
             f.read(), backend=default_backend()
         )
-    logger.info("Public key loaded successfully.")
+    logger.info("✅ Public key loaded successfully.")
 except Exception as e:
-    logger.critical(f"Could not load public_key.pem: {e}")
+    logger.critical(f"❌ Could not load public_key.pem: {e}")
 
 internal_router = APIRouter(prefix="/internal")
 protected_router = APIRouter(dependencies=[Depends(security)])
 
+# --- MODELS ---
 class CacheInvalidationRequest(BaseModel):
     user_id: str
     updated_table: str
@@ -570,15 +575,17 @@ class ChatRequest(BaseModel):
     message: str
     history: list[dict]
 
+# --- CONNECTION MANAGER (CORE OPTIMIZATION) ---
 class ConnectionManager:
     def __init__(self):
+        # Key: room_id, Value: List of metadata dicts
         self.active_connections = defaultdict(list)
 
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str = None, native_lang: str = None):
         await websocket.accept()
         meta = {
             "ws": websocket, 
-            "user_id": user_id, 
+            "user_id": str(user_id), 
             "native_lang": (native_lang or "vi"),
             "config": {"subtitleMode": "dual", "micEnabled": True}
         }
@@ -587,94 +594,163 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket, room_id: str):
         if room_id in self.active_connections:
-            to_remove = [m for m in self.active_connections[room_id] if m["ws"] is websocket]
-            for m in to_remove:
-                self.active_connections[room_id].remove(m)
+            # Lọc bỏ socket đã ngắt kết nối
+            self.active_connections[room_id] = [
+                m for m in self.active_connections[room_id] if m["ws"] != websocket
+            ]
             logger.info(f"❌ WS DISCONNECTED: Room={room_id}")
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
 
     def get_participant_count(self, room_id: str) -> int:
-        if room_id in self.active_connections:
-            return len(self.active_connections[room_id])
-        return 0
+        return len(self.active_connections.get(room_id, []))
 
     async def broadcast_except(self, message: dict, room_id: str, exclude_ws: WebSocket):
         if room_id in self.active_connections:
             data = json.dumps(message)
-            to_remove = []
-            for meta in self.active_connections[room_id]:
-                conn = meta["ws"]
-                if conn is exclude_ws: continue
-                try:
-                    await conn.send_text(data)
-                except Exception as e:
-                    to_remove.append(meta)
-            for dead in to_remove:
-                self.disconnect(dead["ws"], room_id)
+            tasks = []
+            dead_sockets = []
 
+            for meta in self.active_connections[room_id]:
+                ws = meta["ws"]
+                if ws is exclude_ws: continue
+                
+                # Tạo task gửi tin nhắn để không block loop
+                tasks.append(self._safe_send(ws, data, dead_sockets))
+            
+            if tasks:
+                await asyncio.gather(*tasks)
+            
+            # Cleanup dead sockets
+            if dead_sockets:
+                self.active_connections[room_id] = [
+                    m for m in self.active_connections[room_id] if m["ws"] not in dead_sockets
+                ]
+
+    async def _safe_send(self, ws: WebSocket, data: str, dead_list: list):
+        try:
+            await ws.send_text(data)
+        except Exception:
+            dead_list.append(ws)
+
+    # --- KEY OPTIMIZATION: GROUP TRANSLATION ---
     async def broadcast_subtitle(self, 
                                text: str, 
                                detected_lang: str, 
                                room_id: str, 
                                sender_id: str, 
                                is_final: bool = False):
-        if room_id not in self.active_connections: return
-        
+        """
+        Logic tối ưu: Gom nhóm user theo ngôn ngữ đích để giảm số lần gọi AI/Redis.
+        """
+        if room_id not in self.active_connections or not text.strip(): 
+            return
+
         redis = await get_redis_client()
         translator = get_translator(redis)
         
         src_lang_norm = detected_lang.split('-')[0].lower() if detected_lang else ""
         
-        tasks = []
-
-        async def send_to_user(meta):
-            try:
-                ws = meta["ws"]
-                user_id_recv = str(meta.get("user_id"))
-                recv_mode = meta.get("config", {}).get("subtitleMode", "dual") 
-                recv_native = meta.get("native_lang", "vi")
-                recv_lang_norm = recv_native.split('-')[0].lower()
-
-                if recv_mode == "off":
-                    return
-
-                payload = {
-                    "type": "subtitle",
-                    "status": "complete" if is_final else "processing",
-                    "senderId": sender_id,
-                    "original": text,
-                    "originalLang": detected_lang,
-                    "translated": ""
-                }
-
-                if src_lang_norm == recv_lang_norm:
-                    payload["translated"] = ""
-                elif recv_mode == "original":
-                    payload["translated"] = ""
-                else:
-                    if not is_final:
-                        payload["translated"] = "..."
-                    elif text.strip():
-                        trans_text, _ = await translator.translate(text, detected_lang, recv_native)
-                        payload["translated"] = trans_text
-
-                await ws.send_text(json.dumps(payload, ensure_ascii=False))
-            except Exception as e:
-                logger.error(f"Send subtitle error: {e}")
+        # 1. Phân loại sockets theo nhu cầu
+        # Key: 'vi', 'en', 'ja'... -> Value: [ws1, ws2]
+        translation_groups = defaultdict(list)
+        direct_send_sockets = [] # Nhóm không cần dịch
 
         for meta in self.active_connections[room_id]:
-            tasks.append(send_to_user(meta))
-        
-        if tasks:
-            await asyncio.gather(*tasks)
+            user_id_recv = meta["user_id"]
+            
+            # Không gửi lại cho chính người nói (tránh duplicate local) nếu frontend đã handle
+            # Tuy nhiên code này gửi lại để đồng bộ status, tùy logic frontend. 
+            # Ở đây ta tạm thời gửi cho cả sender để cập nhật trạng thái "final".
+            
+            config = meta.get("config", {})
+            if config.get("subtitleMode") == "off": 
+                continue
+
+            recv_native = meta.get("native_lang", "vi")
+            recv_lang_norm = recv_native.split('-')[0].lower()
+
+            # Logic: Nếu cùng ngôn ngữ hoặc user chọn mode 'original' -> Không dịch
+            if src_lang_norm == recv_lang_norm or config.get("subtitleMode") == "original":
+                direct_send_sockets.append(meta["ws"])
+            else:
+                translation_groups[recv_native].append(meta["ws"])
+
+        # 2. Xử lý dịch (Chỉ dịch 1 lần cho mỗi ngôn ngữ đích)
+        # Result Cache: {'vi': 'Xin chào', 'en': 'Hello'}
+        translation_results = {}
+
+        if is_final and translation_groups:
+            # Chỉ gọi Translator khi câu đã chốt (is_final) để tiết kiệm resource
+            # Với interim (đang nói), ta hiển thị "..." hoặc text gốc
+            tasks = []
+            target_langs = list(translation_groups.keys())
+
+            async def translate_single_lang(target):
+                try:
+                    # Gọi translator (đã có cache Redis bên trong)
+                    t_text, _ = await translator.translate(text, detected_lang, target)
+                    translation_results[target] = t_text
+                except Exception as e:
+                    logger.error(f"Trans Error {target}: {e}")
+                    translation_results[target] = text # Fallback
+
+            # Chạy song song các ngôn ngữ
+            await asyncio.gather(*[translate_single_lang(lang) for lang in target_langs])
+
+        # 3. Chuẩn bị payload và gửi (Fan-out)
+        send_coroutines = []
+        dead_sockets = []
+
+        # Payload cơ sở
+        payload_base = {
+            "type": "subtitle",
+            "status": "complete" if is_final else "processing",
+            "senderId": sender_id,
+            "original": text,
+            "originalLang": detected_lang,
+            "translated": ""
+        }
+
+        # 3a. Gửi cho nhóm không cần dịch
+        if direct_send_sockets:
+            msg_direct = json.dumps(payload_base, ensure_ascii=False)
+            for ws in direct_send_sockets:
+                send_coroutines.append(self._safe_send(ws, msg_direct, dead_sockets))
+
+        # 3b. Gửi cho nhóm cần dịch
+        for lang, sockets in translation_groups.items():
+            payload = payload_base.copy()
+            if is_final:
+                payload["translated"] = translation_results.get(lang, "")
+            else:
+                # Nếu chưa final, để trống hoặc "..." để báo hiệu đang xử lý
+                payload["translated"] = "" 
+            
+            msg_trans = json.dumps(payload, ensure_ascii=False)
+            for ws in sockets:
+                send_coroutines.append(self._safe_send(ws, msg_trans, dead_sockets))
+
+        # Thực thi gửi tất cả cùng lúc
+        if send_coroutines:
+            await asyncio.gather(*send_coroutines)
+
+        # Clean up
+        if dead_sockets:
+            self.active_connections[room_id] = [
+                m for m in self.active_connections[room_id] if m["ws"] not in dead_sockets
+            ]
 
 signal_manager = ConnectionManager()
 audio_manager = ConnectionManager()
 
+# Cache buffers
 user_text_cache: Dict[str, str] = defaultdict(str)
 user_last_speech_time: Dict[str, float] = defaultdict(float)
+# Anti-echo buffer
+user_last_final_text: Dict[str, str] = defaultdict(str)
 
+# --- HELPER FUNCTIONS ---
 def amplify_audio(pcm_data: bytes) -> bytes:
     try:
         audio_array = np.frombuffer(pcm_data, dtype=np.int16)
@@ -686,13 +762,16 @@ def amplify_audio(pcm_data: bytes) -> bytes:
 
 def check_voice_activity(pcm_data: bytes, sample_rate=16000) -> bool:
     try:
+        # Webrtcvad yêu cầu frame 10ms, 20ms, hoặc 30ms
+        # 16000Hz * 0.03s * 2 bytes = 960 bytes
         chk_len = 960 
         if len(pcm_data) >= chk_len:
             return vad.is_speech(pcm_data[:chk_len], sample_rate)
         
+        # Fallback bằng năng lượng (RMS)
         audio_array = np.frombuffer(pcm_data, dtype=np.int16)
         rms = np.sqrt(np.mean(audio_array**2))
-        return rms > 500
+        return rms > 300 
     except Exception:
         return True
 
@@ -707,16 +786,20 @@ def create_wav_bytes(pcm_data: bytes, sample_rate=16000) -> bytes:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup
     redis = await get_redis_client()
     try:
+        # Warmup translator
         get_translator(redis)
     except Exception as e:
         logger.error(f"Warmup error: {e}")
     yield
+    # Shutdown
     await close_redis_client()
 
 app = FastAPI(lifespan=lifespan)
 
+# --- AUTH HELPER ---
 async def validate_websocket_token(websocket: WebSocket, token: str) -> str:
     if not token: return None
     try:
@@ -726,6 +809,155 @@ async def validate_websocket_token(websocket: WebSocket, token: str) -> str:
         return decoded_token.get("sub")
     except Exception:
         return None
+
+async def verify_token_http(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        key = PUBLIC_KEY if PUBLIC_KEY else ""
+        options = {"verify_signature": False} if PUBLIC_KEY is None else {"verify_exp": True, "verify_aud": False}
+        return jwt.decode(token, key, algorithms=["RS256"], issuer="LinguaMonkey.com", options=options)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# --- REST ENDPOINTS (RESTORED FROM SNIPPET 3) ---
+
+@internal_router.post("/invalidate-cache")
+async def invalidate_user_cache(request: CacheInvalidationRequest, redis: Redis = Depends(get_redis_client)):
+    try:
+        await redis.delete(f"user_profile:{request.user_id}")
+        return {"status": "success"}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Redis error")
+
+@internal_router.post("/trigger-hf-ingest")
+async def trigger_hf_ingest():
+    task = ingest_huggingface_task.delay()
+    return {"status": "Hugging Face ingestion task sent to worker", "task_id": str(task.id)}
+
+@protected_router.post("/translate")
+async def manual_translate(
+    request: TranslationRequest, 
+    redis: Redis = Depends(get_redis_client),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        translator = get_translator(redis)
+        translated_text, detected_lang = await translator.translate(request.text, request.source_lang, request.target_lang)
+        
+        # Lưu vào DB nếu có message_id (Optional logic)
+        if request.message_id:
+            try:
+                msg_uuid = uuid.UUID(request.message_id)
+                stmt = select(ChatMessage).where(ChatMessage.chat_message_id == msg_uuid)
+                result = await db.execute(stmt)
+                message = result.scalar_one_or_none()
+                
+                if message:
+                    current_map = dict(message.translations) if message.translations else {}
+                    current_map[request.target_lang] = translated_text
+                    message.translations = current_map
+                    flag_modified(message, "translations")
+                    await db.commit()
+            except Exception as e:
+                logger.error(f"DB Save Error: {e}")
+                await db.rollback()
+
+        return {"code": 200, "result": {"translated_text": translated_text, "detected_lang": detected_lang}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@protected_router.post("/chat-ai")
+async def chat_endpoint(
+    request: ChatRequest,
+    user: dict = Depends(verify_token_http),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis_client)
+):
+    try:
+        user_id = user.get("sub")
+        user_profile = await get_user_profile(user_id, db, redis)
+        response, error = await chat_with_ai(request.message, request.history, "en", user_profile)
+        if error: raise HTTPException(status_code=500, detail=error)
+        return {"reply": response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@protected_router.post("/tts")
+async def tts_endpoint(text: str, language: str, redis: Redis = Depends(get_redis_client)):
+    audio_bytes, error = await generate_tts(text, language, redis)
+    if error: raise HTTPException(status_code=500, detail=error)
+    return {"audio_base64": base64.b64encode(audio_bytes).decode('utf-8')}
+
+# --- WEBSOCKET ENDPOINTS ---
+
+@app.websocket("/chat-stream")
+async def chat_stream(websocket: WebSocket, token: str = Query(...)):
+    """
+    Khôi phục Chat AI Stream endpoint
+    """
+    await websocket.accept()
+    user_id_str = await validate_websocket_token(websocket, token)
+    if not user_id_str:
+        await websocket.close(code=1008)
+        return
+
+    db_session = AsyncSessionLocal()
+    redis = await get_redis_client()
+    try:
+        user_profile = await get_user_profile(user_id_str, db_session, redis)
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+            
+            if msg.get("type") == "chat_request":
+                raw_prompt = msg.get("prompt", "")
+                history = msg.get("history", [])
+                room_id_str = msg.get("roomId")
+                
+                if not raw_prompt: continue
+
+                # Save user message
+                room_uuid = uuid.UUID(room_id_str) if room_id_str else None
+                user_uuid = uuid.UUID(user_id_str)
+                
+                if room_uuid:
+                    try:
+                        user_msg_db = ChatMessage(
+                            chat_message_id=uuid.uuid4(), content=raw_prompt, 
+                            room_id=room_uuid, sender_id=user_uuid, 
+                            message_type=MessageType.TEXT.value, sent_at=datetime.utcnow()
+                        )
+                        db_session.add(user_msg_db)
+                        await db_session.commit()
+                    except: await db_session.rollback()
+
+                full_ai_response = ""
+                async for chunk in chat_with_ai_stream(raw_prompt, history, user_profile):
+                    full_ai_response += chunk
+                    await websocket.send_text(json.dumps({
+                        "type": "chat_response_chunk", "content": chunk, "roomId": room_id_str
+                    }))
+                
+                await websocket.send_text(json.dumps({"type": "chat_response_complete", "roomId": room_id_str}))
+
+                # Save AI response
+                if full_ai_response.strip() and room_uuid:
+                    try:
+                        ai_msg_db = ChatMessage(
+                            chat_message_id=uuid.uuid4(), content=full_ai_response, 
+                            room_id=room_uuid, sender_id=AI_BOT_ID, 
+                            message_type=MessageType.TEXT.value, sent_at=datetime.utcnow()
+                        )
+                        db_session.add(ai_msg_db)
+                        await db_session.commit()
+                    except: await db_session.rollback()
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"Chat WS Error: {e}")
+    finally:
+        await db_session.close()
 
 @app.websocket("/subtitles-audio")
 async def audio_endpoint(
@@ -743,23 +975,36 @@ async def audio_endpoint(
     await audio_manager.connect(websocket, normalized_room_id, user_id=user_id, native_lang=nativeLang)
     buffer_key = f"{normalized_room_id}_{user_id}"
     
+    # Callback Interim (Đang nói)
     async def handle_interim_result(text: str, detected_lang_code: str):
-        await audio_manager.broadcast_subtitle(
-            text=text,
-            detected_lang=detected_lang_code,
-            room_id=normalized_room_id,
-            sender_id=user_id,
-            is_final=False
-        )
+        if len(text) > 1:
+            await audio_manager.broadcast_subtitle(
+                text=text,
+                detected_lang=detected_lang_code,
+                room_id=normalized_room_id,
+                sender_id=user_id,
+                is_final=False
+            )
 
+    # Callback Final (Chốt câu)
     async def handle_final_result(text: str, detected_lang_code: str):
         try:
             clean_text = text.strip()
             if not clean_text: return
 
+            # --- ANTI-ECHO / LOOP PROTECTION ---
+            # Ngăn chặn vòng lặp âm thanh khi loa ngoài phát lại tiếng vừa nói
+            last_text = user_last_final_text[buffer_key]
+            # Nếu text mới giống text cũ hoặc là tập con (do cắt câu sai)
+            if clean_text.lower() == last_text.lower():
+                return
+            if last_text and (clean_text in last_text or last_text in clean_text):
+                 if len(clean_text) < len(last_text) * 0.8: return
+
+            user_last_final_text[buffer_key] = clean_text 
+
+            # Logic nối chuỗi hiển thị
             current_time = time.time()
-            is_sentence_end = clean_text.endswith(('.', '?', '!'))
-            
             if user_last_speech_time[buffer_key] > 0 and (current_time - user_last_speech_time[buffer_key]) > RESET_BUFFER_TIMEOUT:
                 user_text_cache[buffer_key] = ""
             
@@ -773,9 +1018,11 @@ async def audio_endpoint(
 
             user_text_cache[buffer_key] = new_full
 
+            is_sentence_end = clean_text.endswith(('.', '?', '!'))
             if is_sentence_end or len(new_full) > 150: 
                 user_text_cache[buffer_key] = ""
 
+            # Gửi Broadcast (Grouped Translation inside)
             await audio_manager.broadcast_subtitle(
                 text=clean_text,
                 detected_lang=detected_lang_code,
@@ -787,6 +1034,7 @@ async def audio_endpoint(
         except Exception as e:
             logger.error(f"Handle final error: {e}")
 
+    # Config Azure
     transcriber = AzureTranscriber(
         callback_final=handle_final_result,
         callback_interim=handle_interim_result,
@@ -800,8 +1048,10 @@ async def audio_endpoint(
             try:
                 msg_json = json.loads(data_str)
                 
+                # Update Config
                 if "config" in msg_json:
-                    for meta in audio_manager.active_connections[normalized_room_id]:
+                    connections = audio_manager.active_connections[normalized_room_id]
+                    for meta in connections:
                         if str(meta["user_id"]) == str(user_id):
                             meta["config"] = msg_json["config"]
                             if "nativeLang" in msg_json: 
@@ -811,16 +1061,25 @@ async def audio_endpoint(
                         continue
                     continue
 
+                # Check Mic Status
                 current_meta = next((m for m in audio_manager.active_connections[normalized_room_id] if str(m["user_id"]) == str(user_id)), None)
                 if current_meta and not current_meta.get("config", {}).get("micEnabled", True):
                     continue
 
+                # Process Audio
                 b64_audio = msg_json.get("audio")
                 if b64_audio:
                     pcm_data = binascii.a2b_base64(b64_audio)
                     louder_data = amplify_audio(pcm_data)
+                    
+                    print(f"DEBUG: Received audio bytes: {len(louder_data)}")
+
                     if check_voice_activity(louder_data):
+                        print("DEBUG: Voice detected! Sending to Azure...")
                         transcriber.write_stream(louder_data)
+                    else:
+                        print("DEBUG: Silence...")
+                        pass
 
             except Exception:
                 continue
@@ -828,7 +1087,7 @@ async def audio_endpoint(
     except WebSocketDisconnect:
         audio_manager.disconnect(websocket, normalized_room_id)
     except Exception as e:
-        logger.error(f"Audio Error: {e}")
+        logger.error(f"Audio WS Error: {e}")
         audio_manager.disconnect(websocket, normalized_room_id)
     finally:
         transcriber.stop()
@@ -852,6 +1111,7 @@ async def signaling_endpoint(websocket: WebSocket, token: str = Query(...), room
             data = await websocket.receive_text()
             msg = json.loads(data)
             
+            # Forward WebRTC signals
             if msg.get("type") in ["webrtc_signal", "JOIN_ROOM", "offer", "answer", "ice_candidate"]:
                 msg["senderId"] = user_id
                 if msg.get("type") == "JOIN_ROOM":

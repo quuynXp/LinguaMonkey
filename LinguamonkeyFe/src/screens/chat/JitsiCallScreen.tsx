@@ -264,7 +264,7 @@ const WebRTCCallScreen = () => {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
-    audioSource: 6,
+    audioSource: Platform.OS === 'android' ? 7 : 0,
     bufferSize: 4096,
     wavFile: 'temp.wav'
   }), []);
@@ -283,15 +283,22 @@ const WebRTCCallScreen = () => {
         LiveAudioStream.init(audioOptions);
 
         LiveAudioStream.on('data', (base64Data: string) => {
-          // Fix logic Mic: Chỉ gửi khi mic on, nhưng không stop engine để tránh mất audio session
+          console.log("🎤 Audio chunk size:", base64Data.length);
+
           if (wsAudio.current?.readyState === WebSocket.OPEN && isMicOn) {
+            // Gửi data
             wsAudio.current.send(JSON.stringify({ audio: base64Data }));
           }
         });
 
-        if (isMicOn) LiveAudioStream.start();
-      } catch (e) { console.error("Audio Init Error:", e); }
-    }, 1500);
+        if (isMicOn) {
+          console.log("✅ Starting LiveAudioStream...");
+          LiveAudioStream.start();
+        }
+      } catch (e) {
+        console.error("❌ Audio Init Error:", e);
+      }
+    }, 2000); // Tăng delay lên 2s để tránh race condition với WebRTC
   }, [isMicOn, audioOptions]);
 
   const connectAudioSocket = useCallback(() => {
