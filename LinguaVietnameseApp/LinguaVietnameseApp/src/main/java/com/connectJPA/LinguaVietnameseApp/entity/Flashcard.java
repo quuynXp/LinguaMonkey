@@ -20,7 +20,7 @@ public class Flashcard extends BaseEntity {
     @Column(name = "flashcard_id")
     private UUID flashcardId;
 
-    @Column(name = "lesson_id", nullable = false)
+    @Column(name = "lesson_id")
     private UUID lessonId;
 
     @Column(name = "user_id")

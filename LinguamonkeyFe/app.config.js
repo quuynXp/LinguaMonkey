@@ -93,11 +93,11 @@ export default ({ config }) => {
         ],
         [
           "expo-build-properties",
-          // {
-          //   android: {
-          //     ndkVersion: "26.1.10909125",
-          //   },
-          // },
+          {
+            android: {
+              ndkVersion: "26.1.10909125",
+            },
+          },
         ],
         "expo-localization",
         "expo-font",

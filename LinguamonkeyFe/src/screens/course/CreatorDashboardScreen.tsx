@@ -659,7 +659,6 @@ const CreatorDashboardScreen = () => {
         const publicVersion = item.latestPublicVersion;
         const isApproved = item.approvalStatus === "APPROVED";
 
-        // Logic hiển thị trạng thái thông minh hơn
         let statusColor = "#D97706"; // Pending/Draft
         let statusBg = "#FEF3C7";
         let statusText = item.approvalStatus;
