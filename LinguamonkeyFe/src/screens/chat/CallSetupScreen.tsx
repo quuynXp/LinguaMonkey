@@ -86,6 +86,7 @@ const CallSetupScreen = ({ navigation }: any) => {
     learningPace: (user?.learningPace || LearningPace.NORMAL) as string,
     subtitleMode: 'dual', // Giá trị mặc định
     micEnabled: true,     // Giá trị mặc định
+    cameraEnabled: true,  // Giá trị mặc định
   }
 
   const initialPreferences: FinalCallPreferences = {

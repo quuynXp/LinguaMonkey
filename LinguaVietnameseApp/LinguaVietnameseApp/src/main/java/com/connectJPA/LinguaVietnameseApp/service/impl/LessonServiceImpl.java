@@ -509,8 +509,11 @@ public class LessonServiceImpl implements LessonService {
         }
         
         lp.setAttemptNumber(attemptNumber);
-        if (lp.getCompletedAt() == null) {
-            lp.setCompletedAt(OffsetDateTime.now());
+        
+        // --- LOGIC FIX: Always update CompletedAt if passed ---
+        // This timestamp is crucial for version comparison.
+        if (percent >= 50) { 
+             lp.setCompletedAt(OffsetDateTime.now());
         }
         
         boolean needsReview = questions.stream().anyMatch(q -> 
@@ -822,20 +825,59 @@ public class LessonServiceImpl implements LessonService {
     }
 
     private void updateCourseProgressIfApplicable(UUID userId, UUID lessonId) {
+        // 1. Find all active enrollments containing this lesson
         List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository.findActiveEnrollmentsByUserIdAndLessonId(userId, lessonId);
+        
         for (CourseVersionEnrollment enrollment : enrollments) {
             UUID versionId = enrollment.getCourseVersion().getVersionId();
-            long totalLessons = courseVersionEnrollmentRepository.countLessonsInVersion(versionId);
-            if (totalLessons > 0) {
-                long completedLessons = courseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, versionId);
-                double progressPercent = Math.round(((double) completedLessons / totalLessons) * 10000.0) / 100.0;
-                enrollment.setProgress(progressPercent);
-                if (progressPercent >= 100.0 && enrollment.getCompletedAt() == null) {
-                    enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
+            
+            // 2. Get all lessons in this version
+            List<CourseVersionLesson> versionLessons = courseVersionLessonRepository.findByCourseVersion_VersionIdOrderByOrderIndex(versionId);
+            
+            if (versionLessons.isEmpty()) continue;
+
+            int totalLessons = versionLessons.size();
+            int completedCount = 0;
+
+            // 3. Iterate to count completed lessons based on timestamps
+            for (CourseVersionLesson vl : versionLessons) {
+                Lesson lesson = vl.getLesson();
+                
+                // Fetch user progress for this lesson
+                Optional<LessonProgress> progressOpt = lessonProgressRepository.findById(new LessonProgressId(lesson.getLessonId(), userId));
+
+                if (progressOpt.isPresent()) {
+                    LessonProgress p = progressOpt.get();
+                    
+                    // Logic: Completed if Score >= 50 AND content is not outdated.
+                    // If Lesson.updatedAt > Progress.completedAt => User needs to retake.
+                    boolean isPassed = p.getScore() >= 50;
+                    boolean isUpToDate = true;
+                    
+                    if (lesson.getUpdatedAt() != null && p.getCompletedAt() != null) {
+                        isUpToDate = !p.getCompletedAt().isBefore(lesson.getUpdatedAt());
+                    }
+
+                    if (isPassed && isUpToDate) {
+                        completedCount++;
+                    }
+                }
+            }
+
+            // 4. Update Enrollment Progress
+            double progressPercent = Math.round(((double) completedCount / totalLessons) * 10000.0) / 100.0;
+            enrollment.setProgress(progressPercent);
+            
+            if (progressPercent >= 100.0) {
+                enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
+                if (enrollment.getCompletedAt() == null) {
                     enrollment.setCompletedAt(OffsetDateTime.now());
                 }
-                courseVersionEnrollmentRepository.save(enrollment);
+            } else {
+                enrollment.setStatus(CourseVersionEnrollmentStatus.IN_PROGRESS);
             }
+            
+            courseVersionEnrollmentRepository.save(enrollment);
         }
     }
 }

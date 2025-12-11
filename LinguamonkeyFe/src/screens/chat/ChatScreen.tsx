@@ -8,7 +8,7 @@ import instance from "../../api/axiosClient"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { AppApiResponse, ChatStatsResponse, UserLearningActivityResponse, PageResponse } from "../../types/dto"
 import { createScaledSheet } from "../../utils/scaledStyles"
-
+import { gotoTab } from "../../utils/navigationRef"
 interface ExtendedChatStatsResponse extends ChatStatsResponse {
   joinedRooms: number;
 }
@@ -28,6 +28,16 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
     },
     enabled: !!user?.userId,
   });
+
+  const handleJoinCall = (activity: any) => {
+    if (activity.roomId) {
+      gotoTab("ChatStack", 'JitsiCallScreen', {
+        roomId: activity.roomId,
+        videoCallId: activity.referenceId,
+        isCaller: false
+      });
+    }
+  };
 
   const { data: activities = [], isLoading: isLoadingActivities } = useQuery<UserLearningActivityResponse[]>({
     queryKey: ['chatActivities', user?.userId],

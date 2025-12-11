@@ -12,6 +12,7 @@ export interface CallPreferences {
   // NEW: Settings for call controls
   subtitleMode: 'dual' | 'native' | 'original' | 'off';
   micEnabled: boolean;
+  cameraEnabled: boolean;
 }
 
 export interface ChatSettings {
@@ -119,6 +120,7 @@ export const useAppStore = create<AppState>()(
         ageRange: '18-30',
         subtitleMode: 'dual', // Default
         micEnabled: true,     // Default
+        cameraEnabled: true,
       },
 
       chatSettings: {
@@ -259,6 +261,7 @@ export const useAppStore = create<AppState>()(
             ageRange: '18-30',
             subtitleMode: 'dual',
             micEnabled: true,
+            cameraEnabled: true,
           },
           selectedGrammarTopic: null,
           selectedVideo: null,
