@@ -12,7 +12,7 @@ import { goBack } from '../../utils/navigationRef';
 import PhoneInput from 'react-native-phone-number-input';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
-import * as AuthSession from 'expo-auth-session';
+import * as AuthSession from 'expo-auth-session'; 
 import { useAppStore } from '../../stores/appStore';
 
 WebBrowser.maybeCompleteAuthSession();
