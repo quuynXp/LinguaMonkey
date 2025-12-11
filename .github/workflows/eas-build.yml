@@ -16,68 +16,36 @@ jobs:
         working-directory: ./LinguamonkeyFe
 
     steps:
-      - name: Checkout repository
+      - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build build-essential
-
-      - name: Setup Node.js
+      - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24.4
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
-      - name: Install dependencies
+      - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Setup specific NDK (Force v26) & CMake
+      - name: 🛠️ Generate Android directory (Prebuild)
+        # Bổ sung để tạo lại thư mục 'android' (chứa gradlew) sau khi checkout
+        run: npx expo prebuild --platform android --no-install
+
+      - name: 🧹 Clean up duplicate icon files
+        # Xóa các file WEBP được tạo bởi prebuild để tránh lỗi "Duplicate resources"
         run: |
-          set -e
-          echo "Cleaning incompatible NDK versions..."
-          sudo rm -rf /usr/local/lib/android/sdk/ndk || true
-          sudo rm -rf $ANDROID_SDK_ROOT/ndk || true
-          
-          echo "Installing NDK 26.1.10909125 and CMake 3.22.1..."
-          # Installing package
-          yes | sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+          echo "✨ Cleaning up duplicate icon files (removing .webp)..."
+          find ./android/app/src/main/res -name "*.webp" -delete
 
-          # Export Environment Variables
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "CMAKE_HOME=$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_ENV
-          echo "PATH=$ANDROID_SDK_ROOT/cmake/3.22.1/bin:$PATH" >> $GITHUB_ENV
-
-      - name: Setup Java (JDK)
+      - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Generate Android directory (Clean Prebuild)
-        # --clean ensures we regenerate the project from app.config.js, removing any checked-in bad config
-        run: npx expo prebuild --platform android --clean --no-install
-
-      - name: Force NDK Configuration in Gradle
-        run: |
-          echo "🔧 Injecting strict NDK paths into Gradle..."
-          cd android
-          
-          # Force ndk.dir in local.properties (Highest priority override)
-          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> local.properties
-          
-          # Force android.ndkVersion in gradle.properties
-          echo "android.ndkVersion=26.1.10909125" >> gradle.properties
-          
-          # Verify injection
-          cat local.properties
-          cat gradle.properties
-
-      - name: Cache Gradle dependencies
+      - name: 🐘 Cache Gradle dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -86,22 +54,26 @@ jobs:
           key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
-
-      - name: Clean Gradle
+            
+      - name: 🧹 Clean up large components (Pre-build)
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew clean
+          echo "✨ Freeing up disk space by removing large tools..."
+          sudo rm -rf /usr/share/dotnet/
+          sudo apt-get clean
 
-      - name: Install EAS CLI
+      - name: 🔐 Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: Decode Android keystore
+      - name: 🔑 Setup Expo authentication
+        run: echo "EXPO_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
+
+      - name: 🔑 Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
+          # Đảm bảo quyền truy cập cho Keystore
           chmod 600 my-release-key.keystore
 
-      - name: Build signed APK locally
+      - name: ⚙️ Build signed APK locally
         env:
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
           ANDROID_KEYSTORE_PATH: ./my-release-key.keystore
@@ -109,17 +81,20 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          echo "🔧 Start signed local EAS build..."
           eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
 
-      - name: Upload signed APK to GitHub Artifacts
+      - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-signed-apk
           path: LinguamonkeyFe/app-release.apk
 
-      - name: Cleanup
+      - name: 🧹 Clean up final disk space
         if: always()
         run: |
+          echo "✨ Cleaning up final disk space..."
+          # Dọn dẹp Gradle caches và Keystore file
           rm -rf ~/.gradle/caches/
           rm -f my-release-key.keystore
           npm cache clean --force

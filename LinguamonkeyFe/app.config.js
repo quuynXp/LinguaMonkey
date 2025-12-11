@@ -75,7 +75,7 @@ export default ({ config }) => {
       web: {
         build: {
           babel: true,
-          jsEngine: "hermes",
+          jsEngine: "jsc",
           newArchEnabled: false,
         },
         bundler: "metro",
@@ -93,15 +93,11 @@ export default ({ config }) => {
         ],
         [
           "expo-build-properties",
-          {
-            android: {
-              ndkVersion: "26.1.10909125",
-              cmakeVersion: "3.22.1",
-              gradleProperties: {
-                "org.gradle.jvmargs": "-Xmx3072m -XX:MaxMetaspaceSize=512m",
-              },
-            },
-          },
+          // {
+          //   android: {
+          //     ndkVersion: "26.1.10909125",
+          //   },
+          // },
         ],
         "expo-localization",
         "expo-font",

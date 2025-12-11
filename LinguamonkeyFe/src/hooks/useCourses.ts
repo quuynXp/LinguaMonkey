@@ -5,7 +5,7 @@ import {
   PageResponse,
   CourseResponse,
   CourseVersionResponse,
-  CourseLessonResponse,
+  CourseLessonResponse, 
   LessonResponse,
   CourseVersionEnrollmentResponse,
   CourseVersionDiscountResponse,
