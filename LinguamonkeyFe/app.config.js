@@ -95,7 +95,7 @@ export default ({ config }) => {
           "expo-build-properties",
           {
             android: {
-              ndkVersion: "27.1.12297006",
+              ndkVersion: "26.1.10909125",
               cmakeVersion: "3.22.1",
               gradleProperties: {
                 "org.gradle.jvmargs": "-Xmx3072m -XX:MaxMetaspaceSize=512m",

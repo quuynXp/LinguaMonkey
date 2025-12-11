@@ -147,7 +147,7 @@ const RootNavigation = () => {
       return false;
     };
 
-    const boot = async () => {
+    const boot = async () => { 
       try {
         setIsLoading(true);
         await initializeTokens();
