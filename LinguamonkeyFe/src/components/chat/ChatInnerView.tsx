@@ -328,10 +328,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     };
 
     const handleUploadSuccess = (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => {
-        if (result?.url || result?.secure_url) {
-            const url = result.secure_url || result.url;
-            // Send message immediately
-            sendMessage(roomId, '', type, url);
+        const finalUrl = result?.secure_url || result?.url || result?.fileUrl;
+
+        if (finalUrl) {
+            sendMessage(roomId, '', type, finalUrl);
+        } else {
+            console.warn("Upload success but no URL found in result:", result);
         }
     };
 
