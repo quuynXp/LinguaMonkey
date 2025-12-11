@@ -96,7 +96,7 @@ export default ({ config }) => {
           {
             android: {
               ndkVersion: "26.1.10909125",
-              kotlinVersion: "1.9.23",
+              kotlinVersion: "2.0.20",
             },
           },
         ],

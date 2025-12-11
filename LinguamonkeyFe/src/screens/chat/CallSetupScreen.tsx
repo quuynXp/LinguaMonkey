@@ -1,18 +1,31 @@
 import React, { useRef, useState, useEffect, useCallback } from "react"
-import { Alert, Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
+import { Alert, Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, Platform } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import CountryFlag from "react-native-country-flag"
+import { Client } from '@stomp/stompjs'; // IMPORT STOMP
+import { TextEncoder, TextDecoder } from 'text-encoding'; // IMPORT POLYFILL
+
 import { useAppStore, CallPreferences } from "../../stores/appStore"
 import { useUserStore } from "../../stores/UserStore"
 import { useChatStore } from "../../stores/ChatStore"
 import { useUsers } from "../../hooks/useUsers"
 import { useVideoCalls, MatchResponseData } from "../../hooks/useVideos"
+import { useTokenStore } from "../../stores/tokenStore" // IMPORT TOKEN STORE
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import { AgeRange, ProficiencyLevel, LearningPace } from "../../types/enums"
+import { AgeRange, ProficiencyLevel, LearningPace, Gender } from "../../types/enums"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { RoomResponse, CallPreferencesRequest, LanguageResponse } from "../../types/dto"
 import { languageToCountry } from "../../types/api"
+import { API_BASE_URL } from "../../api/apiConfig" // IMPORT API_BASE_URL
+
+// --- 1. POLYFILL CHO REACT NATIVE ---
+if (!global.TextEncoder) {
+  global.TextEncoder = TextEncoder;
+}
+if (!global.TextDecoder) {
+  global.TextDecoder = TextDecoder;
+}
 
 const ICON_MAP: Record<string, string> = {
   plane: "flight",
@@ -37,11 +50,13 @@ interface FinalCallPreferences extends Omit<CallPreferences, 'learningLanguage'>
   learningLanguages: string[];
   proficiency: string;
   learningPace: string;
+  gender: string;
 }
 
 const CallSetupScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
   const { user } = useUserStore()
+  const { accessToken } = useTokenStore() // Lấy AccessToken để auth socket
   const { callPreferences: savedPreferences, setCallPreferences, supportLanguage: rawSupportedLangs = [] } = useAppStore()
   const totalOnlineUsers = useChatStore(s => s.totalOnlineUsers)
 
@@ -57,9 +72,13 @@ const CallSetupScreen = ({ navigation }: any) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [searchStatusMessage, setSearchStatusMessage] = useState(t("call.searchingTitle"))
 
+  // --- REFS ---
+  const stompClient = useRef<Client | null>(null); // Ref giữ socket connection
+  const isMatchFoundRef = useRef(false); // Ref để tránh race condition (vừa API vừa Socket trả về)
+
   const defaultPreferences: FinalCallPreferences = {
     interests: [],
-    gender: "any",
+    gender: (user.gender as string) || "any",
     nativeLanguage: user?.nativeLanguageCode || "en",
     learningLanguages: user?.languages || ["vi"],
     ageRange: (user?.ageRange || AgeRange.AGE_18_24) as string,
@@ -86,7 +105,9 @@ const CallSetupScreen = ({ navigation }: any) => {
   const slideAnim = useRef(new Animated.Value(30)).current
   const pulseAnim = useRef(new Animated.Value(1)).current
   const rotateAnim = useRef(new Animated.Value(0)).current
-  const pollingTimeout = useRef<any>(null)
+
+  // Bỏ pollingTimeout cũ, ta dùng nó cho timeout dự phòng thôi
+  const fallbackTimeout = useRef<any>(null)
 
   const { data: interests = [], isLoading: isLoadingInterests } = useInterests()
 
@@ -103,8 +124,72 @@ const CallSetupScreen = ({ navigation }: any) => {
       Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
     ]).start()
+
+    // Clean up socket khi unmount màn hình
+    return () => {
+      disconnectSocket();
+    }
   }, [])
 
+  // --- 2. LOGIC SOCKET (MỚI) ---
+  const connectSocket = useCallback(() => {
+    if (!user?.userId || !accessToken) return;
+    if (stompClient.current && stompClient.current.active) return;
+
+    // Convert HTTP URL to WS URL
+    let cleanBase = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
+    // Backend Spring Boot Endpoint của bạn (thường là /ws hoặc /ws-endpoint)
+    const brokerURL = `${protocol}${cleanBase}/ws`;
+
+    console.log("🔌 Connecting Match Socket:", brokerURL);
+
+    const client = new Client({
+      brokerURL: brokerURL,
+      connectHeaders: {
+        Authorization: `Bearer ${accessToken}`, // Auth nếu backend cần
+      },
+      reconnectDelay: 5000,
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
+      onConnect: () => {
+        console.log("✅ Match Socket Connected!");
+
+        // Subscribe vào Topic cá nhân: Backend gửi vào /topic/match-updates/{userId}
+        client.subscribe(`/topic/match-updates/${user.userId}`, (message) => {
+          if (isMatchFoundRef.current) return; // Đã tìm thấy rồi thì bỏ qua tin nhắn trùng
+
+          try {
+            const body = JSON.parse(message.body);
+            console.log("⚡ SOCKET RECEIVED:", body);
+
+            if (body.type === 'MATCH_FOUND' || body.status === 'MATCHED') {
+              // Nhận được tin -> Vào phòng ngay lập tức
+              handleMatchSuccess(body.room);
+            }
+          } catch (e) {
+            console.error("Socket parse error", e);
+          }
+        });
+      },
+      onStompError: (frame) => {
+        console.error('Broker error: ' + frame.headers['message']);
+      },
+    });
+
+    client.activate();
+    stompClient.current = client;
+  }, [user?.userId, accessToken]);
+
+  const disconnectSocket = useCallback(() => {
+    if (stompClient.current) {
+      stompClient.current.deactivate();
+      stompClient.current = null;
+    }
+  }, []);
+
+
+  // --- UI HANDLERS ---
   const toggleInterest = (interestId: string) => {
     setPreferences((prev) => ({
       ...prev,
@@ -153,28 +238,38 @@ const CallSetupScreen = ({ navigation }: any) => {
   }, [])
 
   const handleMatchSuccess = useCallback((room: RoomResponse) => {
-    stopAnimations()
-    setSearchStatusMessage(t("call.matchFound"))
+    if (isMatchFoundRef.current) return;
+    isMatchFoundRef.current = true; // Lock lại để không bị gọi 2 lần (Socket + API)
+
+    stopAnimations();
+    setSearchStatusMessage(t("call.matchFound"));
+    disconnectSocket(); // Ngắt socket tìm kiếm
+
+    // Rung nhẹ hoặc âm thanh thông báo ở đây nếu cần
+
     setTimeout(() => {
-      setIsSearching(false)
-      navigation.navigate("JitsiCallScreen", {
+      setIsSearching(false);
+      navigation.navigate("WebRTCCall", { // Đổi tên thành WebRTCCall như file trước bạn gửi
         roomId: room.roomId,
-        roomName: room.roomName,
-        isCaller: false,
+        videoCallId: room.videoCallId || "", // Thêm field nếu backend có
+        isCaller: false, // Logic vào cùng lúc thì vai trò không quan trọng lắm cho UI
         preferences: preferences
       })
-    }, 1000)
-  }, [preferences])
+    }, 500); // Delay nhỏ để user kịp nhìn thấy chữ "Match Found"
+  }, [preferences, navigation, disconnectSocket])
 
+  // --- 3. LOGIC TÌM KIẾM (HYBRID: REST + SOCKET) ---
   const performSearch = useCallback(() => {
-    if (!isSearching) return
-
     if (!user?.userId) {
       Alert.alert(t("common.error"), t("auth.loginRequired"))
       setIsSearching(false)
       stopAnimations()
       return
     }
+
+    // 1. Kết nối socket trước khi gọi API để đảm bảo không miss event
+    connectSocket();
+    isMatchFoundRef.current = false;
 
     const requestPayload: CallPreferencesRequest = {
       interests: preferences.interests,
@@ -187,40 +282,39 @@ const CallSetupScreen = ({ navigation }: any) => {
       userId: user.userId,
     }
 
+    // 2. Gọi API để join queue
     findMatch(
       requestPayload,
       {
         onSuccess: (response: MatchHookResponse) => {
-          if (!isSearching) return
+          if (!isSearching) return; // User đã cancel lúc đang gọi API
 
           const result = response.data;
 
-          if (!result) {
-            pollingTimeout.current = setTimeout(performSearch, 5000)
-            return;
+          // CASE A: API trả về MATCHED ngay lập tức (Bạn là người ghép đôi cuối cùng)
+          if (result && result.status === 'MATCHED' && result.room) {
+            console.log("🎯 Match found via REST API (Instant)");
+            handleMatchSuccess(result.room);
           }
 
-          if (result.status === 'MATCHED' && result.room) {
-            handleMatchSuccess(result.room);
-          } else {
-            pollingTimeout.current = setTimeout(performSearch, 5000)
+          // CASE B: API trả về WAITING (202) -> Ngồi chơi xơi nước chờ Socket báo
+          else {
+            console.log("⏳ Waiting in queue... Listening to Socket.");
+            // KHÔNG GỌI setInterval/setTimeout để polling nữa!
+            // Socket sẽ lo phần còn lại.
           }
         },
         onError: (error) => {
-          console.error("Match error:", error)
-          if (error.message?.includes("400")) {
-            Alert.alert("Error", "Invalid Request Format. Please restart app.")
-            setIsSearching(false)
-            stopAnimations()
-            return
+          console.error("Match API error:", error)
+          // Xử lý lỗi, ví dụ retry nhẹ hoặc báo lỗi
+          if (isSearching) {
+            // Fallback: Nếu socket chết, thử gọi lại API sau 10s (Long polling safe guard)
+            fallbackTimeout.current = setTimeout(performSearch, 10000);
           }
-
-          if (!isSearching) return
-          pollingTimeout.current = setTimeout(performSearch, 10000)
         }
       }
     )
-  }, [isSearching, preferences, findMatch, handleMatchSuccess, user])
+  }, [isSearching, preferences, findMatch, handleMatchSuccess, user, connectSocket])
 
   const handleStartSearch = () => {
     if (preferences.interests.length === 0) {
@@ -232,29 +326,41 @@ const CallSetupScreen = ({ navigation }: any) => {
     setStartTime(Date.now())
     setSearchStatusMessage(t("call.searchingTitle"))
     startSearchAnimations()
+    // Trigger search effect
   }
 
   const handleCancelSearch = () => {
-    if (pollingTimeout.current) clearTimeout(pollingTimeout.current)
+    if (fallbackTimeout.current) clearTimeout(fallbackTimeout.current)
 
     if (user?.userId) {
       cancelMatch({ userId: user.userId } as any)
     }
 
+    disconnectSocket(); // Ngắt socket ngay
     stopAnimations()
     setIsSearching(false)
     setElapsedSeconds(0)
+    isMatchFoundRef.current = false;
   }
 
+  // Effect để trigger search khi state isSearching = true
   useEffect(() => {
     if (isSearching) {
-      performSearch()
+      performSearch();
+
       const timer = setInterval(() => {
         setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000))
       }, 1000)
-      return () => clearInterval(timer)
+
+      return () => {
+        clearInterval(timer);
+        if (fallbackTimeout.current) clearTimeout(fallbackTimeout.current);
+      }
     }
-  }, [isSearching, startTime, performSearch])
+  }, [isSearching]) // Bỏ startTime khỏi dependency để tránh re-run
+
+  // ... (Phần render UI giữ nguyên như cũ) ...
+  // ... Paste phần renderOptions, renderLearningLanguageChips và return JSX cũ vào đây ...
 
   const renderOptionButton = (options: any[], selectedValue: any, onSelect: (val: any) => void) => (
     <View style={styles.optionsContainer}>
