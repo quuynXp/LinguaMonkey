@@ -176,8 +176,6 @@ const CourseManagerScreen = () => {
         );
     };
 
-    if (!courseId) return <ScreenLayout><View /></ScreenLayout>;
-
     if (courseLoading) return <ScreenLayout><ActivityIndicator style={{ marginTop: 50 }} size="large" /></ScreenLayout>;
 
     return (

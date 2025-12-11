@@ -18,6 +18,9 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useCourses } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
@@ -33,8 +36,6 @@ import {
 } from "../../types/dto";
 import FileUploader from "../../components/common/FileUploader";
 import ScreenLayout from "../../components/layout/ScreenLayout";
-
-// --- Sub Components ---
 
 interface DiscountModalProps {
   visible: boolean;
@@ -227,8 +228,6 @@ const PublishReasonModal = ({ visible, onClose, onConfirm }: { visible: boolean;
   );
 };
 
-// --- Main Screen ---
-
 const EditCourseScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -288,14 +287,22 @@ const EditCourseScreen = () => {
     isFetchingNextPage
   } = useInfiniteLessonsByVersion({
     versionId: workingVersion?.versionId,
-    size: 20
+    size: 50 // Load more to support better drag and drop
   });
 
-  const lessonsList = useMemo(() => {
+  const [localLessons, setLocalLessons] = useState<LessonResponse[]>([]);
+
+  const serverLessonsList = useMemo(() => {
     const pages = lessonsData?.pages;
     if (!pages) return [] as LessonResponse[];
     return (pages.flatMap((page: any) => page.data || []) as LessonResponse[]);
   }, [lessonsData]);
+
+  useEffect(() => {
+    if (serverLessonsList.length > 0) {
+      setLocalLessons(serverLessonsList);
+    }
+  }, [serverLessonsList]);
 
   const { data: discountsData, refetch: refetchDiscounts } = useDiscounts({
     versionId: workingVersion?.versionId,
@@ -336,8 +343,6 @@ const EditCourseScreen = () => {
 
   const isSaving = isCreatingCourse || isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isPublishing;
 
-  // --- MEDIA HANDLING ---
-
   const processedMediaUrl = useMemo(() => {
     const rawUrl = localThumbnailUrl || workingVersion?.thumbnailUrl;
     return getDirectMediaUrl(rawUrl);
@@ -351,22 +356,15 @@ const EditCourseScreen = () => {
 
   const player = useVideoPlayer(isVideo && processedMediaUrl ? processedMediaUrl : "", player => {
     player.loop = true;
-    player.muted = true; // Thumbnails usually auto-play muted
+    player.muted = true;
     if (isVideo) player.play();
   });
 
-  // --- UPLOAD HANDLER ---
-
   const handleUploadSuccess = (result: any) => {
-    // 1. Try Cloudinary secure URL, generic url, OR backend DTO 'fileUrl'
     let finalUrl = result.secure_url || result.url || result.fileUrl;
-
-    // 2. If not found, check for Google Drive ID (legacy support)
     if (!finalUrl && result.id) {
       finalUrl = `https://drive.google.com/uc?export=download&id=${result.id}`;
     }
-
-    // 3. Fallback: if result itself is a string (rare)
     if (!finalUrl && typeof result === 'string') {
       finalUrl = result;
     }
@@ -379,25 +377,33 @@ const EditCourseScreen = () => {
     }
   };
 
-  const renderLessonItem = ({ item, index }: { item: LessonResponse; index: number }) => (
-    <TouchableOpacity
-      style={styles.lessonItem}
-      onPress={() => navigateToLesson(item.lessonId)}
-    >
-      <Image
-        source={getLessonImage(item.thumbnailUrl)}
-        style={styles.lessonThumb}
-      />
-      <View style={styles.lessonContent}>
-        <Text style={styles.lessonTitle} numberOfLines={1}>
-          {index + 1}. {item.title || item.lessonName}
-        </Text>
-        <Text style={styles.lessonMeta}>
-          {item.isFree ? "Free Preview" : "Locked"} • {item.lessonType}
-        </Text>
-      </View>
-      <Icon name="chevron-right" size={24} color="#9CA3AF" />
-    </TouchableOpacity>
+  const renderLessonItem = ({ item, index, drag, isActive }: RenderItemParams<LessonResponse>) => (
+    <ScaleDecorator>
+      <TouchableOpacity
+        style={[
+          styles.lessonItem,
+          { backgroundColor: isActive ? '#EEF2FF' : '#FFF', opacity: isActive ? 0.9 : 1 }
+        ]}
+        onPress={() => navigateToLesson(item.lessonId)}
+        onLongPress={drag}
+        disabled={isActive}
+      >
+        <Ionicons name="menu" size={24} color="#CCC" style={{ marginRight: 10 }} />
+        <Image
+          source={getLessonImage(item.thumbnailUrl)}
+          style={styles.lessonThumb}
+        />
+        <View style={styles.lessonContent}>
+          <Text style={styles.lessonTitle} numberOfLines={1}>
+            {index + 1}. {item.title || item.lessonName}
+          </Text>
+          <Text style={styles.lessonMeta}>
+            {item.isFree ? "Free Preview" : "Locked"} • {item.lessonType}
+          </Text>
+        </View>
+        <Icon name="chevron-right" size={24} color="#9CA3AF" />
+      </TouchableOpacity>
+    </ScaleDecorator>
   );
 
   const headerElement = useMemo(() => (
@@ -420,7 +426,7 @@ const EditCourseScreen = () => {
         <View style={styles.thumbnailOverlay} />
 
         <FileUploader
-          mediaType="all" // Allow both Image and Video
+          mediaType="all"
           style={styles.editThumbBtn}
           onUploadSuccess={handleUploadSuccess}
           onUploadStart={() => setIsUploadingThumb(true)}
@@ -530,6 +536,7 @@ const EditCourseScreen = () => {
           </TouchableOpacity>
         </View>
       )}
+      {activeCourseId && localLessons.length > 0 && <Text style={{ fontSize: 12, color: '#999', marginBottom: 10, fontStyle: 'italic', textAlign: 'center' }}>Ấn giữ vào bài học để di chuyển vị trí</Text>}
     </View>
   ), [
     processedMediaUrl,
@@ -542,7 +549,7 @@ const EditCourseScreen = () => {
     difficulty,
     discountsData,
     isDraft,
-    lessonsList.length,
+    localLessons.length,
     activeCourseId,
     workingVersion,
     t
@@ -586,7 +593,7 @@ const EditCourseScreen = () => {
         price: parseFloat(price) || 0,
         difficultyLevel: difficulty,
         languageCode: "en",
-        lessonIds: lessonsList.map((l: LessonResponse) => l.lessonId)
+        lessonIds: localLessons.map((l: LessonResponse) => l.lessonId) // USE LOCAL LESSONS FOR ORDER
       };
 
       if (isDraft && targetVersion) {
@@ -657,7 +664,6 @@ const EditCourseScreen = () => {
       return;
     }
 
-    // --- CHECK UNSAVED CHANGES ---
     if (description !== workingVersion.description || (localThumbnailUrl && localThumbnailUrl !== workingVersion.thumbnailUrl)) {
       Alert.alert(t("notice"), "You have unsaved changes. Please save the course before publishing.");
       return;
@@ -673,7 +679,7 @@ const EditCourseScreen = () => {
       return;
     }
 
-    if (lessonsList.length === 0) {
+    if (localLessons.length === 0) {
       Alert.alert(t("error"), "Course must have at least one lesson. Please add lessons and save.");
       return;
     }
@@ -762,30 +768,33 @@ const EditCourseScreen = () => {
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-        <FlatList
-          data={lessonsList}
-          keyExtractor={(item) => item.lessonId}
-          renderItem={renderLessonItem}
-          ListHeaderComponent={headerElement}
-          contentContainerStyle={styles.listContent}
-          onEndReached={() => {
-            if (hasNextPage) fetchNextPage();
-          }}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={isFetchingNextPage ? <ActivityIndicator style={{ padding: 20 }} /> : null}
-          ListEmptyComponent={
-            !isFetchingNextPage ? (
-              <View style={styles.emptyContainer}>
-                {activeCourseId ? (
-                  <Text style={styles.emptyText}>{t("course.noLessonsYet")}</Text>
-                ) : (
-                  <Text style={styles.emptyText}>Save course to add lessons</Text>
-                )}
-              </View>
-            ) : null
-          }
-          keyboardShouldPersistTaps="handled"
-        />
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <DraggableFlatList
+            data={localLessons}
+            onDragEnd={({ data }) => setLocalLessons(data)}
+            keyExtractor={(item) => item.lessonId}
+            renderItem={renderLessonItem}
+            ListHeaderComponent={headerElement}
+            contentContainerStyle={styles.listContent}
+            onEndReached={() => {
+              if (hasNextPage) fetchNextPage();
+            }}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={isFetchingNextPage ? <ActivityIndicator style={{ padding: 20 }} /> : null}
+            ListEmptyComponent={
+              !isFetchingNextPage ? (
+                <View style={styles.emptyContainer}>
+                  {activeCourseId ? (
+                    <Text style={styles.emptyText}>{t("course.noLessonsYet")}</Text>
+                  ) : (
+                    <Text style={styles.emptyText}>Save course to add lessons</Text>
+                  )}
+                </View>
+              ) : null
+            }
+            keyboardShouldPersistTaps="handled"
+          />
+        </GestureHandlerRootView>
       </KeyboardAvoidingView>
 
       {workingVersion && (

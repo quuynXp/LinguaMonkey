@@ -32,8 +32,8 @@ jobs:
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
+      # Bước này xóa file webp để tránh lỗi trùng lặp resource
       - name: 🧹 Clean up duplicate icon files
-        # Bước này xóa file webp để tránh lỗi trùng lặp resource
         run: |
           echo "✨ Cleaning up duplicate icon files (removing .webp)..."
           find ./android/app/src/main/res -name "*.webp" -delete
@@ -43,6 +43,34 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      # --- BƯỚC KHẮC PHỤC LỖI NDK 27 ---
+      # Xóa sạch bản 27 để Gradle không còn lựa chọn nào khác ngoài dùng bản 26
+      - name: 🗑️ Force remove NDK 27 & Setup NDK 26
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26c
+          add-to-path: true
+      
+      - name: 💣 Delete conflicting NDK versions
+        run: |
+          echo "Checking for NDK versions..."
+          ls -al $ANDROID_HOME/ndk/ || true
+          
+          echo "🗑️ DELETING NDK 27 to force CMake to use NDK 26..."
+          sudo rm -rf $ANDROID_HOME/ndk/27.*
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
+          
+          echo "✅ Remaining NDK versions:"
+          ls -al $ANDROID_HOME/ndk/
+
+      # Ghi đè file local.properties để trỏ thẳng vào NDK cài đặt
+      - name: 📍 Force Local Properties to NDK 26
+        run: |
+          echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" >> ./android/local.properties
+          cat ./android/local.properties
+
+      # ---------------------------------
 
       - name: 🐘 Cache Gradle dependencies
         uses: actions/cache@v4
@@ -54,22 +82,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
             
-      - name: 🧹 Clean up large components (Pre-build)
+      - name: 🧹 Clean up large components
         run: |
-          echo "✨ Freeing up disk space by removing large tools..."
           sudo rm -rf /usr/share/dotnet/
           sudo apt-get clean
 
       - name: 🔐 Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: 🔑 Setup Expo authentication
-        run: echo "EXPO_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
-
       - name: 🔑 Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
-          # Đảm bảo quyền truy cập cho Keystore
           chmod 600 my-release-key.keystore
 
       - name: ⚙️ Build signed APK locally
@@ -79,23 +102,16 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        # SỬA ĐỔI QUAN TRỌNG:
-        # 1. --profile production-apk: Để tạo ra đúng file APK (không phải AAB)
-        # 2. --skip-project-configuration: Để KHÔNG chạy lại prebuild (giữ nguyên việc đã xóa file webp ở trên)
+          # Ép buộc biến môi trường lần nữa
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           echo "🔧 Start signed local EAS build..."
+          # --skip-project-configuration: Giữ nguyên để không bị đè file webp
           eas build --platform android --profile production-apk --local --non-interactive --output ./app-release.apk --skip-project-configuration
 
-      - name: 📤 Upload signed APK to GitHub Artifacts
+      - name: 📤 Upload signed APK
         uses: actions/upload-artifact@v4
         with:
           name: android-signed-apk
           path: LinguamonkeyFe/app-release.apk
-
-      - name: 🧹 Clean up final disk space
-        if: always()
-        run: |
-          echo "✨ Cleaning up final disk space..."
-          rm -rf ~/.gradle/caches/
-          rm -f my-release-key.keystore
-          npm cache clean --force

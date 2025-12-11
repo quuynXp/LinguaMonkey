@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
     Alert, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Image
@@ -6,6 +6,9 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams, ShadowDecorator } from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 import { useLessons } from '../../hooks/useLessons';
 import { useCourses } from '../../hooks/useCourses';
 import { useUserStore } from '../../stores/UserStore';
@@ -107,7 +110,6 @@ const CreateLessonScreen = () => {
     const [targetVersionId, setTargetVersionId] = useState<string | undefined>(route.params?.versionId);
 
     const user = useUserStore(state => state.user);
-    // REMOVED: useAllQuestions (không cần thiết nữa vì lessonData đã có questions)
     const { useCreateLesson, useUpdateLesson, useLesson, useDeleteQuestion } = useLessons();
     const { useCourseVersions } = useCourses();
 
@@ -141,7 +143,6 @@ const CreateLessonScreen = () => {
     const [isEditingIndex, setIsEditingIndex] = useState<number | null>(null);
     const [currentQ, setCurrentQ] = useState<LocalQuestionState>(defaultQ);
 
-    // --- FIX: GỘP LOGIC MAPPING QUESTIONS VÀO USEEFFECT CỦA LESSONDATA ---
     useEffect(() => {
         if (isEditMode && lessonData) {
             setLessonName(lessonData.title);
@@ -151,8 +152,6 @@ const CreateLessonScreen = () => {
             setThumbnailUrl(lessonData.thumbnailUrl || '');
             setMediaUrls(lessonData.videoUrls || []);
 
-            // XỬ LÝ QUESTIONS TỪ LESSONDATA (Thay vì dùng useAllQuestions)
-            // lessonData.questions được trả về từ Backend LessonServiceImpl.getLessonById
             if (lessonData.questions && Array.isArray(lessonData.questions)) {
                 console.log("Questions Loaded from LessonData:", lessonData.questions.length);
                 const mapped = lessonData.questions.map((q: LessonQuestionResponse) => {
@@ -182,7 +181,6 @@ const CreateLessonScreen = () => {
                     };
                 });
 
-                // Sort by orderIndex nếu backend chưa sort
                 mapped.sort((a: any, b: any) => {
                     const idxA = lessonData.questions!.find(original => original.lessonQuestionId === a.id)?.orderIndex || 0;
                     const idxB = lessonData.questions!.find(original => original.lessonQuestionId === b.id)?.orderIndex || 0;
@@ -260,7 +258,7 @@ const CreateLessonScreen = () => {
                     mediaUrl: sanitizeId(q.mediaUrl),
                     explainAnswer: q.explainAnswer,
                     weight: parseInt(q.weight) || 1,
-                    orderIndex: i,
+                    orderIndex: i, // Update orderIndex based on current array position
                     isDeleted: false
                 };
             });
@@ -395,6 +393,88 @@ const CreateLessonScreen = () => {
         }
     };
 
+    const renderHeader = () => (
+        <View style={styles.section}>
+            <Text style={styles.sectionHeader}>Thông Tin</Text>
+            <View style={styles.rowCenter}>
+                {thumbnailUrl ? <Image source={{ uri: thumbnailUrl }} style={{ width: 50, height: 50, borderRadius: 5, marginRight: 10 }} /> : null}
+                <FileUploader mediaType="image" onUploadSuccess={id => setThumbnailUrl(formatDriveUrl(id))}>
+                    <Text style={{ color: '#4ECDC4', fontWeight: 'bold' }}>Upload Thumbnail</Text>
+                </FileUploader>
+            </View>
+            <Text style={styles.label}>Tên Bài</Text>
+            <TextInput style={styles.input} value={lessonName} onChangeText={setLessonName} placeholder="Ví dụ: Bài 1 - Chào hỏi" />
+
+            <Text style={styles.label}>Version ID (Debug): {targetVersionId || "Missing"}</Text>
+
+            <Text style={styles.label}>Loại Bài (Lesson Type)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                {BACKEND_LESSON_TYPES.map(t => (
+                    <TouchableOpacity key={t} style={[styles.pill, lessonType === t && styles.pillActive]} onPress={() => setLessonType(t)}>
+                        <Text style={[styles.pillText, lessonType === t && styles.textActive]}>{t}</Text>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+            <Text style={styles.label}>Media (Video/Audio)</Text>
+            {mediaUrls.map((u, i) => (
+                <View key={i} style={{ marginBottom: 10 }}>
+                    <MediaPreviewItem url={u} style={{ height: 150 }} onDelete={() => setMediaUrls(mediaUrls.filter((_, idx) => idx !== i))} />
+                </View>
+            ))}
+            <FileUploader mediaType="all" onUploadSuccess={id => setMediaUrls([...mediaUrls, formatDriveUrl(id)])}>
+                <View style={[styles.input, { alignItems: 'center', borderStyle: 'dashed' }]}><Text>+ Thêm Media</Text></View>
+            </FileUploader>
+
+            <View style={{ height: 1, backgroundColor: '#EEE', marginVertical: 20 }} />
+
+            <View style={styles.rowBetween}>
+                <Text style={styles.sectionHeader}>Câu Hỏi ({questions.length})</Text>
+                <TouchableOpacity onPress={() => { setCurrentQ(defaultQ); setModalVisible(true); setIsEditingIndex(null); }} style={styles.addIconBtn}>
+                    <Ionicons name="add" size={24} color="#FFF" />
+                </TouchableOpacity>
+            </View>
+            {questions.length > 0 && <Text style={{ fontSize: 12, color: '#999', marginBottom: 10, fontStyle: 'italic', textAlign: 'center' }}>Ấn giữ vào câu hỏi để di chuyển vị trí</Text>}
+            {isLoadingLesson && questions.length === 0 && <ActivityIndicator color="#4ECDC4" />}
+        </View>
+    );
+
+    const renderFooter = () => (
+        <View style={{ paddingBottom: 50 }}>
+            <TouchableOpacity style={styles.saveMainBtn} onPress={handleSave} disabled={isSubmitting}>
+                {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveMainText}>LƯU BÀI HỌC</Text>}
+            </TouchableOpacity>
+            <View style={{ height: 50 }} />
+        </View>
+    );
+
+    const renderQuestionItem = ({ item, drag, isActive, getIndex }: RenderItemParams<LocalQuestionState>) => {
+        const index = getIndex() || 0;
+        return (
+            <ScaleDecorator>
+                <TouchableOpacity
+                    onLongPress={drag}
+                    disabled={isActive}
+                    style={[
+                        styles.questionCard,
+                        { backgroundColor: isActive ? '#E8F6F3' : '#FAFAFA', opacity: isActive ? 0.9 : 1 }
+                    ]}
+                >
+                    <View style={styles.rowBetween}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="menu" size={20} color="#CCC" style={{ marginRight: 8 }} />
+                            <Text style={{ fontSize: 10, fontWeight: 'bold', color: 'gray' }}>{item.questionType}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row' }}>
+                            <TouchableOpacity onPress={() => { setCurrentQ(item); setModalVisible(true); setIsEditingIndex(index) }}><Ionicons name="create" size={18} color="blue" style={{ marginRight: 10 }} /></TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeleteQuestion(index)}><Ionicons name="trash" size={18} color="red" /></TouchableOpacity>
+                        </View>
+                    </View>
+                    <Text numberOfLines={1} style={{ marginLeft: 28 }}>{item.question}</Text>
+                </TouchableOpacity>
+            </ScaleDecorator>
+        );
+    };
+
     return (
         <ScreenLayout style={styles.container}>
             <View style={styles.headerRow}>
@@ -403,65 +483,17 @@ const CreateLessonScreen = () => {
                 <View style={{ width: 30 }} />
             </View>
 
-            <ScrollView contentContainerStyle={styles.content}>
-                <View style={styles.section}>
-                    <Text style={styles.sectionHeader}>Thông Tin</Text>
-                    <View style={styles.rowCenter}>
-                        {thumbnailUrl ? <Image source={{ uri: thumbnailUrl }} style={{ width: 50, height: 50, borderRadius: 5, marginRight: 10 }} /> : null}
-                        <FileUploader mediaType="image" onUploadSuccess={id => setThumbnailUrl(formatDriveUrl(id))}>
-                            <Text style={{ color: '#4ECDC4', fontWeight: 'bold' }}>Upload Thumbnail</Text>
-                        </FileUploader>
-                    </View>
-                    <Text style={styles.label}>Tên Bài</Text>
-                    <TextInput style={styles.input} value={lessonName} onChangeText={setLessonName} placeholder="Ví dụ: Bài 1 - Chào hỏi" />
-
-                    <Text style={styles.label}>Version ID (Debug): {targetVersionId || "Missing"}</Text>
-
-                    <Text style={styles.label}>Loại Bài (Lesson Type)</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                        {BACKEND_LESSON_TYPES.map(t => (
-                            <TouchableOpacity key={t} style={[styles.pill, lessonType === t && styles.pillActive]} onPress={() => setLessonType(t)}>
-                                <Text style={[styles.pillText, lessonType === t && styles.textActive]}>{t}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                    <Text style={styles.label}>Media (Video/Audio)</Text>
-                    {mediaUrls.map((u, i) => (
-                        <View key={i} style={{ marginBottom: 10 }}>
-                            <MediaPreviewItem url={u} style={{ height: 150 }} onDelete={() => setMediaUrls(mediaUrls.filter((_, idx) => idx !== i))} />
-                        </View>
-                    ))}
-                    <FileUploader mediaType="all" onUploadSuccess={id => setMediaUrls([...mediaUrls, formatDriveUrl(id)])}>
-                        <View style={[styles.input, { alignItems: 'center', borderStyle: 'dashed' }]}><Text>+ Thêm Media</Text></View>
-                    </FileUploader>
-                </View>
-
-                <View style={styles.section}>
-                    <View style={styles.rowBetween}>
-                        <Text style={styles.sectionHeader}>Câu Hỏi ({questions.length})</Text>
-                        <TouchableOpacity onPress={() => { setCurrentQ(defaultQ); setModalVisible(true); setIsEditingIndex(null); }} style={styles.addIconBtn}>
-                            <Ionicons name="add" size={24} color="#FFF" />
-                        </TouchableOpacity>
-                    </View>
-                    {isLoadingLesson && questions.length === 0 && <ActivityIndicator color="#4ECDC4" />}
-                    {questions.map((q, i) => (
-                        <View key={i} style={styles.questionCard}>
-                            <View style={styles.rowBetween}>
-                                <Text style={{ fontSize: 10, fontWeight: 'bold', color: 'gray' }}>{q.questionType}</Text>
-                                <View style={{ flexDirection: 'row' }}>
-                                    <TouchableOpacity onPress={() => { setCurrentQ(q); setModalVisible(true); setIsEditingIndex(i) }}><Ionicons name="create" size={18} color="blue" style={{ marginRight: 10 }} /></TouchableOpacity>
-                                    <TouchableOpacity onPress={() => handleDeleteQuestion(i)}><Ionicons name="trash" size={18} color="red" /></TouchableOpacity>
-                                </View>
-                            </View>
-                            <Text numberOfLines={1}>{q.question}</Text>
-                        </View>
-                    ))}
-                </View>
-                <TouchableOpacity style={styles.saveMainBtn} onPress={handleSave} disabled={isSubmitting}>
-                    {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveMainText}>LƯU BÀI HỌC</Text>}
-                </TouchableOpacity>
-                <View style={{ height: 50 }} />
-            </ScrollView>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <DraggableFlatList
+                    data={questions}
+                    onDragEnd={({ data }) => setQuestions(data)}
+                    keyExtractor={(item, index) => item.id || `temp-${index}`}
+                    renderItem={renderQuestionItem}
+                    ListHeaderComponent={renderHeader}
+                    ListFooterComponent={renderFooter}
+                    contentContainerStyle={styles.content}
+                />
+            </GestureHandlerRootView>
 
             <Modal visible={modalVisible} animationType="slide">
                 <View style={styles.modalHeader}>
