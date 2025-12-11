@@ -1,5 +1,7 @@
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    connection-timeout: 1200000
 
 spring:
   datasource:
@@ -8,6 +10,10 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+  servlet:
+    multipart:
+      max-file-size: 1024MB
+      max-request-size: 1024MB
 
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect

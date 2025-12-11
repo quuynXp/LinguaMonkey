@@ -21,14 +21,19 @@ const compressMedia = async (uri: string, type: string): Promise<string> => {
         maxWidth: 1920,
         quality: 0.8,
       });
-    } else if (type.startsWith('video/')) {
-      // Compress Video: 720p is good enough for mobile learning
-      return await CompressorVideo.compress(uri, {
-        compressionMethod: 'auto',
-        getCancellationId: (cancellationId) => console.log('Video compression id:', cancellationId),
+    } if (type.startsWith('video/')) {
+      console.log("⏳ Starting video compression...");
+      // Với bài giảng online: 720p và Bitrate thấp là đủ nét và nhẹ.
+      const result = await CompressorVideo.compress(uri, {
+        compressionMethod: 'manual',
+        maxWidth: 1280, // 720p
+        quality: 0.7,   // Giảm quality chút
+        bitrate: 1000 * 1000, // Giới hạn 1Mbps (Video 1 tiếng ~ 450MB) -> Upload rất nhanh
       }, (progress) => {
-        console.log('Compression Progress:', progress);
+        console.log(`Compression: ${(progress * 100).toFixed(0)}%`);
       });
+      console.log("✅ Compression done:", result);
+      return result;
     }
     // Audio compression is tricky due to formats, usually skip or use specific lib
     return uri;

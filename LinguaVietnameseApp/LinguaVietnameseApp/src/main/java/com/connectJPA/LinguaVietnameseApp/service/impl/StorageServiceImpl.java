@@ -38,6 +38,7 @@ public class StorageServiceImpl implements StorageService {
     
     // UPDATED: Using Direct Link format (lh3) for images to work in mobile apps
     private static final String VIEW_URL_TEMPLATE = "https://lh3.googleusercontent.com/d/%s";
+    private static final String STREAM_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
 
     @Transactional
     @Override
@@ -171,8 +172,8 @@ public class StorageServiceImpl implements StorageService {
     }
 
     @Override
-    public String getFileUrl(String objectName) {
-        return String.format(VIEW_URL_TEMPLATE, objectName);
+    public String getFileUrl(String fileId) {
+        return String.format(STREAM_URL_TEMPLATE, fileId);
     }
 
     @Override

@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState } from 'react';
 import { TouchableOpacity, Alert, ViewStyle, StyleProp } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -29,18 +29,15 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     style,
     children,
     allowEditing = false,
-    maxSizeMB = 50,
-    maxDuration = 60,
+    maxSizeMB = 2048,
+    maxDuration = 7200,
 }) => {
     const { t } = useTranslation();
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const validateFile = (fileSize: number | undefined, duration: number | undefined, type: string) => {
         if (fileSize && fileSize > maxSizeMB * 1024 * 1024) {
             Alert.alert(t('common.error'), t('errors.fileTooLarge', { size: maxSizeMB }));
-            return false;
-        }
-        if (type.startsWith('video') && duration && duration > maxDuration) {
-            Alert.alert(t('common.error'), t('errors.videoTooLong', { seconds: maxDuration }));
             return false;
         }
         return true;
@@ -48,6 +45,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
     const handleUpload = async (file: { uri: string; name: string; type: string }) => {
         try {
+            setIsProcessing(true);
             if (onUploadStart) onUploadStart();
             const response = await uploadTemp(file);
 
@@ -65,6 +63,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
                 Alert.alert(t('common.error'), t('errors.uploadFailed'));
             }
         } finally {
+            setIsProcessing(false);
             if (onUploadEnd) onUploadEnd();
         }
     };
@@ -91,8 +90,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: mediaTypes,
                 allowsEditing: allowEditing,
-                quality: 0.8,
-                videoMaxDuration: maxDuration,
+                quality: 1,
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -145,6 +143,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     };
 
     const handlePress = () => {
+        if (isProcessing) return;
         if (mediaType === 'image' || mediaType === 'video' || mediaType === 'all') {
             pickImage();
         } else {

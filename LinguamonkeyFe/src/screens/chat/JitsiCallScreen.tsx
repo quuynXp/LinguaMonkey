@@ -688,6 +688,8 @@ const RemoteVideoItem = React.memo(({ stream, style }: { stream: MediaStream, st
   );
 }, (prev, next) => prev.stream.id === next.stream.id);
 
+RemoteVideoItem.displayName = 'RemoteVideoItem';
+
 // Tách Subtitle Component để nó render độc lập, không làm lag Video
 const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
   if (!data || mode === 'off' || !data.originalFull?.trim()) return null;
@@ -724,6 +726,8 @@ const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
     prev.data?.translated === next.data?.translated &&
     prev.mode === next.mode;
 });
+
+SubtitleOverlay.displayName = 'SubtitleOverlay';
 
 type WebRTCParams = {
   WebRTCCall: { roomId: string; videoCallId: string; isCaller?: boolean; mode?: 'RANDOM' | 'GROUP'; };
@@ -861,18 +865,19 @@ const WebRTCCallScreen = () => {
       localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
     }
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) sendSignalingMessage({ type: 'ice_candidate', targetId: partnerId }, { candidate: event.candidate });
+    (pc as any).onicecandidate = (event: any) => {
+      if (event.candidate) {
+        sendSignalingMessage({ type: 'ice_candidate', targetId: partnerId }, { candidate: event.candidate });
+      }
     };
 
-    pc.ontrack = (event) => {
+    (pc as any).ontrack = (event: any) => {
       if (event.streams && event.streams[0]) {
         setRemoteStreams(prev => new Map(prev).set(partnerId, event.streams[0]));
         setConnectionStatus("Connected");
       }
     };
 
-    // ... (Giữ nguyên logic negotiation cũ của bạn) ...
     if (shouldCreateOffer) {
       const offer = await pc.createOffer({});
       await pc.setLocalDescription(offer);

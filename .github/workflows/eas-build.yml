@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Gradle Direct Optimized)
+name: LinguamonkeyFe - Signed APK Build (Final Fix)
 
 on:
   push:
@@ -19,32 +19,17 @@ jobs:
       - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
-      # --- BƯỚC DỌN DẸP KHÔNG GIAN ĐĨA (QUAN TRỌNG) ---
-      - name: 🗑️ AGGRESSIVE DISK CLEANUP (Max Space)
+      # --- 1. DỌN DẸP Ổ ĐĨA CỰC MẠNH ---
+      - name: 🗑️ AGGRESSIVE DISK CLEANUP
         run: |
-          echo "🔥 Dọn dẹp mạnh mẽ: Giải phóng dung lượng đĩa trước khi build..."
-          
-          # 1. Dọn dẹp các SDK và toolset lớn không cần thiết
-          sudo rm -rf /usr/share/dotnet/ # .NET SDKs
-          sudo rm -rf /usr/local/share/boost/ # Boost libraries
-          sudo rm -rf /usr/local/lib/android/sdk/docs # Android SDK Docs
-          
-          # 2. Dọn dẹp cache hệ thống và log
-          sudo apt-get autoremove -y
+          echo "🔥 Freeing up disk space..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
           sudo apt-get clean
-          sudo find /var/log -type f -delete # Xóa log hệ thống
           sudo rm -rf /tmp/*
-          
-          # 3. Dọn dẹp cache của Yarn/NPM (đã được cài đặt trước đó)
-          npm cache clean --force || true
-          yarn cache clean --all || true
-          
-          # 4. Dọn dẹp cache Gradle từ các lần chạy trước
-          rm -rf ~/.gradle/caches/
-          
-          # 5. Xóa Docker images không dùng
-          docker system prune -a -f --volumes || true
-      # --- KẾT THÚC DỌN DẸP ---
 
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
@@ -56,13 +41,21 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
+      # --- 2. XÓA ANDROID CŨ ĐỂ PREBUILD LẠI TỪ ĐẦU ---
+      # Đây là bước quan trọng nhất để fix lỗi cấu hình NDK bị kẹt ở bản 27
+      - name: 💣 Delete existing Android folder
+        run: rm -rf android
+
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
+      # --- 3. XÓA FILE WEBP (Tránh lỗi Duplicate Resource) ---
       - name: 🧹 Clean up duplicate icon files
         run: |
           echo "✨ Cleaning up duplicate icon files (removing .webp)..."
-          find ./android/app/src/main/res -name "*.webp" -delete
+          if [ -d "./android/app/src/main/res" ]; then
+            find ./android/app/src/main/res -name "*.webp" -delete
+          fi
 
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
@@ -70,37 +63,24 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Cài đặt NDK 26
-      - name: 🔧 Setup Android NDK 26
+      # --- 4. CÀI ĐẶT NDK 26.1 (r26b) ---
+      # r26b chính xác là bản 26.1.10909125 mà React Native cần
+      - name: 🔧 Setup Android NDK r26b
         id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r26c
+          ndk-version: r26b
           add-to-path: true
-
-      # FIX LỖI NDK 27 (C++ CMake)
-      - name: 💣 Nuke NDK 27 Remnants (Force NDK 26)
-        run: |
-          echo "🔥 Xóa NDK 27 để khắc phục lỗi CMake..."
-          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
-          sudo rm -rf $ANDROID_HOME/ndk/27.*
-          echo "✅ NDK 27 đã bị xóa."
-
-      - name: 📍 Force Local Properties to NDK 26
-        run: |
-          # Ghi đè file local.properties để trỏ thẳng vào NDK đã cài đặt
-          echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" >> ./android/local.properties
-          cat ./android/local.properties
 
       - name: 🐘 Cache Gradle dependencies
         uses: actions/cache@v4
         with:
           path: |
+            ~/.gradle/caches
             ~/.gradle/wrapper
-          # Chỉ cache wrapper, vì ta đã xóa caches trong bước dọn dẹp
-          key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v2-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-
+            ${{ runner.os }}-gradle-fe-v2-
 
       - name: 🔐 Setup Keystore
         run: |
@@ -108,6 +88,7 @@ jobs:
 
       - name: ⚙️ Build APK with Gradle
         env:
+          # Chỉ định biến môi trường, không cần ghi đè local.properties
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_FILE: my-release-key.keystore
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -118,7 +99,8 @@ jobs:
           chmod +x gradlew
           echo "🔨 Building with NDK at: $ANDROID_NDK_HOME"
           
-          ./gradlew assembleRelease \
+          # Thêm --no-daemon để tiết kiệm RAM và tránh lỗi Crash
+          ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
@@ -130,7 +112,6 @@ jobs:
           name: android-signed-apk
           path: LinguamonkeyFe/android/app/build/outputs/apk/release/app-release.apk
 
-      # Dọn dẹp cuối cùng (có thể không cần thiết do đã dọn dẹp mạnh ở đầu)
       - name: 🧹 Final Clean Up
         if: always()
         run: rm -f ./android/app/my-release-key.keystore
