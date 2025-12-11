@@ -146,12 +146,18 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   }, [lessonsInfinite]);
 
   const progressMap = useMemo(() => {
-    const map: Record<string, number> = {};
+    const map: Record<string, { score: number; completedAt: string }> = {};
+
     if (!userProgressData?.data) return map;
+
     userProgressData.data.forEach((p: any) => {
-      const lId = p.id?.lessonId || p.lessonId;
+      const lId = p.lessonId || p.id?.lessonId;
+
       if (lId) {
-        map[lId] = p.score;
+        map[lId] = {
+          score: p.score,
+          completedAt: p.completedAt
+        };
       }
     });
     return map;
@@ -542,8 +548,10 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     const isUnlocked = hasAccess || item.isFree;
     const isLocked = !isUnlocked;
 
-    const score = progressMap[item.lessonId];
-    const isLessonCompleted = score !== undefined && score >= 50;
+    const progressItem = progressMap[item.lessonId];
+    const score = progressItem?.score;
+    const isOutdated = progressItem?.completedAt && item.updatedAt && dayjs(item.updatedAt).isAfter(dayjs(progressItem.completedAt));
+    const isLessonCompleted = score !== undefined && score >= 50 && !isOutdated;
 
     return (
       <View style={{ paddingHorizontal: 20 }}>
@@ -590,6 +598,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
             <Icon name="lock-outline" size={24} color="#9CA3AF" />
           ) : isLessonCompleted ? (
             <Icon name="check-circle" size={24} color="#10B981" />
+          ) : isOutdated ? (
+            <Icon name="published-with-changes" size={24} color="#F59E0B" />
           ) : (
             <Icon name="radio-button-unchecked" size={24} color="#D1D5DB" />
           )}
@@ -631,6 +641,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <FlatList
         data={displayLessons}
+        extraData={progressMap}
         renderItem={renderLessonItem}
         keyExtractor={(item) => item.lessonId || String(item.orderIndex)}
         ListHeaderComponent={renderHeader}

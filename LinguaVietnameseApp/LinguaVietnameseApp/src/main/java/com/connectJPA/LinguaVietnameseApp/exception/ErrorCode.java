@@ -29,6 +29,7 @@ public enum ErrorCode {
     CHALLENGE_ALREADY_CLAIMED(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
         VERSION_NOT_FOUND(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
         COURSE_NOT_ENROLLED(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
+        ENROLLMENT_NOT_FOUND(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
     // Nhóm: User & Auth Logic (400) (11xx)
     INVALID_USER_INFO(1100, "error.invalid_user_info", HttpStatus.BAD_REQUEST, true),
     EMAIL_ALREADY_EXISTS(1101, "error.email_already_exists", HttpStatus.BAD_REQUEST, true),

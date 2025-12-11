@@ -71,6 +71,10 @@ services:
         value: 9090
       - key: GRPC_SERVER_ADDRESS
         value: 0.0.0.0
+      - key: VNPAY_RETURN_URL_PATH
+        value: /api/v1/transactions/vnpay-return
+      - key: APP_BACKEND_URL
+        value: https://093ea1fb6d89.ngrok-free.app
       - key: PYTHON_GRPC_HOST
         value: pythonservice
       - key: PYTHON_GRPC_PORT

@@ -22,7 +22,7 @@ jobs:
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24.4
+          node-version: 22
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
@@ -30,11 +30,10 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: 🛠️ Generate Android directory (Prebuild)
-        # Bổ sung để tạo lại thư mục 'android' (chứa gradlew) sau khi checkout
         run: npx expo prebuild --platform android --no-install
 
       - name: 🧹 Clean up duplicate icon files
-        # Xóa các file WEBP được tạo bởi prebuild để tránh lỗi "Duplicate resources"
+        # Bước này xóa file webp để tránh lỗi trùng lặp resource
         run: |
           echo "✨ Cleaning up duplicate icon files (removing .webp)..."
           find ./android/app/src/main/res -name "*.webp" -delete
@@ -80,9 +79,12 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        # SỬA ĐỔI QUAN TRỌNG:
+        # 1. --profile production-apk: Để tạo ra đúng file APK (không phải AAB)
+        # 2. --skip-project-configuration: Để KHÔNG chạy lại prebuild (giữ nguyên việc đã xóa file webp ở trên)
         run: |
           echo "🔧 Start signed local EAS build..."
-          eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
+          eas build --platform android --profile production-apk --local --non-interactive --output ./app-release.apk --skip-project-configuration
 
       - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
@@ -94,7 +96,6 @@ jobs:
         if: always()
         run: |
           echo "✨ Cleaning up final disk space..."
-          # Dọn dẹp Gradle caches và Keystore file
           rm -rf ~/.gradle/caches/
           rm -f my-release-key.keystore
           npm cache clean --force

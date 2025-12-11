@@ -4,12 +4,19 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.CourseVersionEnrollmentReq
 import com.connectJPA.LinguaVietnameseApp.dto.request.SwitchVersionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionEnrollmentResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionEnrollment;
+import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionLesson;
+import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
+import com.connectJPA.LinguaVietnameseApp.entity.LessonProgress;
+import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressId;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseVersionEnrollmentStatus;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersion;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseVersionEnrollmentMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionEnrollmentRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionLessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonProgressRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CourseVersionEnrollmentService;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 
@@ -21,6 +28,9 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -31,6 +41,9 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
     private final RedisTemplate<String, Object> redisTemplate;
     private final CourseVersionRepository courseVersionRepository;
     private final RoomService roomService;
+    private final LessonProgressRepository lessonProgressRepository;
+    private final CourseVersionLessonRepository cvlRepository;
+    private final CourseVersionEnrollmentRepository enrollmentRepository;  
 
     @Override
     public Page<CourseVersionEnrollmentResponse> getAllCourseVersionEnrollments(UUID courseId, UUID userId, Pageable pageable) {
@@ -43,6 +56,65 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
+    @Transactional
+public void syncEnrollmentProgress(UUID userId, UUID courseVersionId) {
+    CourseVersionEnrollment enrollment = enrollmentRepository
+        .findByCourseVersion_VersionIdAndUserId(courseVersionId, userId)
+        .orElseThrow(() -> new AppException(ErrorCode.ENROLLMENT_NOT_FOUND));
+
+    // 2. Lấy danh sách tất cả bài học trong Version này
+    List<CourseVersionLesson> versionLessons = cvlRepository
+        .findByCourseVersion_VersionIdOrderByOrderIndex(courseVersionId);
+
+    if (versionLessons.isEmpty()) return;
+
+    int totalLessons = versionLessons.size();
+    int completedCount = 0;
+
+    // 3. Quét qua từng bài học để xem user đã học xong chưa (Dựa trên LessonId cũ)
+    for (CourseVersionLesson vl : versionLessons) {
+        Lesson lesson = vl.getLesson();
+        
+        // Tìm progress của bài học này
+        Optional<LessonProgress> progressOpt = lessonProgressRepository
+            .findById(new LessonProgressId(lesson.getLessonId(), userId));
+
+        if (progressOpt.isPresent()) {
+            LessonProgress p = progressOpt.get();
+            
+            // Logic quan trọng: 
+            // Bài học được tính là hoàn thành nếu:
+            // a. Score >= 50 (hoặc ngưỡng pass)
+            // b. VÀ bài học không bị update sau khi user hoàn thành
+            boolean isContentOutdated = p.getCompletedAt().isBefore(lesson.getUpdatedAt());
+            boolean isPassed = p.getScore() >= 50; // Giả sử 50 là điểm đậu
+
+            if (isPassed && !isContentOutdated) {
+                completedCount++;
+            }
+        }
+    }
+
+    // 4. Tính lại % và lưu vào Enrollment
+    double newProgress = ((double) completedCount / totalLessons) * 100.0;
+    
+    // Làm tròn 2 chữ số thập phân
+    newProgress = Math.round(newProgress * 100.0) / 100.0;
+
+    enrollment.setProgress(newProgress);
+    if (newProgress >= 100.0) {
+        enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
+        if (enrollment.getCompletedAt() == null) {
+            enrollment.setCompletedAt(OffsetDateTime.now());
+        }
+    } else {
+        // Nếu trước đó COMPLETED nhưng giờ version mới thêm bài -> quay về IN_PROGRESS
+        enrollment.setStatus(CourseVersionEnrollmentStatus.IN_PROGRESS); 
+    }
+    
+    enrollmentRepository.save(enrollment);
+}
 
     @Transactional
     @Override

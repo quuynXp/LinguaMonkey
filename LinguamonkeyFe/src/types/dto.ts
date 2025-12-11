@@ -1461,6 +1461,7 @@ export interface LessonResponse {
     certificateCode: string;
     passScorePercent: number;
     shuffleQuestions: boolean;
+    updatedAt?: string;
     allowedRetakeCount: number;
 }
 
