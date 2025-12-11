@@ -54,6 +54,42 @@ class MessageType(str, enum.Enum):
     VIDEO = "VIDEO"
     AUDIO = "AUDIO"
 
+
+class VideoCallStatus(str, enum.Enum):
+    WAITING = "WAITING"
+    ONGOING = "ONGOING"
+    ENDED = "ENDED"
+    INITIATED = "INITIATED"
+
+class VideoCallType(str, enum.Enum):
+    ONE_TO_ONE = "ONE_TO_ONE"
+    GROUP = "GROUP"
+
+class VideoCall(Base):
+    __tablename__ = "video_calls"
+    __table_args__ = {"schema": "public"}
+
+    video_call_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    room_id = Column(UUID(as_uuid=True), nullable=False) # Hoặc ForeignKey nếu cần
+    
+    # Người gọi và người nghe (có thể null nếu là Group call)
+    caller_id = Column(UUID(as_uuid=True), nullable=True) 
+    callee_id = Column(UUID(as_uuid=True), nullable=True)
+    
+    video_call_type = Column(String(50), default=VideoCallType.ONE_TO_ONE)
+    status = Column(String(50), default=VideoCallStatus.INITIATED, nullable=False)
+    
+    start_time = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    end_time = Column(TIMESTAMP(timezone=True), nullable=True)
+    
+    # duration thường được tính toán khi query, nhưng nếu muốn lưu cứng:
+    # duration = Column(String(50), nullable=True) 
+    
+    quality_metrics = Column(JSONB, default={})
+    
+    created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    
 # --- CORE TABLES ---
 
 class Room(Base):

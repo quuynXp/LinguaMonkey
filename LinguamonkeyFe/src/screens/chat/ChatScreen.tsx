@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from "react"
+import React, { useRef, useEffect } from "react"
 import { Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
@@ -6,9 +6,12 @@ import { useQuery } from "@tanstack/react-query"
 import { useUserStore } from "../../stores/UserStore"
 import instance from "../../api/axiosClient"
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import { AppApiResponse, ChatStatsResponse, UserLearningActivityResponse, PageResponse } from "../../types/dto"
+import { AppApiResponse, ChatStatsResponse, VideoCallResponse } from "../../types/dto" // Import VideoCallResponse
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { gotoTab } from "../../utils/navigationRef"
+import { useVideoCalls } from "../../hooks/useVideos" // Import custom hook
+import { VideoCallStatus } from "../../types/enums" // Giả định bạn có enum này, hoặc dùng string
+
 interface ExtendedChatStatsResponse extends ChatStatsResponse {
   joinedRooms: number;
 }
@@ -20,6 +23,11 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
+  // --- 1. SỬ DỤNG HOOK LẤY LỊCH SỬ VIDEO CALL ---
+  const { useVideoCallHistory } = useVideoCalls();
+  const { data: callHistory = [], isLoading: isLoadingHistory } = useVideoCallHistory(user?.userId || null);
+
+  // --- LẤY THỐNG KÊ (GIỮ NGUYÊN) ---
   const { data: stats, isLoading: isLoadingStats } = useQuery<ExtendedChatStatsResponse>({
     queryKey: ['chatStats', user?.userId],
     queryFn: async () => {
@@ -29,32 +37,20 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
     enabled: !!user?.userId,
   });
 
-  const handleJoinCall = (activity: any) => {
-    if (activity.roomId) {
-      gotoTab("ChatStack", 'JitsiCallScreen', {
-        roomId: activity.roomId,
-        videoCallId: activity.referenceId,
+  // --- XỬ LÝ KHI CLICK VÀO LỊCH SỬ ---
+  const handleJoinCall = (call: VideoCallResponse) => {
+    // Nếu đang ONGOING hoặc WAITING -> Cho phép Join lại
+    // Nếu ENDED -> Có thể gọi lại (tạo call mới) hoặc xem chi tiết. 
+    // Ở đây demo logic Join lại phòng cũ.
+    if (call.roomId) {
+      // Điều hướng tới màn hình WebRTC (tên màn hình khớp với file trước đó bạn làm)
+      navigation.navigate('WebRTCCallScreen', { // Hoặc 'ChatStack', { screen: 'WebRTCCallScreen', ... }
+        roomId: call.roomId,
+        videoCallId: call.videoCallId,
         isCaller: false
       });
     }
   };
-
-  const { data: activities = [], isLoading: isLoadingActivities } = useQuery<UserLearningActivityResponse[]>({
-    queryKey: ['chatActivities', user?.userId],
-    queryFn: async () => {
-      const response = await instance.get<AppApiResponse<PageResponse<UserLearningActivityResponse>>>(`/api/v1/user-learning-activities`, {
-        params: {
-          userId: user?.userId,
-          page: 0,
-          size: 5,
-          sort: 'createdAt,desc',
-          type: 'CHAT'
-        }
-      });
-      return response.data.result.content;
-    },
-    enabled: !!user?.userId,
-  });
 
   useEffect(() => {
     Animated.parallel([
@@ -71,6 +67,33 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
     ]).start()
   }, [fadeAnim, slideAnim])
 
+  // --- HELPER UI ---
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'ONGOING': return '#22c55e'; // Xanh lá
+      case 'WAITING': return '#eab308'; // Vàng
+      case 'ENDED': return '#9ca3af';   // Xám
+      case 'INITIATED': return '#3b82f6'; // Xanh dương
+      default: return '#9ca3af';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'ONGOING': return 'videocam';
+      case 'WAITING': return 'ring-volume';
+      case 'ENDED': return 'videocam-off';
+      default: return 'history';
+    }
+  };
+
+  const formatTime = (timeString?: string) => {
+    if (!timeString) return "";
+    const date = new Date(timeString);
+    return date.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+  };
+
+  // --- CÁC OPTION MENU (GIỮ NGUYÊN) ---
   const chatOptions = [
     {
       id: "ai-chat",
@@ -138,21 +161,43 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
     </TouchableOpacity>
   )
 
-  const renderActivity = (activity: UserLearningActivityResponse) => (
-    <View key={activity.activityId} style={styles.activityItem}>
-      <View style={styles.activityIcon}>
-        <Icon
-          name={activity.activityType === "AI_CHAT" ? "smart-toy" : "group"}
-          size={20}
-          color={activity.activityType === "AI_CHAT" ? "#4F46E5" : "#10B981"}
-        />
-      </View>
-      <View style={styles.activityInfo}>
-        <Text style={styles.activityTitle}>{activity.activityType} - {t("chat.activityDetails")}</Text>
-        <Text style={styles.activityTime}>{new Date(activity.createdAt).toLocaleString()}</Text>
-      </View>
-    </View>
-  );
+  // --- 2. RENDER HISTORY ITEM MỚI ---
+  const renderHistoryItem = (call: VideoCallResponse) => {
+    const statusColor = getStatusColor(call.status);
+    const isOngoing = call.status === 'ONGOING' || call.status === 'WAITING';
+
+    return (
+      <TouchableOpacity
+        key={call.videoCallId}
+        style={styles.activityItem}
+        onPress={() => handleJoinCall(call)}
+        disabled={!isOngoing} // Chỉ cho click nếu đang diễn ra (hoặc tùy logic bạn muốn cho xem detail)
+      >
+        <View style={[styles.activityIcon, { backgroundColor: `${statusColor}20` }]}>
+          <Icon
+            name={getStatusIcon(call.status)}
+            size={20}
+            color={statusColor}
+          />
+        </View>
+        <View style={styles.activityInfo}>
+          <Text style={styles.activityTitle}>
+            {call.videoCallType === 'GROUP' ? t('Group Call') : t('Video Call')}
+          </Text>
+          <Text style={styles.activityTime}>
+            {call.startTime ? formatTime(call.startTime) : 'Just now'}
+          </Text>
+        </View>
+
+        {/* Badge Status */}
+        <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20`, borderColor: statusColor }]}>
+          <Text style={[styles.statusText, { color: statusColor }]}>
+            {call.status}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <ScreenLayout style={styles.container}>
@@ -174,7 +219,7 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
           ]}
         >
           <View style={styles.welcomeSection}>
-            <Icon name="chat" size={120} color="#4F46E5" />
+            <Icon name="video-chat" size={120} color="#4F46E5" />
             <Text style={styles.welcomeTitle}>{t("chat.welcome")}</Text>
             <Text style={styles.welcomeText}>{t("chat.welcomeDescription")}</Text>
           </View>
@@ -187,6 +232,12 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
                   <Icon name="chat" size={24} color="#4F46E5" />
                   <Text style={styles.statValue}>{stats.totalMessages || 0}</Text>
                   <Text style={styles.statLabel}>{t("chat.messages")}</Text>
+                </View>
+                {/* Thêm một card thống kê Video Call nếu API có trả về */}
+                <View style={styles.statCard}>
+                  <Icon name="videocam" size={24} color="#10B981" />
+                  <Text style={styles.statValue}>{callHistory.length || 0}</Text>
+                  <Text style={styles.statLabel}>{t("Calls")}</Text>
                 </View>
               </View>
             </View>
@@ -202,13 +253,24 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
             <View style={styles.quickActionsGrid}>{quickActions.map(renderQuickAction)}</View>
           </View>
 
+          {/* --- 3. VIDEO CALL HISTORY SECTION --- */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("chat.recentActivity")}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t("Call History")}</Text>
+              <TouchableOpacity onPress={() => {/* Navigate to full history */ }}>
+                <Text style={{ color: '#4F46E5', fontSize: 12 }}>See all</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.activityCard}>
-              {isLoadingActivities ? <ActivityIndicator /> : activities.length > 0 ? (
-                activities.map(renderActivity)
+              {isLoadingHistory ? (
+                <ActivityIndicator color="#4F46E5" />
+              ) : callHistory.length > 0 ? (
+                callHistory.slice(0, 5).map(renderHistoryItem) // Chỉ lấy 5 item gần nhất
               ) : (
-                <Text style={{ padding: 10, textAlign: 'center', color: '#888' }}>{t("chat.noRecentActivity")}</Text>
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#9CA3AF' }}>{t("chat.noRecentActivity")}</Text>
+                </View>
               )}
             </View>
           </View>
@@ -274,7 +336,7 @@ const styles = createScaledSheet({
   },
   statCard: {
     flex: 1,
-    minWidth: '45%',
+    minWidth: '40%',
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
@@ -385,13 +447,14 @@ const styles = createScaledSheet({
   activityItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6'
   },
   activityIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -409,6 +472,18 @@ const styles = createScaledSheet({
     color: "#9CA3AF",
     marginTop: 2,
   },
+  // Thêm style cho Status Badge
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    textTransform: 'uppercase'
+  }
 })
 
 export default ChatScreen;

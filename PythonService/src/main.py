@@ -507,6 +507,8 @@ import uvicorn
 from fastapi import (
     FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query
 )
+from src.core.models import VideoCall, VideoCallStatus
+from src.core.video_call_service import start_or_join_call, end_call_if_empty
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from cryptography.hazmat.primitives import serialization
@@ -590,6 +592,11 @@ class ConnectionManager:
             logger.info(f"❌ WS DISCONNECTED: Room={room_id}")
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
+
+    def get_participant_count(self, room_id: str) -> int:
+        if room_id in self.active_connections:
+            return len(self.active_connections[room_id])
+        return 0
 
     async def broadcast_except(self, message: dict, room_id: str, exclude_ws: WebSocket):
         if room_id in self.active_connections:
@@ -800,20 +807,25 @@ async def audio_endpoint(
     finally:
         transcriber.stop()
 
-# --- OTHER ENDPOINTS (KEEP AS IS) ---
 @app.websocket("/signal")
 async def signaling_endpoint(websocket: WebSocket, token: str = Query(...), roomId: str = Query(...)):
-    # ... (Giữ nguyên logic cũ của bạn) ...
     normalized_room_id = str(roomId).strip().lower()
     user_id = await validate_websocket_token(websocket, token)
+    
     if not user_id:
         await websocket.close(code=1008)
         return
+
     await signal_manager.connect(websocket, normalized_room_id, user_id=user_id)
+    
+    async with AsyncSessionLocal() as db_session:
+        await start_or_join_call(db_session, normalized_room_id, user_id)
+
     try:
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
+            
             if msg.get("type") in ["webrtc_signal", "JOIN_ROOM", "offer", "answer", "ice_candidate"]:
                 msg["senderId"] = user_id
                 if msg.get("type") == "JOIN_ROOM":
@@ -821,7 +833,18 @@ async def signaling_endpoint(websocket: WebSocket, token: str = Query(...), room
                     await signal_manager.broadcast_except(join_msg, normalized_room_id, websocket)
                 else:
                     await signal_manager.broadcast_except(msg, normalized_room_id, websocket)
+                    
     except WebSocketDisconnect:
+        signal_manager.disconnect(websocket, normalized_room_id)
+        
+        remaining_users = signal_manager.get_participant_count(normalized_room_id)
+        if remaining_users == 0:
+            async with AsyncSessionLocal() as db_session:
+                await end_call_if_empty(db_session, normalized_room_id)
+        # ---------------------------
+        
+    except Exception as e:
+        logger.error(f"Signal Error: {e}")
         signal_manager.disconnect(websocket, normalized_room_id)
 
 app.include_router(protected_router)
