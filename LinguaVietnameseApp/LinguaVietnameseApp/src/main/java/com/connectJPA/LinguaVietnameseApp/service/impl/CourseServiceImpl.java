@@ -9,6 +9,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseSummaryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CreatorDashboardResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.PageResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersion;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionDiscount;
@@ -365,9 +366,9 @@ public class CourseServiceImpl implements CourseService {
 
         // Notifications
         sendLearnerUpdateNotification(
-                course,
-                version,
-                "A new version (v" + version.getVersionNumber() + ") is available. Update notes: " + version.getReasonForChange()
+            course,
+            version,
+            "A new version (v" + version.getVersionNumber() + ") is available. Update notes: " + version.getReasonForChange()
         );
 
         return versionMapper.toResponse(version);
@@ -487,38 +488,62 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    public Page<CourseResponse> getSpecialOffers(String keyword, String languageCode, Integer minRating, Pageable pageable) {
+    public PageResponse<CourseResponse> getSpecialOffers(String keyword, String languageCode, Float minRating, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
         OffsetDateTime now = OffsetDateTime.now();
-        Float ratingFloat = minRating != null ? minRating.floatValue() : null;
 
-        Page<CourseVersionDiscount> discounts = discountRepository.findSpecialOffers(
-                keyword, languageCode, ratingFloat, now, pageable
+        // 1. Lấy dữ liệu thô từ Repository (đang trả về List Discount)
+        Page<CourseVersionDiscount> discountPage = discountRepository.findSpecialOffers(
+                keyword, languageCode, minRating, now, pageable
         );
 
-        return discounts.map(discount -> {
+        // 2. Convert từng Discount thành CourseResponse
+        List<CourseResponse> courseResponses = discountPage.getContent().stream().map(discount -> {
+            // Lấy entity Course và Version từ mối quan hệ trong Discount
             CourseVersion version = discount.getCourseVersion();
             Course course = version.getCourse();
-            
+
+            // Map cơ bản từ Entity Course sang Response
             CourseResponse response = courseMapper.toResponse(course);
-            response = enrichCourseResponse(response); 
+
+            // --- QUAN TRỌNG: Gán dữ liệu phiên bản và giá để Frontend hiển thị ---
             
+            // 1. Gán version public (chính là version đang được giảm giá)
             response.setLatestPublicVersion(versionMapper.toResponse(version));
 
+            // 2. Gán % giảm giá (Frontend dùng field này để hiện badge đỏ -XX%)
             response.setActiveDiscountPercentage(discount.getDiscountPercentage());
-            
+
+            // 3. Tính lại giá sau giảm (FIX: Sử dụng BigDecimal)
             if (version.getPrice() != null) {
                 BigDecimal originalPrice = version.getPrice();
-                BigDecimal discountAmount = originalPrice
-                        .multiply(BigDecimal.valueOf(discount.getDiscountPercentage()))
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                
-                response.setDiscountedPrice(originalPrice.subtract(discountAmount));
+                BigDecimal discountPercent = BigDecimal.valueOf(discount.getDiscountPercentage());
+                BigDecimal oneHundred = BigDecimal.valueOf(100);
+
+                // Formula: originalPrice * (100 - discount) / 100
+                // Scale 2, RoundingMode.HALF_UP
+                BigDecimal discountedPrice = originalPrice
+                        .multiply(oneHundred.subtract(discountPercent))
+                        .divide(oneHundred, 2, RoundingMode.HALF_UP);
+
+                response.setDiscountedPrice(discountedPrice);
             } else {
                 response.setDiscountedPrice(BigDecimal.ZERO);
             }
-            
+
             return response;
-        });
+        }).collect(Collectors.toList());
+
+        // 3. Trả về PageResponse đúng kiểu CourseResponse mà Frontend đợi
+        return PageResponse.<CourseResponse>builder()
+                .content(courseResponses)
+                .pageNumber(discountPage.getNumber())
+                .pageSize(discountPage.getSize())
+                .totalElements(discountPage.getTotalElements())
+                .totalPages(discountPage.getTotalPages())
+                .isLast(discountPage.isLast())
+                .isFirst(discountPage.isFirst())
+                .build();
     }
 
     @Override

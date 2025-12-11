@@ -20,6 +20,7 @@ import { languageToCountry } from "../../types/api"
 import { API_BASE_URL } from "../../api/apiConfig"
 import { gotoTab } from "../../utils/navigationRef"
 
+// --- POLYFILL ---
 if (!global.TextEncoder) {
   global.TextEncoder = TextEncoder;
 }
@@ -39,11 +40,12 @@ const getMaterialIconName = (iconName: string | undefined) => {
   return ICON_MAP[iconName] || iconName
 }
 
+// Cập nhật Interface để linh hoạt hơn (chấp nhận mọi cấu trúc trả về để debug)
 interface MatchHookResponse {
-  code: number;
-  message: string;
-  data?: MatchResponseData;
-  result?: MatchResponseData;
+  code?: number;
+  message?: string;
+  data?: any;   // Axios Wrapper hoặc Field data cũ
+  result?: any; // AppApiResponse field
 }
 
 interface FinalCallPreferences extends Omit<CallPreferences, 'learningLanguage'> {
@@ -239,14 +241,12 @@ const CallSetupScreen = ({ navigation }: any) => {
     setSearchStatusMessage(t("call.matchFound"));
     disconnectSocket();
 
-    setTimeout(() => {
-      setIsSearching(false);
-      gotoTab("ChatStack", "JitsiCallScreen", {
-        roomId: room.roomId,
-        isCaller: false,
-        preferences: preferences
-      })
-    }, 500);
+    setIsSearching(false);
+    gotoTab("ChatStack", "JitsiCallScreen", {
+      roomId: room.roomId,
+      isCaller: false,
+      preferences: preferences
+    })
   }, [preferences, navigation, disconnectSocket])
 
   const performSearch = useCallback(() => {
@@ -258,6 +258,7 @@ const CallSetupScreen = ({ navigation }: any) => {
     }
 
     connectSocket();
+    // Đặt lại flag để đảm bảo xử lý được match mới
     isMatchFoundRef.current = false;
 
     const requestPayload: CallPreferencesRequest = {
@@ -275,22 +276,31 @@ const CallSetupScreen = ({ navigation }: any) => {
       requestPayload,
       {
         onSuccess: (response: MatchHookResponse) => {
-          if (!isSearching) return;
+          // Nếu user đã bấm Cancel hoặc Socket đã bắt được sự kiện trước đó thì dừng
+          if (!isSearching || isMatchFoundRef.current) return;
 
-          const matchData = response.result || response.data;
+          const actualBody = response.data && !response.result ? response.data : response;
+          const matchResult = actualBody.result || actualBody.data || actualBody;
 
-          if (matchData && matchData.status === 'MATCHED' && matchData.room) {
-            console.log("🎯 Match found via REST API (Instant)");
-            handleMatchSuccess(matchData.room);
+          // LOGIC QUAN TRỌNG: Kiểm tra cả 2 trường hợp (Socket push hoặc API return)
+          if (matchResult && (matchResult.status === 'MATCHED' || matchResult.type === 'MATCH_FOUND') && matchResult.room) {
+            console.log("🎯 Match found via REST API (Polling Success)");
+            handleMatchSuccess(matchResult.room);
           }
           else {
-            console.log("⏳ Waiting in queue... Listening to Socket.");
+            console.log("⏳ Waiting in queue... Polling again in 3s...");
+
+            fallbackTimeout.current = setTimeout(() => {
+              performSearch();
+            }, 1000);
           }
         },
         onError: (error) => {
           console.error("Match API error:", error)
           if (isSearching) {
-            fallbackTimeout.current = setTimeout(performSearch, 10000);
+            fallbackTimeout.current = setTimeout(() => {
+              performSearch();
+            }, 2000);
           }
         }
       }
@@ -338,6 +348,7 @@ const CallSetupScreen = ({ navigation }: any) => {
     }
   }, [isSearching])
 
+  // ... (Phần Render UI giữ nguyên) ...
   const renderOptionButton = (options: any[], selectedValue: any, onSelect: (val: any) => void) => (
     <View style={styles.optionsContainer}>
       {options.map((option) => (

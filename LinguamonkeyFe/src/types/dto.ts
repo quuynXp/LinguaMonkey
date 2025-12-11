@@ -551,7 +551,7 @@ export interface MemorizationRequest {
     contentType: Enums.ContentType;
     contentId: string;
     noteText: string;
-    isFavorite: boolean;
+    favorite: boolean;
 }
 
 export interface MessageReactionRequest {
@@ -1549,7 +1549,7 @@ export interface MemorizationResponse {
     contentType: Enums.ContentType;
     contentId: string;
     noteText: string;
-    isFavorite: boolean;
+    favorite: boolean;
     createdAt: string;
     updatedAt: string;
 }

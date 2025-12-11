@@ -17,8 +17,7 @@ import {
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMemorizations } from "../../hooks/useMemorizations";
-import { useReminders } from "../../hooks/useReminders";
-import { MemorizationResponse, MemorizationRequest, UserReminderRequest } from "../../types/dto";
+import { MemorizationResponse, MemorizationRequest } from "../../types/dto";
 import * as Enums from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
@@ -32,10 +31,12 @@ const NotesScreen = ({ navigation, route }: any) => {
 
   const [selectedContentType, setSelectedContentType] = useState<string>("all");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newNote, setNewNote] = useState("");
-  const [selectedNoteType, setSelectedNoteType] = useState<"word" | "phrase" | "grammar">("word");
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [newNote, setNewNote] = useState("");
+  const [selectedNoteType, setSelectedNoteType] = useState<"word" | "phrase" | "grammar">("word");
 
   const [isReminderEnabled, setIsReminderEnabled] = useState(false);
   const [reminderHour, setReminderHour] = useState("09");
@@ -52,11 +53,9 @@ const NotesScreen = ({ navigation, route }: any) => {
     useUpdateMemorization,
   } = useMemorizations();
 
-  const { useCreateReminder } = useReminders();
-  const { mutate: createReminder, isPending: isCreatingReminder } = useCreateReminder();
-
   useEffect(() => {
     if (prefillContent) {
+      resetForm();
       setNewNote(prefillContent);
       setShowAddModal(true);
       setIsReminderEnabled(true);
@@ -79,12 +78,12 @@ const NotesScreen = ({ navigation, route }: any) => {
 
   const { mutate: createMemorization, isPending: isCreatingNote } = useCreateMemorization();
   const { mutate: deleteMemorization } = useDeleteMemorization();
-  const { mutate: updateMemorization } = useUpdateMemorization();
+  const { mutate: updateMemorization, isPending: isUpdatingNote } = useUpdateMemorization();
 
   const notesList = useMemo(() => {
     let list = (memorizationsPage?.data as MemorizationResponse[]) || [];
     if (showFavoritesOnly) {
-      list = list.filter(item => item.isFavorite);
+      list = list.filter(item => item.favorite);
     }
     if (searchQuery && !searchParams.keyword) {
       list = list.filter(n => n.noteText?.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -104,94 +103,133 @@ const NotesScreen = ({ navigation, route }: any) => {
     }
   };
 
-  const handleAddNote = () => {
+  const mapContentTypeToNoteType = (type: Enums.ContentType): "word" | "phrase" | "grammar" => {
+    switch (type) {
+      case Enums.ContentType.VOCABULARY: return "word";
+      case Enums.ContentType.FORMULA: return "grammar";
+      default: return "phrase";
+    }
+  }
+
+  const resetForm = () => {
+    setEditingNoteId(null);
+    setNewNote("");
+    setReminderTitle("");
+    setReminderHour("09");
+    setReminderMinute("00");
+    setReminderRepeat(Enums.RepeatType.DAILY);
+    setIsReminderEnabled(false);
+    setSelectedNoteType("word");
+  };
+
+  // --- LOGIC ĐÃ SỬA: FILL DATA CŨ KHI MỞ EDIT ---
+  const openEditModal = (item: MemorizationResponse) => {
+    setEditingNoteId(item.memorizationId);
+    setNewNote(item.noteText);
+    setSelectedNoteType(mapContentTypeToNoteType(item.contentType));
+
+    // Ép kiểu 'any' để lấy data reminder nếu backend có trả về
+    const itemData = item as any;
+
+    if (itemData.reminderTime) {
+      // Nếu có reminderTime (vd: "14:30") -> Bật switch và tách giờ
+      setIsReminderEnabled(true);
+      const [h, m] = itemData.reminderTime.split(':');
+      setReminderHour(h || "09");
+      setReminderMinute(m || "00");
+      setReminderRepeat(itemData.repeatType || Enums.RepeatType.DAILY);
+      setReminderTitle(itemData.reminderTitle || "");
+    } else {
+      // Nếu không có -> Reset về mặc định
+      setIsReminderEnabled(false);
+      setReminderHour("09");
+      setReminderMinute("00");
+      setReminderRepeat(Enums.RepeatType.DAILY);
+      setReminderTitle("");
+    }
+
+    setShowAddModal(true);
+  };
+
+  const handleSave = () => {
     if (!newNote.trim()) return;
     if (!user?.userId) {
       Alert.alert("Error", "User session missing. Please restart app.");
       return;
     }
 
-    // FIX HERE: Remove strict type declaration and use 'as MemorizationRequest'
-    // This tricks TypeScript into accepting the missing contentId key
-    const notePayload = {
+    const timeString = `${reminderHour}:${reminderMinute}`;
+
+    const basePayload = {
       userId: user.userId,
       contentType: mapNoteTypeToContentType(selectedNoteType),
       noteText: newNote.trim(),
-      isFavorite: false,
+      // Gửi data reminder lên server
+      isReminderEnabled: isReminderEnabled,
+      reminderTime: isReminderEnabled ? timeString : null,
+      repeatType: isReminderEnabled ? reminderRepeat : null,
+      reminderTitle: isReminderEnabled ? reminderTitle : null,
       ...(courseId ? { contentId: courseId } : {})
-    } as MemorizationRequest;
+    };
 
-    createMemorization(notePayload, {
-      onSuccess: (createdNote) => {
-        if (isReminderEnabled) {
-          handleCreateReminder(createdNote.memorizationId, createdNote.noteText);
-        } else {
-          finishAddProcess();
+    if (editingNoteId) {
+      const oldNote = notesList.find(n => n.memorizationId === editingNoteId);
+      const updatePayload = {
+        ...basePayload,
+        favorite: oldNote?.favorite || false,
+        ...(oldNote?.contentId ? { contentId: oldNote.contentId } : {})
+      };
+
+      updateMemorization({
+        id: editingNoteId,
+        req: updatePayload as any
+      }, {
+        onSuccess: () => {
+          setShowAddModal(false);
+          resetForm();
+          refetchMemorizations();
+        },
+        onError: (err) => {
+          console.error("Update Note Error:", err);
+          Alert.alert("Error", "Failed to update note");
         }
-      },
-      onError: (err) => {
-        console.error("Create Note Error:", err);
-        Alert.alert("Error", t("common.error"));
-      }
-    });
+      });
+
+    } else {
+      const createPayload = {
+        ...basePayload,
+        favorite: false,
+      };
+
+      createMemorization(createPayload as any, {
+        onSuccess: () => {
+          setShowAddModal(false);
+          resetForm();
+          refetchMemorizations();
+        },
+        onError: (err) => {
+          console.error("Create Note Error:", err);
+          Alert.alert("Error", t("common.error"));
+        }
+      });
+    }
   };
 
   const handleToggleFavorite = (item: MemorizationResponse) => {
-    // FIX HERE: Same logic applied here
     const cleanPayload = {
       userId: item.userId,
       contentType: item.contentType,
       noteText: item.noteText,
-      isFavorite: !item.isFavorite,
+      favorite: !item.favorite,
       ...(item.contentId ? { contentId: item.contentId } : {})
-    } as MemorizationRequest;
+    };
 
     updateMemorization({
       id: item.memorizationId,
-      req: cleanPayload
+      req: cleanPayload as any
     }, {
       onError: () => Alert.alert("Error", "Failed to update favorite status")
     });
-  };
-
-  const handleCreateReminder = (targetId: string, noteText: string) => {
-    const timeStringHHMM = `${reminderHour}:${reminderMinute}`;
-    const finalTitle = reminderTitle.trim() ? reminderTitle : t("notes.reminderDefaultTitle", { defaultValue: "Note Reminder" });
-    const finalMessage = noteText.length > 100 ? noteText.substring(0, 100) + "..." : noteText;
-
-    const reminderPayload: UserReminderRequest = {
-      title: finalTitle,
-      message: finalMessage,
-      time: timeStringHHMM,
-      date: TimeHelper.formatDateForApi(new Date()),
-      repeatType: reminderRepeat,
-      targetType: Enums.TargetType.NOTE,
-      targetId: targetId,
-      enabled: true
-    };
-
-    createReminder(reminderPayload, {
-      onSuccess: () => {
-        Alert.alert(t("common.success"), t("notes.reminderSetSuccess"));
-        finishAddProcess();
-      },
-      onError: (err) => {
-        console.log("Reminder Error Payload", reminderPayload);
-        console.error("Create Reminder Error:", err);
-        Alert.alert(t("common.warning"), t("notes.noteSavedReminderFailed"));
-        finishAddProcess();
-      }
-    });
-  };
-
-  const finishAddProcess = () => {
-    setNewNote("");
-    setReminderTitle("");
-    setReminderHour("09");
-    setReminderMinute("00");
-    setIsReminderEnabled(false);
-    setShowAddModal(false);
-    refetchMemorizations();
   };
 
   const handleDelete = (id: string) => {
@@ -213,14 +251,34 @@ const NotesScreen = ({ navigation, route }: any) => {
         <Text style={styles.noteDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
       </View>
       <Text style={styles.noteText}>{item.noteText}</Text>
+
+      {/* Hiển thị icon đồng hồ nếu note này có hẹn giờ (chỉ hiển thị nếu backend trả data) */}
+      {(item as any).reminderTime && (
+        <View style={{ flexDirection: 'row', marginBottom: 8, alignItems: 'center' }}>
+          <Icon name="alarm" size={14} color="#6B7280" />
+          <Text style={{ fontSize: 12, color: '#6B7280', marginLeft: 4 }}>
+            {(item as any).reminderTime}
+          </Text>
+        </View>
+      )}
+
       <View style={styles.noteFooter}>
         <TouchableOpacity
           onPress={() => handleToggleFavorite(item)}
           style={styles.iconBtn}
         >
-          <Icon name={item.isFavorite ? "star" : "star-border"} size={20} color={item.isFavorite ? "#F59E0B" : "#9CA3AF"} />
+          <Icon name={item.favorite ? "star" : "star-border"} size={20} color={item.favorite ? "#F59E0B" : "#9CA3AF"} />
         </TouchableOpacity>
+
         <View style={{ flex: 1 }} />
+
+        <TouchableOpacity
+          onPress={() => openEditModal(item)}
+          style={[styles.iconBtn, { marginRight: 8 }]}
+        >
+          <Icon name="edit" size={20} color="#37352F" />
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={() => handleDelete(item.memorizationId)} style={styles.iconBtn}>
           <Icon name="delete-outline" size={20} color="#EF4444" />
         </TouchableOpacity>
@@ -272,7 +330,13 @@ const NotesScreen = ({ navigation, route }: any) => {
         )}
       </Animated.View>
 
-      <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)}>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => {
+          resetForm();
+          setShowAddModal(true);
+        }}
+      >
         <Icon name="add" size={28} color="#FFF" />
       </TouchableOpacity>
 
@@ -280,7 +344,9 @@ const NotesScreen = ({ navigation, route }: any) => {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t("notes.newNote") ?? "New Note"}</Text>
+              <Text style={styles.modalTitle}>
+                {editingNoteId ? (t("notes.editNote") ?? "Edit Note") : (t("notes.newNote") ?? "New Note")}
+              </Text>
               <TouchableOpacity onPress={() => setShowAddModal(false)}>
                 <Icon name="close" size={24} color="#37352F" />
               </TouchableOpacity>
@@ -307,7 +373,7 @@ const NotesScreen = ({ navigation, route }: any) => {
                 placeholder={t("notes.inputPlaceholder") ?? "Type your note here..."}
                 value={newNote}
                 onChangeText={setNewNote}
-                autoFocus
+                autoFocus={!editingNoteId}
               />
 
               <View style={styles.reminderSection}>
@@ -391,13 +457,15 @@ const NotesScreen = ({ navigation, route }: any) => {
               </View>
 
               <TouchableOpacity
-                style={[styles.saveButton, (!newNote.trim() || isCreatingNote || isCreatingReminder) && styles.disabledBtn]}
-                onPress={handleAddNote}
-                disabled={!newNote.trim() || isCreatingNote || isCreatingReminder}
+                style={[styles.saveButton, (!newNote.trim() || isCreatingNote || isUpdatingNote) && styles.disabledBtn]}
+                onPress={handleSave}
+                disabled={!newNote.trim() || isCreatingNote || isUpdatingNote}
               >
-                {(isCreatingNote || isCreatingReminder) ?
+                {(isCreatingNote || isUpdatingNote) ?
                   <ActivityIndicator color="#FFF" /> :
-                  <Text style={styles.saveButtonText}>{t("common.save")}</Text>
+                  <Text style={styles.saveButtonText}>
+                    {editingNoteId ? (t("common.update") ?? "Update") : (t("common.save") ?? "Save")}
+                  </Text>
                 }
               </TouchableOpacity>
               <View style={{ height: 20 }} />

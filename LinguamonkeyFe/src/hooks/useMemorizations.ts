@@ -128,7 +128,7 @@ export const useMemorizations = () => {
   const useToggleFavorite = () => {
     return useMutation({
       mutationFn: async ({ id, currentReq }: { id: string; currentReq: MemorizationRequest }) => {
-        const updatedReq = { ...currentReq, isFavorite: !currentReq.isFavorite };
+        const updatedReq = { ...currentReq, isFavorite: !currentReq.favorite };
         const { data } = await instance.put<AppApiResponse<MemorizationResponse>>(
           `/api/v1/memorizations/${id}`,
           updatedReq

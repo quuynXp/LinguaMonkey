@@ -241,8 +241,8 @@ export const useVideoCalls = () => {
 
   const useCancelFindMatch = () => {
     return useMutation({
-      mutationFn: async () => {
-        await instance.post(`${MATCHMAKING_BASE}/cancel`);
+      mutationFn: async (payload: { userId: string }) => {
+        await instance.post(`${MATCHMAKING_BASE}/cancel`, payload);
       }
     });
   };

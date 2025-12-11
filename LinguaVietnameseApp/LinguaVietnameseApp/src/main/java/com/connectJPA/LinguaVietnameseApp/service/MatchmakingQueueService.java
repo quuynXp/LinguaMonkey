@@ -80,59 +80,52 @@ public class MatchmakingQueueService {
         waitingUsers.remove(partnerId);
     }
 
-    /**
-     * Core atomic matching logic.
-     * 1. Checks if current user was already matched by someone else (Passive).
-     * 2. Tries to find and atomically claim a partner (Active).
-     */
     public MatchResult findMatch(UUID currentUserId) {
         MatchResult passiveMatch = pendingMatches.remove(currentUserId);
         if (passiveMatch != null) {
-            waitingUsers.remove(currentUserId); // Ensure we are out of queue
+            waitingUsers.remove(currentUserId); 
             return passiveMatch;
         }
 
         QueueItem currentUser = waitingUsers.get(currentUserId);
-        if (currentUser == null) return null;
-
-        int currentThreshold = getCurrentCriteriaThreshold(currentUserId);
+        int queueSize = waitingUsers.size();
+        int currentThreshold = (queueSize < 5) ? 0 : getCurrentCriteriaThreshold(currentUserId);
 
         Optional<QueueItem> bestMatch = waitingUsers.values().stream()
-                .filter(candidate -> !candidate.getUserId().equals(currentUserId))
-                .map(candidate -> {
-                    int score = calculateCompatibilityScore(currentUser.getPreferences(), candidate.getPreferences());
-                    return new AbstractMap.SimpleEntry<>(candidate, score);
-                })
-                .filter(entry -> entry.getValue() >= currentThreshold)
-                .sorted((e1, e2) -> {
-                    int scoreCompare = Integer.compare(e2.getValue(), e1.getValue());
-                    if (scoreCompare != 0) return scoreCompare;
-                    
-                    long wait1 = getSecondsWaited(e1.getKey().getUserId());
-                    long wait2 = getSecondsWaited(e2.getKey().getUserId());
-                    return Long.compare(wait2, wait1);
-                })
-                .map(AbstractMap.SimpleEntry::getKey)
-                .findFirst();
+            .filter(candidate -> !candidate.getUserId().equals(currentUserId))
+            .map(candidate -> {
+                int score = calculateCompatibilityScore(currentUser.getPreferences(), candidate.getPreferences());
+                return new AbstractMap.SimpleEntry<>(candidate, score);
+            })
+            .filter(entry -> entry.getValue() >= currentThreshold)
+            .sorted((e1, e2) -> {
+                int scoreCompare = Integer.compare(e2.getValue(), e1.getValue());
+                if (scoreCompare != 0) return scoreCompare;
+                
+                long wait1 = getSecondsWaited(e1.getKey().getUserId());
+                long wait2 = getSecondsWaited(e2.getKey().getUserId());
+                return Long.compare(wait2, wait1);
+            })
+            .map(AbstractMap.SimpleEntry::getKey)
+            .findFirst();
 
         if (bestMatch.isPresent()) {
-            QueueItem partner = bestMatch.get();
-            UUID partnerId = partner.getUserId();
+        QueueItem partner = bestMatch.get();
+        UUID partnerId = partner.getUserId();
 
-            if (waitingUsers.remove(partnerId) != null) {
-                waitingUsers.remove(currentUserId);
+        if (waitingUsers.remove(partnerId) != null) {
+            waitingUsers.remove(currentUserId);
 
-                UUID roomId = UUID.randomUUID();
-                String roomName = "Room-" + roomId.toString().substring(0, 8);
-                int score = calculateCompatibilityScore(currentUser.getPreferences(), partner.getPreferences());
+            UUID roomId = UUID.randomUUID();
+            String roomName = "Room-" + roomId.toString().substring(0, 8);
+            int score = calculateCompatibilityScore(currentUser.getPreferences(), partner.getPreferences());
 
-                MatchResult partnerResult = new MatchResult(currentUserId, score, roomId, roomName);
-                pendingMatches.put(partnerId, partnerResult);
+            MatchResult partnerResult = new MatchResult(currentUserId, score, roomId, roomName);
+            pendingMatches.put(partnerId, partnerResult); 
 
-                return new MatchResult(partnerId, score, roomId, roomName);
-            }
+            return new MatchResult(partnerId, score, roomId, roomName);
         }
-
+    }
         return null;
     }
 

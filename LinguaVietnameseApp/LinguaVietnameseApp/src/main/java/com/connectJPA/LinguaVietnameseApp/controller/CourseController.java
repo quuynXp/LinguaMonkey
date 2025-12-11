@@ -6,6 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionEnrollmentRe
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CreatorDashboardResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.PageResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
@@ -69,21 +70,17 @@ public class CourseController {
                 .build();
     }
 
-    @Operation(summary = "Get special offers (active discounts)")
     @GetMapping("/special-offers")
-    public AppApiResponse<Page<CourseResponse>> getSpecialOffers(
+    public AppApiResponse<PageResponse<CourseResponse>> getSpecialOffers(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String languageCode,
-            @RequestParam(required = false) Integer minRating,
-            Pageable pageable,
-            Locale locale) {
-
-        Page<CourseResponse> offers = courseService.getSpecialOffers(keyword, languageCode, minRating, pageable);
-
-        return AppApiResponse.<Page<CourseResponse>>builder()
-                .code(200)
-                .message(messageSource.getMessage("course.list.success", null, locale))
-                .result(offers)
+            @RequestParam(required = false) Float minRating,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        PageResponse<CourseResponse> result = courseService.getSpecialOffers(keyword, languageCode, minRating, page, size);
+        return AppApiResponse.<PageResponse<CourseResponse>>builder()
+                .result(result)
                 .build();
     }
 

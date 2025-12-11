@@ -1,650 +1,3 @@
-// import React, { useEffect, useState, useRef, useCallback } from 'react';
-// import {
-//   View,
-//   Text,
-//   TouchableOpacity,
-//   Modal,
-//   PermissionsAndroid,
-//   Platform,
-//   ActivityIndicator,
-//   Dimensions,
-//   Alert
-// } from 'react-native';
-// import {
-//   RTCView,
-//   RTCIceCandidate,
-//   RTCSessionDescription,
-//   mediaDevices,
-//   RTCPeerConnection,
-//   MediaStream
-// } from 'react-native-webrtc';
-// import { useTranslation } from 'react-i18next';
-// import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
-// import { useAppStore } from '../../stores/appStore';
-// import { useUserStore } from '../../stores/UserStore';
-// import { createScaledSheet } from '../../utils/scaledStyles';
-// import { useTokenStore } from '../../stores/tokenStore';
-// import { API_BASE_URL } from '../../api/apiConfig';
-// import LiveAudioStream from 'react-native-live-audio-stream';
-// import ScreenLayout from '../../components/layout/ScreenLayout';
-// import { useVideoCalls } from '../../hooks/useVideos';
-// import { VideoCallStatus } from '../../types/enums';
-// import Icon from 'react-native-vector-icons/MaterialIcons';
-
-// type WebRTCParams = {
-//   WebRTCCall: {
-//     roomId: string;
-//     videoCallId: string;
-//     isCaller?: boolean;
-//     mode?: 'RANDOM' | 'GROUP';
-//   };
-// };
-
-// type SubtitleData = {
-//   originalFull: string;
-//   originalLang: string;
-//   translated: string;
-//   translatedLang: string;
-//   senderId: string;
-//   status?: 'processing' | 'complete' | 'noise';
-// };
-
-// const iceServers = [
-//   { urls: 'stun:stun.l.google.com:19302' },
-//   { urls: 'stun:stun1.l.google.com:19302' },
-// ];
-
-// const WebRTCCallScreen = () => {
-//   const { t } = useTranslation();
-//   const route = useRoute<RouteProp<WebRTCParams, 'WebRTCCall'>>();
-//   const navigation = useNavigation();
-//   const { roomId, videoCallId } = route.params;
-
-//   const { user } = useUserStore();
-//   const accessToken = useTokenStore.getState().accessToken;
-//   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
-
-//   // STORE: Get settings from AppStore
-//   const { callPreferences, setCallPreferences } = useAppStore();
-
-//   const signalReconnectTimeout = useRef<any>(null);
-//   const audioReconnectTimeout = useRef<any>(null);
-//   const isManuallyClosed = useRef(false);
-
-//   const { useUpdateVideoCall } = useVideoCalls();
-//   const { mutate: updateCallStatus } = useUpdateVideoCall();
-//   const subtitleTimeoutRef = useRef<any>(null);
-
-//   const [nativeLang] = useState(defaultNativeLangCode);
-//   const [spokenLang] = useState('auto');
-
-//   // UI State now backed by Store
-//   const [showSettings, setShowSettings] = useState(false);
-//   const [fullSubtitle, setFullSubtitle] = useState<SubtitleData | null>(null);
-
-//   // Local state initialized from store
-//   const [isMicOn, setIsMicOn] = useState(callPreferences.micEnabled);
-//   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-//   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
-//   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
-
-//   // WEBSOCKET REFS
-//   const wsSignal = useRef<WebSocket | null>(null);
-//   const wsAudio = useRef<WebSocket | null>(null);
-
-//   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
-//   const iceCandidatesQueue = useRef<Map<string, RTCIceCandidate[]>>(new Map());
-//   const processingRef = useRef<{ lastUpdate: number, data: SubtitleData | null }>({ lastUpdate: 0, data: null });
-//   const localStreamRef = useRef<MediaStream | null>(null);
-//   const pingInterval = useRef<any>(null);
-
-//   // --- AUDIO CONFIG ---
-//   // Change source to 0 (DEFAULT) to avoid conflict with WebRTC (VOICE_COMMUNICATION)
-//   const audioOptions = {
-//     sampleRate: 16000,
-//     channels: 1,
-//     bitsPerSample: 16,
-//     audioSource: 0, // 0=DEFAULT. Avoid 6 (VoiceRec) when in call
-//     bufferSize: 4096, // Increased buffer slightly
-//     wavFile: 'temp.wav'
-//   };
-
-//   const limitBandwidth = (sdp: string, bitrate: number) => {
-//     const modifier = 'b=AS:' + bitrate;
-//     if (sdp.indexOf('b=AS:') > -1) {
-//       return sdp.replace(/b=AS:\d+/g, modifier);
-//     } else {
-//       return sdp.replace(/c=IN IP4 ([\d\.]+)\r\n/g, 'c=IN IP4 $1\r\n' + modifier + '\r\n');
-//     }
-//   };
-
-//   // --- 1. DEFINITIONS ---
-
-//   const getMediaStream = useCallback(async () => {
-//     if (Platform.OS === 'android') {
-//       await PermissionsAndroid.requestMultiple([
-//         PermissionsAndroid.PERMISSIONS.CAMERA,
-//         PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
-//       ]);
-//     }
-//     try {
-//       const stream = await mediaDevices.getUserMedia({
-//         audio: true,
-//         video: {
-//           width: { ideal: 320 },
-//           height: { ideal: 480 },
-//           frameRate: { min: 15, ideal: 20, max: 24 },
-//           facingMode: 'user'
-//         }
-//       });
-//       return stream;
-//     } catch (e) {
-//       console.error("Error getting media stream:", e);
-//       Alert.alert(t('error'), t('cannot_access_camera_mic') || 'Không thể truy cập Camera/Mic');
-//       return null;
-//     }
-//   }, [t]);
-
-//   const sendSignalingMessage = useCallback((meta: any, payloadData?: any) => {
-//     if (wsSignal.current?.readyState === WebSocket.OPEN) {
-//       wsSignal.current.send(JSON.stringify({
-//         type: meta.type === 'JOIN_ROOM' ? 'JOIN_ROOM' : 'webrtc_signal',
-//         roomId,
-//         senderId: user?.userId,
-//         payload: { ...meta, ...payloadData }
-//       }));
-//     }
-//   }, [roomId, user?.userId]);
-
-//   const startPing = useCallback(() => {
-//     if (pingInterval.current) clearInterval(pingInterval.current);
-//     pingInterval.current = setInterval(() => sendSignalingMessage({ type: 'PING' }), 5000);
-//   }, [sendSignalingMessage]);
-
-//   const stopPing = useCallback(() => {
-//     if (pingInterval.current) { clearInterval(pingInterval.current); pingInterval.current = null; }
-//   }, []);
-
-//   const cleanupCall = useCallback(() => {
-//     isManuallyClosed.current = true;
-//     stopPing();
-
-//     if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
-//     if (signalReconnectTimeout.current) clearTimeout(signalReconnectTimeout.current);
-//     if (audioReconnectTimeout.current) clearTimeout(audioReconnectTimeout.current);
-
-//     try { LiveAudioStream.stop(); } catch (e) { }
-
-//     localStreamRef.current?.getTracks().forEach(track => { track.stop(); track.enabled = false; });
-//     setLocalStream(null);
-
-//     peerConnections.current.forEach(pc => pc.close());
-//     peerConnections.current.clear();
-//     setRemoteStreams(new Map());
-
-//     if (wsSignal.current) { wsSignal.current.close(); wsSignal.current = null; }
-//     if (wsAudio.current) { wsAudio.current.close(); wsAudio.current = null; }
-//   }, [stopPing]);
-
-//   const handleCallEnd = useCallback(() => {
-//     cleanupCall();
-//     if (videoCallId && user?.userId) {
-//       updateCallStatus({ id: videoCallId, payload: { callerId: user.userId, status: VideoCallStatus.ENDED } });
-//     }
-//     navigation.goBack();
-//   }, [cleanupCall, videoCallId, user?.userId, updateCallStatus, navigation]);
-
-//   const handlePeerDisconnect = useCallback((partnerId: string) => {
-//     const pc = peerConnections.current.get(partnerId);
-//     if (pc) { pc.close(); peerConnections.current.delete(partnerId); }
-//     setRemoteStreams(prev => {
-//       const newMap = new Map(prev);
-//       newMap.delete(partnerId);
-//       return newMap;
-//     });
-//   }, []);
-
-//   const processIceQueue = useCallback(async (partnerId: string, pc: RTCPeerConnection) => {
-//     const queue = iceCandidatesQueue.current.get(partnerId);
-//     if (queue && queue.length > 0) {
-//       for (const candidate of queue) await pc.addIceCandidate(candidate);
-//       iceCandidatesQueue.current.delete(partnerId);
-//     }
-//   }, []);
-
-//   const createPeerConnection = useCallback(async (partnerId: string, shouldCreateOffer: boolean) => {
-//     if (peerConnections.current.has(partnerId)) return peerConnections.current.get(partnerId);
-
-//     console.log(`🛠 Creating PC for ${partnerId}`);
-//     const pc = new RTCPeerConnection({ iceServers });
-//     const pcAny = pc as any;
-//     peerConnections.current.set(partnerId, pc);
-
-//     if (localStreamRef.current) {
-//       localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
-//     }
-
-//     pcAny.onicecandidate = (event: any) => {
-//       if (event.candidate) {
-//         sendSignalingMessage({ type: 'ice_candidate', targetId: partnerId }, { candidate: event.candidate });
-//       }
-//     };
-
-//     pcAny.ontrack = (event: any) => {
-//       if (event.streams && event.streams[0]) {
-//         console.log(`🎥 Stream received from ${partnerId}`);
-//         event.streams[0].getAudioTracks().forEach((track: any) => { track.enabled = true; });
-//         setRemoteStreams(prev => {
-//           const newMap = new Map(prev);
-//           newMap.set(partnerId, event.streams[0]);
-//           return newMap;
-//         });
-//         setConnectionStatus("Connected");
-//       }
-//     };
-
-//     pcAny.oniceconnectionstatechange = () => {
-//       if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-//         handlePeerDisconnect(partnerId);
-//       }
-//     };
-
-//     if (shouldCreateOffer) {
-//       try {
-//         const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-//         offer.sdp = limitBandwidth(offer.sdp, 256);
-//         await pc.setLocalDescription(offer);
-//         sendSignalingMessage({ type: 'offer', targetId: partnerId }, offer);
-//       } catch (err) { console.error(err); }
-//     }
-//     return pc;
-//   }, [sendSignalingMessage, handlePeerDisconnect]);
-
-//   const handleSignalingData = useCallback(async (senderId: string, payload: any) => {
-//     const type = payload.type;
-//     // console.log(`📩 Signal [${type}] from ${senderId.substring(0, 5)}...`);
-
-//     if (type === 'JOIN_ROOM') {
-//       setConnectionStatus(`Partner Joined. Connecting...`);
-//       await createPeerConnection(senderId, true);
-//     } else if (type === 'offer') {
-//       const pc = await createPeerConnection(senderId, false);
-//       if (pc) {
-//         if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
-//           console.warn("⚠️ Received Offer but state is " + pc.signalingState);
-//         }
-//         await pc.setRemoteDescription(new RTCSessionDescription(payload));
-//         await processIceQueue(senderId, pc);
-//         const answer = await pc.createAnswer();
-//         await pc.setLocalDescription(answer);
-//         sendSignalingMessage({ type: 'answer', targetId: senderId }, answer);
-//       }
-//     } else if (type === 'answer') {
-//       const pc = peerConnections.current.get(senderId);
-//       if (pc) {
-//         if (pc.signalingState === 'have-local-offer') {
-//           await pc.setRemoteDescription(new RTCSessionDescription(payload));
-//           await processIceQueue(senderId, pc);
-//         }
-//       }
-//     } else if (type === 'ice_candidate') {
-//       const pc = peerConnections.current.get(senderId);
-//       const candidate = new RTCIceCandidate(payload.candidate);
-//       if (pc && pc.remoteDescription && pc.signalingState !== 'closed') {
-//         await pc.addIceCandidate(candidate);
-//       } else {
-//         const queue = iceCandidatesQueue.current.get(senderId) || [];
-//         queue.push(candidate);
-//         iceCandidatesQueue.current.set(senderId, queue);
-//       }
-//     }
-//   }, [createPeerConnection, processIceQueue, sendSignalingMessage]);
-
-//   const initSubtitleAudioStream = useCallback(async () => {
-//     if (Platform.OS === 'android') {
-//       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-//       if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
-//     }
-
-//     // Increased delay to 2s to ensure WebRTC is fully established before we try to hook the mic
-//     setTimeout(() => {
-//       if (isManuallyClosed.current) return;
-//       try {
-//         console.log("🎤 Initializing LiveAudioStream...");
-//         LiveAudioStream.stop();
-//         LiveAudioStream.init(audioOptions);
-
-//         LiveAudioStream.on('data', (base64Data: string) => {
-//           // IMPORTANT: Check ref/state directly inside callback to ensure we respect mute
-//           if (!wsAudio.current || wsAudio.current.readyState !== WebSocket.OPEN) return;
-
-//           // Send audio only if Mic is enabled
-//           // (We use a ref check pattern implicitly via closure if we didn't add it to dependencies)
-//           // But since isMicOn is in deps, this callback resets on toggle. 
-//           // However, LiveAudioStream.start/stop is cleaner.
-//           try {
-//             const binaryString = atob(base64Data);
-//             const len = binaryString.length;
-//             const bytes = new Uint8Array(len);
-//             for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-//             wsAudio.current.send(bytes.buffer);
-//           } catch (err) { console.error("Audio send error", err) }
-//         });
-
-//         // Only start if mic is enabled
-//         if (isMicOn) {
-//           LiveAudioStream.start();
-//           console.log("🎤 LiveAudioStream START command sent");
-//         }
-//       } catch (e) { console.error("LiveAudioStream Init Error:", e); }
-//     }, 2000);
-
-//   }, [isMicOn]);
-
-//   const handleSubtitleMessage = useCallback((data: any) => {
-//     if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
-
-//     const newData: SubtitleData = {
-//       originalFull: data.originalFull || '',
-//       originalLang: data.originalLang || 'en',
-//       translated: data.translated || '',
-//       translatedLang: data.translatedLang || nativeLang,
-//       senderId: data.senderId,
-//       status: data.status,
-//     };
-
-//     if (data.status === 'processing') {
-//       processingRef.current.data = newData;
-//       const now = Date.now();
-//       if (now - processingRef.current.lastUpdate > 300) {
-//         setFullSubtitle(newData);
-//         processingRef.current.lastUpdate = now;
-//       }
-//     } else {
-//       setFullSubtitle(newData);
-//     }
-
-//     if (data.status === 'complete' || data.status === 'noise') {
-//       subtitleTimeoutRef.current = setTimeout(() => setFullSubtitle(null), 4000);
-//     }
-//   }, [nativeLang]);
-
-//   // --- SOCKET CONNECTIONS ---
-
-//   const connectSignalingSocket = useCallback(() => {
-//     if (!roomId || !accessToken || isManuallyClosed.current) return;
-
-//     if (signalReconnectTimeout.current) clearTimeout(signalReconnectTimeout.current);
-//     if (wsSignal.current) { wsSignal.current.close(); wsSignal.current = null; }
-
-//     const normalizedRoomId = String(roomId).trim().toLowerCase();
-//     let cleanBase = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
-//     const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
-//     const url = `${protocol}${cleanBase}/ws/py/signal?token=${accessToken}&roomId=${normalizedRoomId}`;
-
-//     // console.log(`🔌 Connecting SIGNAL: ${url}`);
-//     const ws = new WebSocket(url);
-//     wsSignal.current = ws;
-
-//     ws.onopen = () => {
-//       // console.log("✅ Signal Socket OPEN");
-//       setConnectionStatus("Connected. Waiting...");
-//       setTimeout(() => sendSignalingMessage({ type: 'JOIN_ROOM' }), 500);
-//       startPing();
-//     };
-
-//     ws.onmessage = async (e) => {
-//       try {
-//         const data = JSON.parse(e.data);
-//         if (data.type === 'webrtc_signal' || data.type === 'JOIN_ROOM') {
-//           const senderId = String(data.senderId || 'unknown');
-//           if (senderId === String(user?.userId)) return;
-//           const payload = data.payload || data;
-//           await handleSignalingData(senderId, payload);
-//         }
-//       } catch (err) { }
-//     };
-
-//     ws.onerror = (e: any) => console.log("❌ Signal WS Error:", e.message);
-//     ws.onclose = (e) => {
-//       if (!isManuallyClosed.current) {
-//         signalReconnectTimeout.current = setTimeout(connectSignalingSocket, 3000);
-//       }
-//     };
-//   }, [roomId, accessToken, user?.userId, sendSignalingMessage, startPing, handleSignalingData]);
-
-//   const connectAudioSocket = useCallback(() => {
-//     if (!roomId || !accessToken || isManuallyClosed.current) return;
-//     if (audioReconnectTimeout.current) clearTimeout(audioReconnectTimeout.current);
-//     if (wsAudio.current) { wsAudio.current.close(); wsAudio.current = null; }
-
-//     const normalizedRoomId = String(roomId).trim().toLowerCase();
-//     let cleanBase = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
-//     const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
-//     const url = `${protocol}${cleanBase}/ws/py/subtitles-audio?token=${accessToken}&roomId=${normalizedRoomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
-
-//     console.log(`🎤 Connecting AUDIO: ${url}`);
-//     const ws = new WebSocket(url);
-//     wsAudio.current = ws;
-
-//     ws.onopen = () => {
-//       console.log("✅ Audio Socket OPEN");
-//       initSubtitleAudioStream();
-//     };
-//     ws.onmessage = (e) => {
-//       try {
-//         const data = JSON.parse(e.data);
-//         if (data.type === 'subtitle') handleSubtitleMessage(data);
-//       } catch (_) { }
-//     };
-//     ws.onclose = () => {
-//       if (!isManuallyClosed.current) {
-//         audioReconnectTimeout.current = setTimeout(connectAudioSocket, 5000);
-//       }
-//     };
-//   }, [roomId, accessToken, nativeLang, spokenLang, initSubtitleAudioStream, handleSubtitleMessage]);
-
-//   const handleRetryConnection = () => {
-//     setConnectionStatus("Retrying...");
-//     connectSignalingSocket();
-//     peerConnections.current.forEach(pc => pc.close());
-//     peerConnections.current.clear();
-//     setRemoteStreams(new Map());
-//   };
-
-//   // --- EFFECT ---
-//   useEffect(() => {
-//     let isMounted = true;
-//     const initializeCall = async () => {
-//       console.log("🚀 Starting initialization...");
-//       const stream = await getMediaStream();
-//       if (isMounted && stream) {
-//         setLocalStream(stream);
-//         localStreamRef.current = stream;
-
-//         // Apply Initial Mic State from Store
-//         stream.getAudioTracks().forEach(track => {
-//           track.enabled = callPreferences.micEnabled;
-//         });
-
-//         connectSignalingSocket();
-//         connectAudioSocket();
-//       } else {
-//         setConnectionStatus("Camera/Mic Error");
-//       }
-//     };
-//     initializeCall();
-//     return () => {
-//       isMounted = false;
-//       cleanupCall();
-//     };
-//   }, []);
-
-//   // --- TOGGLE FUNCTIONS ---
-
-//   const toggleMic = () => {
-//     const newState = !isMicOn;
-//     setIsMicOn(newState);
-//     setCallPreferences({ micEnabled: newState });
-
-//     // 1. Toggle WebRTC Audio (Peer)
-//     if (localStreamRef.current) {
-//       localStreamRef.current.getAudioTracks().forEach(track => {
-//         track.enabled = newState;
-//       });
-//     }
-
-//     // 2. Toggle AI Audio Stream (Subtitle)
-//     if (newState) {
-//       LiveAudioStream.start();
-//     } else {
-//       LiveAudioStream.stop();
-//     }
-//   };
-
-//   const changeSubtitleMode = (mode: 'dual' | 'native' | 'original' | 'off') => {
-//     setCallPreferences({ subtitleMode: mode });
-//     setShowSettings(false);
-//   };
-
-//   // --- RENDER ---
-//   const renderRemoteVideos = () => {
-//     const streams = Array.from(remoteStreams.values());
-//     if (streams.length === 0) {
-//       return (
-//         <View style={styles.remoteVideoPlaceholder}>
-//           <ActivityIndicator size="large" color="#4f46e5" />
-//           <Text style={styles.statusText}>{connectionStatus}</Text>
-//           <TouchableOpacity style={styles.retryButton} onPress={handleRetryConnection}>
-//             <Text style={styles.retryText}>{t('retry') || 'Thử lại'}</Text>
-//           </TouchableOpacity>
-//         </View>
-//       );
-//     }
-//     return (
-//       <View style={styles.gridContainer}>
-//         {streams.map((stream) => (
-//           <View key={stream.id} style={{ width: '100%', height: '100%' }}>
-//             <RTCView streamURL={stream.toURL()} style={{ flex: 1 }} objectFit="cover" />
-//           </View>
-//         ))}
-//       </View>
-//     );
-//   };
-
-//   const renderSubtitleText = (data: SubtitleData) => {
-//     const mode = callPreferences.subtitleMode;
-//     if (mode === 'off') return null;
-//     if (!data.originalFull.trim()) return null;
-
-//     const isMe = data.senderId === user?.userId;
-//     const originalText = data.originalFull;
-//     const translatedText = data.translated;
-
-//     if (isMe) {
-//       return (
-//         <View style={styles.subtitleContainer}>
-//           <Text style={[styles.subtitleSender, { textAlign: 'center', color: '#4f46e5' }]}>{t('you') || 'Bạn'}</Text>
-//           <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }]}>{originalText}</Text>
-//         </View>
-//       )
-//     }
-
-//     let displayOriginal = mode === 'dual' || mode === 'original' || !translatedText;
-//     let displayTranslated = (mode === 'dual' || mode === 'native') && !!translatedText;
-
-//     if (mode === 'native' && !translatedText) displayOriginal = false;
-
-//     return (
-//       <View style={styles.subtitleContainer}>
-//         <Text style={[styles.subtitleSender, { textAlign: 'center' }]}>{t('partner') || 'Đối phương'}</Text>
-//         {displayOriginal && <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }]}>{originalText}</Text>}
-//         {displayTranslated && <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translatedText}</Text>}
-//         {displayTranslated && !translatedText && originalText !== "hmm..." && (
-//           <Text style={[styles.subtitleTextTranslated, { textAlign: 'center', color: '#9ca3af' }]}>{t('translating') || '...'}</Text>
-//         )}
-//       </View>
-//     );
-//   };
-
-//   return (
-//     <ScreenLayout>
-//       <View style={styles.container}>
-//         {renderRemoteVideos()}
-//         {localStream && (
-//           <View style={styles.localVideoContainer}>
-//             <RTCView streamURL={localStream.toURL()} style={styles.localVideo} objectFit="cover" zOrder={1} />
-//           </View>
-//         )}
-//         <TouchableOpacity style={styles.endCallButton} onPress={handleCallEnd}>
-//           <Icon name="call-end" size={30} color="white" />
-//         </TouchableOpacity>
-
-//         {callPreferences.subtitleMode !== 'off' && fullSubtitle && renderSubtitleText(fullSubtitle)}
-
-//         <View style={styles.controls}>
-//           <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
-//             <Icon name="settings" size={24} color="white" />
-//           </TouchableOpacity>
-//           <TouchableOpacity
-//             style={[styles.iconButton, { backgroundColor: isMicOn ? '#22c55e' : '#ef4444' }]}
-//             onPress={toggleMic}>
-//             <Icon name={isMicOn ? "mic" : "mic-off"} size={24} color="white" />
-//           </TouchableOpacity>
-//         </View>
-
-//         <Modal visible={showSettings} transparent animationType="slide">
-//           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
-//           <View style={styles.modalContainer}>
-//             <Text style={styles.sectionTitle}>{t('subtitle_mode') || 'Chế độ phụ đề'}</Text>
-//             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-//               {[{ id: 'dual', icon: '📝' }, { id: 'native', icon: '🎯' }, { id: 'original', icon: '🗣️' }, { id: 'off', icon: '🚫' }].map(m => (
-//                 <TouchableOpacity
-//                   key={m.id}
-//                   onPress={() => changeSubtitleMode(m.id as any)}
-//                   style={[styles.modeButton, callPreferences.subtitleMode === m.id && styles.modeButtonActive]}>
-//                   <Text style={{ color: 'white' }}>{m.icon} {m.id}</Text>
-//                 </TouchableOpacity>
-//               ))}
-//             </View>
-//             <TouchableOpacity style={styles.closeSettings} onPress={() => setShowSettings(false)}>
-//               <Text style={{ color: 'white' }}>{t('close') || 'Đóng'}</Text>
-//             </TouchableOpacity>
-//           </View>
-//         </Modal>
-//       </View>
-//     </ScreenLayout>
-//   );
-// };
-
-// const windowWidth = Dimensions.get('window').width;
-// const styles = createScaledSheet({
-//   container: { flex: 1, backgroundColor: 'black' },
-//   gridContainer: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
-//   remoteVideoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827', gap: 20 },
-//   statusText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-//   retryButton: { padding: 12, backgroundColor: '#374151', borderRadius: 8, marginTop: 20 },
-//   retryText: { color: '#fbbf24', fontWeight: 'bold', fontSize: 16 },
-//   localVideoContainer: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563', backgroundColor: '#374151' },
-//   localVideo: { flex: 1 },
-//   endCallButton: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5 },
-//   subtitleContainer: { position: 'absolute', bottom: 120, alignSelf: 'center', padding: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.8)', maxWidth: windowWidth * 0.9, marginHorizontal: 10 },
-//   subtitleSender: { color: '#9ca3af', fontSize: 12, fontWeight: 'bold', marginBottom: 2 },
-//   subtitleTextOriginal: { color: '#e5e7eb', marginBottom: 4, flexShrink: 1, fontSize: 18 },
-//   subtitleTextTranslated: { color: '#fbbf24', fontWeight: 'bold', fontSize: 18, flexShrink: 1 },
-//   controls: { position: 'absolute', top: 60, left: 20, gap: 12 },
-//   iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-//   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-//   modalContainer: { height: '30%', backgroundColor: '#1f2937', marginTop: 'auto', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
-//   sectionTitle: { color: '#9ca3af', fontWeight: 'bold', marginBottom: 10 },
-//   modeButton: { padding: 10, backgroundColor: '#374151', borderRadius: 8, minWidth: '45%', alignItems: 'center', justifyContent: 'center' },
-//   modeButtonActive: {
-//     backgroundColor: '#4f46e5'
-//   },
-//   closeSettings: { marginTop: 20, alignSelf: 'center', padding: 10 },
-// });
-
-// export default WebRTCCallScreen;
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   View,
@@ -655,7 +8,9 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
-  Alert
+  Image,
+  ScrollView,
+  Pressable
 } from 'react-native';
 import {
   RTCView,
@@ -667,19 +22,113 @@ import {
 } from 'react-native-webrtc';
 import { useTranslation } from 'react-i18next';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import LiveAudioStream from 'react-native-live-audio-stream';
+
+// Store & Hooks
 import { useAppStore } from '../../stores/appStore';
 import { useUserStore } from '../../stores/UserStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useTokenStore } from '../../stores/tokenStore';
 import { API_BASE_URL } from '../../api/apiConfig';
-import LiveAudioStream from 'react-native-live-audio-stream';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useVideoCalls } from '../../hooks/useVideos';
-import { VideoCallStatus } from '../../types/enums';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { VideoCallStatus, FriendshipStatus } from '../../types/enums';
+import { useUsers } from '../../hooks/useUsers';
+import { useFriendships } from '../../hooks/useFriendships';
+import { getAvatarSource } from '../../utils/avatarUtils'; // Đảm bảo bạn có util này hoặc thay bằng uri ảnh
 
-// --- OPTIMIZATION 1: COMPONENTS MEMOIZATION ---
-// Tách Video component ra và dùng React.memo để tránh re-render khi Text/Subtitle thay đổi
+// --- COMPONENT: MINI USER PROFILE (Popup xem nhanh thông tin) ---
+const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, currentUserId: string, onClose: () => void }) => {
+  const { t } = useTranslation();
+  const { useUserProfile, useAdmireUser } = useUsers();
+  const { useCreateFriendship } = useFriendships();
+
+  const { data: profile, isLoading } = useUserProfile(userId);
+  const admireMutation = useAdmireUser();
+  const createFriendshipMutation = useCreateFriendship();
+
+  if (isLoading || !profile) {
+    return (
+      <View style={styles.miniProfileContainer}>
+        <ActivityIndicator color="#4f46e5" />
+      </View>
+    );
+  }
+
+  const isFriend = profile.isFriend;
+  const hasSentRequest = profile.friendRequestStatus?.hasSentRequest;
+
+  const handleAddFriend = () => {
+    if (isFriend || hasSentRequest) return;
+    createFriendshipMutation.mutate({
+      requesterId: currentUserId,
+      receiverId: userId,
+      status: FriendshipStatus.PENDING
+    });
+  };
+
+  const handleAdmire = () => {
+    if (!profile.hasAdmired) {
+      admireMutation.mutate(userId);
+    }
+  };
+
+  return (
+    <View style={styles.miniProfileContainer}>
+      <View style={styles.miniProfileHeader}>
+        <Image source={getAvatarSource(profile.avatarUrl, profile.gender)} style={styles.miniAvatar} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.miniName}>{profile.fullname}</Text>
+          <Text style={styles.miniNickname}>@{profile.nickname}</Text>
+          {profile.country && <Text style={styles.miniCountry}>{profile.country}</Text>}
+        </View>
+        <TouchableOpacity onPress={onClose} style={{ padding: 5 }}>
+          <Icon name="close" size={24} color="#9ca3af" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.miniStatsRow}>
+        <View style={styles.miniStat}>
+          <Text style={styles.miniStatVal}>{profile.level || 0}</Text>
+          <Text style={styles.miniStatLabel}>Level</Text>
+        </View>
+        <View style={styles.miniStat}>
+          <Text style={styles.miniStatVal}>{profile.streak || 0}🔥</Text>
+          <Text style={styles.miniStatLabel}>Streak</Text>
+        </View>
+      </View>
+
+      <View style={styles.miniActions}>
+        {/* Nút Kết bạn */}
+        {!isFriend && (
+          <TouchableOpacity
+            onPress={handleAddFriend}
+            disabled={hasSentRequest}
+            style={[styles.miniBtn, hasSentRequest ? styles.btnDisabled : styles.btnAdd]}
+          >
+            <Icon name={hasSentRequest ? "check" : "person-add"} size={20} color="white" />
+            <Text style={styles.miniBtnText}>{hasSentRequest ? t('sent') : t('add_friend')}</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Nút Admire */}
+        <TouchableOpacity
+          onPress={handleAdmire}
+          disabled={profile.hasAdmired}
+          style={[styles.miniBtn, profile.hasAdmired ? styles.btnAdmired : styles.btnAdmire]}
+        >
+          <Icon name="favorite" size={20} color={profile.hasAdmired ? 'white' : '#db2777'} />
+          <Text style={[styles.miniBtnText, !profile.hasAdmired && { color: '#db2777' }]}>
+            {profile.admirationCount}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// --- COMPONENT: REMOTE VIDEO (Memoized) ---
 const RemoteVideoItem = React.memo(({ stream, style }: { stream: MediaStream, style: any }) => {
   return (
     <View style={style}>
@@ -690,38 +139,58 @@ const RemoteVideoItem = React.memo(({ stream, style }: { stream: MediaStream, st
 
 RemoteVideoItem.displayName = 'RemoteVideoItem';
 
-// Tách Subtitle Component để nó render độc lập, không làm lag Video
+// --- COMPONENT: SUBTITLE OVERLAY (Fixed Logic) ---
 const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
   if (!data || mode === 'off' || !data.originalFull?.trim()) return null;
 
   const isMe = data.senderId === currentUserId;
-  const { originalFull: originalText, translated: translatedText } = data;
+  const { originalFull, translated } = data;
 
+  // Hiển thị cho bản thân (Luôn hiện ngôn ngữ gốc để check mic)
   if (isMe) {
     return (
       <View style={styles.subtitleContainer}>
-        <Text style={[styles.subtitleSender, { textAlign: 'center', color: '#4f46e5' }]}>{t('you') || 'Bạn'}</Text>
-        <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }]}>{originalText}</Text>
+        <Text style={[styles.subtitleSender, { textAlign: 'center', color: '#818cf8' }]}>{t('you') || 'Bạn'}</Text>
+        <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }]}>{originalFull}</Text>
       </View>
     );
   }
 
-  let displayOriginal = mode === 'dual' || mode === 'original' || !translatedText;
-  let displayTranslated = (mode === 'dual' || mode === 'native') && !!translatedText;
-  if (mode === 'native' && !translatedText) displayOriginal = false;
+  // Logic hiển thị chuẩn theo chế độ
+  const showOriginal = mode === 'dual' || mode === 'original';
+  const showTranslated = mode === 'dual' || mode === 'native';
+
+  // Logic Fallback: Nếu chọn Native mà chưa có dịch -> Hiện original mờ
+  const isTranslating = !translated && originalFull !== "hmm...";
+  const effectiveShowOriginal = showOriginal || (mode === 'native' && isTranslating);
 
   return (
     <View style={styles.subtitleContainer}>
       <Text style={[styles.subtitleSender, { textAlign: 'center' }]}>{t('partner') || 'Đối phương'}</Text>
-      {displayOriginal && <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }]}>{originalText}</Text>}
-      {displayTranslated && <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translatedText}</Text>}
-      {displayTranslated && !translatedText && originalText !== "hmm..." && (
-        <Text style={[styles.subtitleTextTranslated, { textAlign: 'center', color: '#9ca3af' }]}>{t('translating') || '...'}</Text>
+
+      {effectiveShowOriginal && (
+        <Text style={[
+          styles.subtitleTextOriginal,
+          { textAlign: 'center' },
+          mode === 'native' && isTranslating && { opacity: 0.6, fontSize: 14 } // Style fallback
+        ]}>
+          {originalFull}
+        </Text>
+      )}
+
+      {showTranslated && translated && (
+        <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translated}</Text>
+      )}
+
+      {/* Loading state visual */}
+      {showTranslated && isTranslating && (
+        <Text style={[styles.subtitleTextTranslated, { textAlign: 'center', color: '#9ca3af', fontSize: 14, fontStyle: 'italic' }]}>
+          {t('translating') || '...'}
+        </Text>
       )}
     </View>
   );
 }, (prev, next) => {
-  // Chỉ re-render nếu nội dung text thực sự thay đổi
   return prev.data?.originalFull === next.data?.originalFull &&
     prev.data?.translated === next.data?.translated &&
     prev.mode === next.mode;
@@ -742,6 +211,7 @@ const iceServers = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
+// --- MAIN SCREEN ---
 const WebRTCCallScreen = () => {
   const { t } = useTranslation();
   const route = useRoute<RouteProp<WebRTCParams, 'WebRTCCall'>>();
@@ -766,23 +236,40 @@ const WebRTCCallScreen = () => {
 
   // States
   const [isMicOn, setIsMicOn] = useState(callPreferences.micEnabled);
+  const [isCameraOn, setIsCameraOn] = useState(callPreferences.cameraEnabled); // New State Camera
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
+
+  // UI States
   const [showSettings, setShowSettings] = useState(false);
+  const [settingTab, setSettingTab] = useState<'subtitle' | 'participants'>('subtitle'); // Tab trong settings
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null); // Để show popup profile
   const [fullSubtitle, setFullSubtitle] = useState<SubtitleData | null>(null);
 
-  // Audio Config
+  // Gửi config audio khi thay đổi preference
+  const sendAudioConfig = useCallback(() => {
+    if (wsAudio.current?.readyState === WebSocket.OPEN) {
+      wsAudio.current.send(JSON.stringify({
+        config: {
+          subtitleMode: callPreferences.subtitleMode,
+          micEnabled: callPreferences.micEnabled
+        }
+      }));
+    }
+  }, [callPreferences.subtitleMode, callPreferences.micEnabled]);
+
+  // Audio Options
   const audioOptions = useMemo(() => ({
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
-    audioSource: 6, // VOICE_RECOGNITION (Tốt hơn cho WebRTC + STT trên Android)
+    audioSource: 6,
     bufferSize: 4096,
     wavFile: 'temp.wav'
   }), []);
 
-  // --- AUDIO LOGIC (OPTIMIZED) ---
+  // --- AUDIO SOCKET LOGIC ---
   const initSubtitleAudioStream = useCallback(async () => {
     if (Platform.OS === 'android') {
       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
@@ -796,8 +283,7 @@ const WebRTCCallScreen = () => {
         LiveAudioStream.init(audioOptions);
 
         LiveAudioStream.on('data', (base64Data: string) => {
-          // OPTIMIZATION 2: Gửi trực tiếp Base64 String
-          // Không convert atob() trong JS. Tiết kiệm ~70% CPU JS thread.
+          // Fix logic Mic: Chỉ gửi khi mic on, nhưng không stop engine để tránh mất audio session
           if (wsAudio.current?.readyState === WebSocket.OPEN && isMicOn) {
             wsAudio.current.send(JSON.stringify({ audio: base64Data }));
           }
@@ -808,7 +294,6 @@ const WebRTCCallScreen = () => {
     }, 1500);
   }, [isMicOn, audioOptions]);
 
-  // --- WEBSOCKET HANDLERS ---
   const connectAudioSocket = useCallback(() => {
     if (!roomId || !accessToken || isManuallyClosed.current) return;
     if (wsAudio.current) { wsAudio.current.close(); wsAudio.current = null; }
@@ -821,12 +306,23 @@ const WebRTCCallScreen = () => {
     const ws = new WebSocket(url);
     wsAudio.current = ws;
 
-    ws.onopen = () => { initSubtitleAudioStream(); };
+    ws.onopen = () => {
+      initSubtitleAudioStream();
+      setTimeout(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            config: {
+              subtitleMode: useAppStore.getState().callPreferences.subtitleMode,
+              micEnabled: useAppStore.getState().callPreferences.micEnabled
+            }
+          }));
+        }
+      }, 500);
+    };
     ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
         if (data.type === 'subtitle') {
-          // Xử lý subtitle logic (đã tối ưu state updates)
           if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
           setFullSubtitle(data);
           if (data.status === 'complete') {
@@ -840,15 +336,15 @@ const WebRTCCallScreen = () => {
     };
   }, [roomId, accessToken, defaultNativeLangCode, initSubtitleAudioStream]);
 
-  // --- WEBRTC LOGIC (Giữ nguyên logic kết nối nhưng clean hơn) ---
+  // --- WEBRTC LOGIC ---
   const getMediaStream = useCallback(async () => {
     try {
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: {
-          width: { ideal: 640 }, // Tăng lên 640p để nét hơn
+          width: { ideal: 640 },
           height: { ideal: 480 },
-          frameRate: { ideal: 24 }, // 24fps là đủ mượt cho điện thoại
+          frameRate: { ideal: 24 },
           facingMode: 'user'
         }
       });
@@ -939,6 +435,10 @@ const WebRTCCallScreen = () => {
     };
   }, [roomId, accessToken, user?.userId, createPeerConnection, sendSignalingMessage]);
 
+  useEffect(() => {
+    sendAudioConfig();
+  }, [callPreferences.subtitleMode, callPreferences.micEnabled, sendAudioConfig]);
+
   // --- INIT & CLEANUP ---
   useEffect(() => {
     let isMounted = true;
@@ -947,8 +447,11 @@ const WebRTCCallScreen = () => {
       if (isMounted && stream) {
         setLocalStream(stream);
         localStreamRef.current = stream;
-        // Apply mute state init
+
+        // Apply initial config
         stream.getAudioTracks().forEach(t => t.enabled = callPreferences.micEnabled);
+        stream.getVideoTracks().forEach(t => t.enabled = callPreferences.cameraEnabled); // Apply camera config
+
         connectSignalingSocket();
         connectAudioSocket();
       }
@@ -966,12 +469,27 @@ const WebRTCCallScreen = () => {
     };
   }, []);
 
+  // --- ACTIONS ---
   const toggleMic = () => {
     const newState = !isMicOn;
     setIsMicOn(newState);
     setCallPreferences({ micEnabled: newState });
+
+    // 1. WebRTC Track (Mute đối với partner)
     localStreamRef.current?.getAudioTracks().forEach(t => t.enabled = newState);
-    if (newState) LiveAudioStream.start(); else LiveAudioStream.stop();
+
+    // 2. STT Logic (Ngừng gửi data, KHÔNG gọi stop() để tránh mất audio session)
+    if (newState) LiveAudioStream.start();
+    // Nếu tắt mic, ta chỉ cần ngừng gửi ở hàm on('data') là đủ an toàn
+  };
+
+  const toggleCamera = () => {
+    const newState = !isCameraOn;
+    setIsCameraOn(newState);
+    setCallPreferences({ cameraEnabled: newState });
+
+    // Chỉ disable track video, không stop stream
+    localStreamRef.current?.getVideoTracks().forEach(t => t.enabled = newState);
   };
 
   const handleCallEnd = () => {
@@ -981,16 +499,16 @@ const WebRTCCallScreen = () => {
     navigation.goBack();
   };
 
-  const remoteStreamsArr = Array.from(remoteStreams.values());
+  const remoteStreamsArr = Array.from(remoteStreams.entries()); // [id, stream]
 
   return (
     <ScreenLayout>
       <View style={styles.container}>
-        {/* RENDER REMOTE VIDEO (MEMOIZED) */}
+        {/* REMOTE VIDEOS */}
         {remoteStreamsArr.length > 0 ? (
           <View style={styles.gridContainer}>
-            {remoteStreamsArr.map(stream => (
-              <RemoteVideoItem key={stream.id} stream={stream} style={{ width: '100%', height: '100%' }} />
+            {remoteStreamsArr.map(([id, stream]) => (
+              <RemoteVideoItem key={id} stream={stream} style={{ width: '100%', height: '100%' }} />
             ))}
           </View>
         ) : (
@@ -1003,11 +521,17 @@ const WebRTCCallScreen = () => {
         {/* LOCAL VIDEO */}
         {localStream && (
           <View style={styles.localVideoContainer}>
-            <RTCView streamURL={localStream.toURL()} style={styles.localVideo} objectFit="cover" zOrder={1} />
+            {isCameraOn ? (
+              <RTCView streamURL={localStream.toURL()} style={styles.localVideo} objectFit="cover" zOrder={1} />
+            ) : (
+              <View style={[styles.localVideo, styles.cameraOffPlaceholder]}>
+                <Icon name="videocam-off" size={24} color="#6b7280" />
+              </View>
+            )}
           </View>
         )}
 
-        {/* SUBTITLES (MEMOIZED) */}
+        {/* SUBTITLES */}
         <SubtitleOverlay
           data={fullSubtitle}
           mode={callPreferences.subtitleMode}
@@ -1015,38 +539,102 @@ const WebRTCCallScreen = () => {
           currentUserId={user?.userId}
         />
 
-        {/* CONTROLS */}
+        {/* MAIN CONTROLS */}
         <TouchableOpacity style={styles.endCallButton} onPress={handleCallEnd}>
           <Icon name="call-end" size={30} color="white" />
         </TouchableOpacity>
 
         <View style={styles.controls}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
+          {/* Setting Btn */}
+          <TouchableOpacity style={styles.iconButton} onPress={() => { setSettingTab('subtitle'); setShowSettings(true); }}>
             <Icon name="settings" size={24} color="white" />
           </TouchableOpacity>
+
+          {/* Mic Toggle */}
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: isMicOn ? '#22c55e' : '#ef4444' }]}
             onPress={toggleMic}>
             <Icon name={isMicOn ? "mic" : "mic-off"} size={24} color="white" />
           </TouchableOpacity>
+
+          {/* Camera Toggle */}
+          <TouchableOpacity
+            style={[styles.iconButton, { backgroundColor: isCameraOn ? '#22c55e' : '#ef4444' }]}
+            onPress={toggleCamera}>
+            <Icon name={isCameraOn ? "videocam" : "videocam-off"} size={24} color="white" />
+          </TouchableOpacity>
         </View>
 
-        {/* SETTINGS MODAL */}
-        <Modal visible={showSettings} transparent animationType="slide">
+        {/* SETTINGS MODAL (With Participants Tab) */}
+        <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
           <View style={styles.modalContainer}>
-            <Text style={styles.sectionTitle}>{t('subtitle_mode')}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              {['dual', 'native', 'original', 'off'].map(m => (
-                <TouchableOpacity key={m}
-                  onPress={() => { setCallPreferences({ subtitleMode: m as any }); setShowSettings(false); }}
-                  style={[styles.modeButton, callPreferences.subtitleMode === m && styles.modeButtonActive]}>
-                  <Text style={{ color: 'white' }}>{m.toUpperCase()}</Text>
-                </TouchableOpacity>
-              ))}
+
+            {/* Tabs */}
+            <View style={styles.tabHeader}>
+              <Pressable onPress={() => setSettingTab('subtitle')} style={[styles.tabItem, settingTab === 'subtitle' && styles.tabActive]}>
+                <Text style={[styles.tabText, settingTab === 'subtitle' && styles.tabTextActive]}>{t('subtitle_mode')}</Text>
+              </Pressable>
+              <Pressable onPress={() => setSettingTab('participants')} style={[styles.tabItem, settingTab === 'participants' && styles.tabActive]}>
+                <Text style={[styles.tabText, settingTab === 'participants' && styles.tabTextActive]}>{t('participants')}</Text>
+              </Pressable>
+            </View>
+
+            {/* Content: Subtitle Mode */}
+            {settingTab === 'subtitle' && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 15 }}>
+                {['dual', 'native', 'original', 'off'].map(m => (
+                  <TouchableOpacity key={m}
+                    onPress={() => setCallPreferences({ subtitleMode: m as any })}
+                    style={[styles.modeButton, callPreferences.subtitleMode === m && styles.modeButtonActive]}>
+                    <Text style={{ color: 'white', fontWeight: 'bold' }}>{m.toUpperCase()}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Content: Participants */}
+            {settingTab === 'participants' && (
+              <ScrollView style={{ marginTop: 15 }}>
+                {remoteStreamsArr.length === 0 && (
+                  <Text style={{ color: '#9ca3af', textAlign: 'center' }}>No one else is here.</Text>
+                )}
+                {remoteStreamsArr.map(([id]) => (
+                  <TouchableOpacity
+                    key={id}
+                    style={styles.participantRow}
+                    onPress={() => {
+                      setShowSettings(false);
+                      setSelectedProfileId(id);
+                    }}
+                  >
+                    <View style={styles.participantAvatar}>
+                      <Icon name="person" size={20} color="white" />
+                    </View>
+                    <Text style={styles.participantName}>User {id.slice(0, 6)}...</Text>
+                    <Icon name="info-outline" size={24} color="#6366f1" />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </Modal>
+
+        {/* MINI PROFILE POPUP */}
+        <Modal visible={!!selectedProfileId} transparent animationType="fade" onRequestClose={() => setSelectedProfileId(null)}>
+          <View style={styles.centerModalOverlay}>
+            <View style={styles.popupWrapper}>
+              {selectedProfileId && user?.userId && (
+                <MiniUserProfile
+                  userId={selectedProfileId}
+                  currentUserId={user.userId}
+                  onClose={() => setSelectedProfileId(null)}
+                />
+              )}
             </View>
           </View>
         </Modal>
+
       </View>
     </ScreenLayout>
   );
@@ -1058,20 +646,63 @@ const styles = createScaledSheet({
   gridContainer: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
   remoteVideoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827', gap: 20 },
   statusText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+
+  // Local Video & Camera Off
   localVideoContainer: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563', backgroundColor: '#374151' },
   localVideo: { flex: 1 },
+  cameraOffPlaceholder: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#1f2937' },
+
   endCallButton: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5 },
+
+  // Subtitles
   subtitleContainer: { position: 'absolute', bottom: 120, alignSelf: 'center', padding: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.8)', maxWidth: windowWidth * 0.9, marginHorizontal: 10 },
   subtitleSender: { color: '#9ca3af', fontSize: 12, fontWeight: 'bold', marginBottom: 2 },
   subtitleTextOriginal: { color: '#e5e7eb', marginBottom: 4, flexShrink: 1, fontSize: 18 },
   subtitleTextTranslated: { color: '#fbbf24', fontWeight: 'bold', fontSize: 18, flexShrink: 1 },
+
+  // Controls
   controls: { position: 'absolute', top: 60, left: 20, gap: 12 },
   iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+
+  // Settings Modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalContainer: { height: '25%', backgroundColor: '#1f2937', marginTop: 'auto', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
+  modalContainer: { height: '35%', backgroundColor: '#1f2937', marginTop: 'auto', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
   sectionTitle: { color: '#9ca3af', fontWeight: 'bold', marginBottom: 10 },
   modeButton: { padding: 10, backgroundColor: '#374151', borderRadius: 8, minWidth: '45%', alignItems: 'center', justifyContent: 'center' },
   modeButtonActive: { backgroundColor: '#4f46e5' },
+
+  // Tabs in Setting
+  tabHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#374151' },
+  tabItem: { flex: 1, paddingVertical: 10, alignItems: 'center' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: '#6366f1' },
+  tabText: { color: '#9ca3af', fontWeight: '600' },
+  tabTextActive: { color: 'white' },
+
+  // Participant List
+  participantRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', padding: 10, borderRadius: 8, marginBottom: 8 },
+  participantAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#6b7280', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  participantName: { color: 'white', flex: 1, fontWeight: '500' },
+
+  // Mini Profile Popup
+  centerModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
+  popupWrapper: { width: '85%', backgroundColor: '#1f2937', borderRadius: 16, overflow: 'hidden' },
+  miniProfileContainer: { padding: 20 },
+  miniProfileHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  miniAvatar: { width: 60, height: 60, borderRadius: 30, marginRight: 15, backgroundColor: '#374151' },
+  miniName: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  miniNickname: { color: '#9ca3af', fontSize: 14 },
+  miniCountry: { color: '#d1d5db', fontSize: 12, marginTop: 2 },
+  miniStatsRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 20, backgroundColor: '#374151', padding: 10, borderRadius: 10 },
+  miniStat: { alignItems: 'center' },
+  miniStatVal: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  miniStatLabel: { color: '#9ca3af', fontSize: 12 },
+  miniActions: { flexDirection: 'row', gap: 10 },
+  miniBtn: { flex: 1, padding: 10, borderRadius: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5 },
+  btnAdd: { backgroundColor: '#2563eb' },
+  btnAdmire: { backgroundColor: '#fce7f3' },
+  btnAdmired: { backgroundColor: '#db2777' },
+  btnDisabled: { backgroundColor: '#4b5563' },
+  miniBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14 }
 });
 
 export default WebRTCCallScreen;

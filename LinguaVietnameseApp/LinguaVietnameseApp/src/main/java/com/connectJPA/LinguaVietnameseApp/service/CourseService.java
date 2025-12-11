@@ -8,6 +8,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseSummaryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CreatorDashboardResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.PageResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import org.springframework.data.domain.Page;
@@ -27,9 +28,6 @@ public interface CourseService {
     CourseResponse updateCourseDetails(UUID id, UpdateCourseDetailsRequest request);
 
     Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, Pageable pageable);
-
-    Page<CourseResponse> getSpecialOffers(String keyword, String languageCode, Integer minRating, Pageable pageable);
-
 
         CourseVersionResponse getCourseVersionById(UUID versionId);
 
@@ -53,4 +51,6 @@ public interface CourseService {
     CreatorDashboardResponse getCourseDashboardStats(UUID courseId);
     List<CourseResponse> getTopSellingCourses(int limit);
     List<CourseVersionResponse> getCourseVersions(UUID courseId);
+    PageResponse<CourseResponse> getSpecialOffers(String keyword, String languageCode, Float minRating, int page,
+            int size);
 }

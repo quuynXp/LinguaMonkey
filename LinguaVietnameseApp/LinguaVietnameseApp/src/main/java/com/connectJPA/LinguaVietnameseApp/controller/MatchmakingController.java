@@ -129,7 +129,6 @@ public class MatchmakingController {
 
     @PostMapping("/cancel")
     public AppApiResponse<Void> cancelSearch(@RequestBody Map<String, UUID> requestBody) {
-        // LẤY USER ID TỪ REQUEST BODY (CHO HÀM CANCEL)
         UUID currentUserId = requestBody.get("userId");
         
         if (currentUserId != null) {
