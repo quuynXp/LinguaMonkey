@@ -549,9 +549,14 @@ export interface LessonSubCategoryRequest {
 export interface MemorizationRequest {
     userId: string;
     contentType: Enums.ContentType;
-    contentId: string;
+    contentId?: string | null;
     noteText: string;
     favorite: boolean;
+
+    isReminderEnabled?: boolean;
+    reminderTime?: string | null; // Format "HH:mm"
+    repeatType?: Enums.RepeatType | null;
+    reminderTitle?: string | null;
 }
 
 export interface MessageReactionRequest {
@@ -1547,11 +1552,16 @@ export interface MemorizationResponse {
     memorizationId: string;
     userId: string;
     contentType: Enums.ContentType;
-    contentId: string;
+    contentId: string | null;
     noteText: string;
     favorite: boolean;
     createdAt: string;
     updatedAt: string;
+
+    isReminderEnabled: boolean;
+    reminderTime: string | null;
+    repeatType: Enums.RepeatType | null;
+    reminderTitle: string | null;
 }
 
 export interface MemorySummaryResponse {

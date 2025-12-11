@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Physical Replacement)
+name: LinguamonkeyFe - Signed APK Build (Final Stable)
 
 on:
   push:
@@ -39,21 +39,21 @@ jobs:
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r26b
-          add-to-path: false # Để false, ta sẽ tự add path sau
+          add-to-path: false 
 
-      # --- 3. THAY THẾ VẬT LÝ (BƯỚC QUYẾT ĐỊNH) ---
+      # --- 3. FIX NDK: THAY THẾ VẬT LÝ ---
       - name: 🔄 SWAP SYSTEM NDK
         run: |
           echo "🛑 Stopping Gradle Daemon..."
           ./gradlew --stop || true
           
           echo "🧹 Wiping System NDK folder..."
-          # Xóa sạch thư mục NDK mặc định của Android SDK
+          # Xóa sạch thư mục NDK mặc định để script RN không tìm thấy bản 27
           sudo rm -rf $ANDROID_HOME/ndk
           sudo mkdir -p $ANDROID_HOME/ndk
           
           echo "🔗 Linking NDK 26 into System Path..."
-          # Tạo symlink: Buộc hệ thống phải thấy bản 26.1.10909125 nằm ngay trong thư mục gốc
+          # Tạo symlink: Buộc hệ thống phải thấy bản 26.1.10909125
           sudo ln -s ${{ steps.setup-ndk.outputs.ndk-path }} $ANDROID_HOME/ndk/26.1.10909125
           
           echo "✅ Verification: Listing NDK folder content (Should only show 26.1)"
@@ -73,15 +73,21 @@ jobs:
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # --- 5. CẤU HÌNH LOCAL.PROPERTIES ---
-      - name: 📍 FORCE local.properties
+      # --- 5. FIX LỖI MẠNG GRADLE (NEW) & FORCE LOCAL.PROPERTIES ---
+      - name: 🔧 Fix Gradle URL & Force Properties
         run: |
           echo "📝 Writing local.properties..."
-          # Trỏ ndk.dir vào đúng cái symlink ta vừa tạo
           echo "ndk.dir=$ANDROID_HOME/ndk/26.1.10909125" >> ./android/local.properties
           echo "sdk.dir=$ANDROID_HOME" >> ./android/local.properties
           
-          # Xóa cache CMake cũ
+          echo "🌐 Fixing Gradle Distribution URL (Fix 504 Error)..."
+          # Sửa file wrapper để tải từ services.gradle.org thay vì github
+          cd android/gradle/wrapper
+          sed -i 's|https://github.com/gradle/gradle-distributions/releases/download/|https://services.gradle.org/distributions/|g' gradle-wrapper.properties
+          cat gradle-wrapper.properties
+          
+          echo "🧹 Cleaning native build caches..."
+          cd ../../..
           rm -rf ./node_modules/react-native-worklets/android/.cxx
           rm -rf ./android/.gradle
 
@@ -108,7 +114,8 @@ jobs:
           
           echo "🔨 Building with FORCED NDK Path..."
           
-          # Thêm các cờ để chặn React Native tự tải NDK mới
+          # --offline: Nếu đã tải dependency rồi thì không tải lại (nếu có cache)
+          # Nhưng ở đây ta cần tải Gradle distribution nên không dùng offline
           ./gradlew assembleRelease --no-daemon \
             -Pandroid.ndkVersion=26.1.10909125 \
             -PdownloadNdk=false \

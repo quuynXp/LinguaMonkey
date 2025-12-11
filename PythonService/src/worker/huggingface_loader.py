@@ -49,7 +49,7 @@ async def clean_old_lexicon_keys(redis: Redis):
             await redis.delete(*keys_to_delete)
             count += len(keys_to_delete)
             keys_to_delete = []
-            logger.info(f"   ...cleaned {count} keys")
+            logger.info(f"    ...cleaned {count} keys")
             
     if keys_to_delete:
         await redis.delete(*keys_to_delete)
@@ -57,8 +57,18 @@ async def clean_old_lexicon_keys(redis: Redis):
         
     logger.info(f"✨ Cleaned total {count} old keys. Redis is ready for Hash structure.")
 
+async def get_lexicon_key_count(redis: Redis) -> int:
+    """Đếm số lượng key lexicon hiện có trong Redis."""
+    count = 0
+    async for _ in redis.scan_iter(match="lex:*"):
+        count += 1
+    return count
+
 async def ingest_huggingface_data(redis: Redis):
     try:
+        current_lex_count = await get_lexicon_key_count(redis)
+        logger.info(f"🔍 [Check] Current 'lex:*' keys count in Redis: {current_lex_count}")
+        
         # Check flag v5
         if await redis.exists(INGESTION_FLAG_KEY):
             logger.info(f"⚡ [SKIP] Hugging Face data already ingested (Key: {INGESTION_FLAG_KEY}).")
@@ -70,7 +80,7 @@ async def ingest_huggingface_data(redis: Redis):
         total_processed = 0
 
         for source in DATASET_SOURCES:
-            logger.info(f"📥 Loading dataset: {source['name']} ({source['config']})...")
+            logger.info(f"📥 Loading dataset: {source['name']} ({source['config']})....")
             
             try:
                 dataset = await asyncio.to_thread(

@@ -1,6 +1,8 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.UserReminder;
+import com.connectJPA.LinguaVietnameseApp.enums.TargetType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -41,5 +43,7 @@ public interface UserReminderRepository extends JpaRepository<UserReminder, UUID
            "  (ur.repeat_type = 'DAILY' AND CAST(ur.reminder_time AS TIME) BETWEEN CAST(:start AS TIME) AND CAST(:end AS TIME)) " +
            ")", nativeQuery = true)
     List<UserReminder> findDueReminders(@Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
+
+    Optional<UserReminder> findByTargetIdAndTargetType(UUID memorizationId, TargetType note);
 
 }

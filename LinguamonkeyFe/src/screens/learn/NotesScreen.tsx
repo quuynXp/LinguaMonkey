@@ -22,7 +22,6 @@ import * as Enums from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
-import { TimeHelper } from "../../utils/timeHelper";
 
 const NotesScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
@@ -34,10 +33,12 @@ const NotesScreen = ({ navigation, route }: any) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
+  // State Form
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [newNote, setNewNote] = useState("");
   const [selectedNoteType, setSelectedNoteType] = useState<"word" | "phrase" | "grammar">("word");
 
+  // State Reminder
   const [isReminderEnabled, setIsReminderEnabled] = useState(false);
   const [reminderHour, setReminderHour] = useState("09");
   const [reminderMinute, setReminderMinute] = useState("00");
@@ -83,7 +84,7 @@ const NotesScreen = ({ navigation, route }: any) => {
   const notesList = useMemo(() => {
     let list = (memorizationsPage?.data as MemorizationResponse[]) || [];
     if (showFavoritesOnly) {
-      list = list.filter(item => item.favorite);
+      list = list.filter(item => item.favorite); // Backend trả về favorite
     }
     if (searchQuery && !searchParams.keyword) {
       list = list.filter(n => n.noteText?.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -122,25 +123,21 @@ const NotesScreen = ({ navigation, route }: any) => {
     setSelectedNoteType("word");
   };
 
-  // --- LOGIC ĐÃ SỬA: FILL DATA CŨ KHI MỞ EDIT ---
   const openEditModal = (item: MemorizationResponse) => {
     setEditingNoteId(item.memorizationId);
     setNewNote(item.noteText);
     setSelectedNoteType(mapContentTypeToNoteType(item.contentType));
 
-    // Ép kiểu 'any' để lấy data reminder nếu backend có trả về
-    const itemData = item as any;
-
-    if (itemData.reminderTime) {
-      // Nếu có reminderTime (vd: "14:30") -> Bật switch và tách giờ
+    // Bây giờ lấy thẳng từ item vì Backend đã trả về (đã update DTO)
+    // Cần update Interface MemorizationResponse trong Frontend để có các field này
+    if (item.isReminderEnabled && item.reminderTime) {
       setIsReminderEnabled(true);
-      const [h, m] = itemData.reminderTime.split(':');
+      const [h, m] = item.reminderTime.split(':');
       setReminderHour(h || "09");
       setReminderMinute(m || "00");
-      setReminderRepeat(itemData.repeatType || Enums.RepeatType.DAILY);
-      setReminderTitle(itemData.reminderTitle || "");
+      setReminderRepeat(item.repeatType || Enums.RepeatType.DAILY);
+      setReminderTitle(item.reminderTitle || "");
     } else {
-      // Nếu không có -> Reset về mặc định
       setIsReminderEnabled(false);
       setReminderHour("09");
       setReminderMinute("00");
@@ -160,29 +157,31 @@ const NotesScreen = ({ navigation, route }: any) => {
 
     const timeString = `${reminderHour}:${reminderMinute}`;
 
-    const basePayload = {
+    // Payload khớp với Backend mới
+    const basePayload: MemorizationRequest = {
       userId: user.userId,
       contentType: mapNoteTypeToContentType(selectedNoteType),
       noteText: newNote.trim(),
-      // Gửi data reminder lên server
       isReminderEnabled: isReminderEnabled,
-      reminderTime: isReminderEnabled ? timeString : null,
-      repeatType: isReminderEnabled ? reminderRepeat : null,
-      reminderTitle: isReminderEnabled ? reminderTitle : null,
-      ...(courseId ? { contentId: courseId } : {})
+      reminderTime: isReminderEnabled ? timeString : undefined,
+      repeatType: isReminderEnabled ? reminderRepeat : undefined,
+      reminderTitle: isReminderEnabled ? reminderTitle : undefined,
+      ...(courseId ? { contentId: courseId } : {}),
+      // Mặc định cho trường favorite sẽ xử lý ở dưới
+      favorite: false
     };
 
     if (editingNoteId) {
       const oldNote = notesList.find(n => n.memorizationId === editingNoteId);
       const updatePayload = {
         ...basePayload,
-        favorite: oldNote?.favorite || false,
+        favorite: oldNote?.favorite || false, // Giữ nguyên favorite
         ...(oldNote?.contentId ? { contentId: oldNote.contentId } : {})
       };
 
       updateMemorization({
         id: editingNoteId,
-        req: updatePayload as any
+        req: updatePayload
       }, {
         onSuccess: () => {
           setShowAddModal(false);
@@ -201,7 +200,7 @@ const NotesScreen = ({ navigation, route }: any) => {
         favorite: false,
       };
 
-      createMemorization(createPayload as any, {
+      createMemorization(createPayload, {
         onSuccess: () => {
           setShowAddModal(false);
           resetForm();
@@ -216,17 +215,24 @@ const NotesScreen = ({ navigation, route }: any) => {
   };
 
   const handleToggleFavorite = (item: MemorizationResponse) => {
-    const cleanPayload = {
+    const cleanPayload: MemorizationRequest = {
       userId: item.userId,
       contentType: item.contentType,
       noteText: item.noteText,
       favorite: !item.favorite,
-      ...(item.contentId ? { contentId: item.contentId } : {})
+      ...(item.contentId ? { contentId: item.contentId } : {}),
+      // Khi toggle favorite nhanh, ta không cần gửi lại info reminder (hoặc gửi null nếu backend cho phép partial update)
+      // Nhưng với logic backend trên, nếu gửi thiếu trường reminder thì nó hiểu là null/false -> mất reminder
+      // Nên tốt nhất lấy lại info cũ của item
+      isReminderEnabled: item.isReminderEnabled,
+      reminderTime: item.reminderTime,
+      repeatType: item.repeatType,
+      reminderTitle: item.reminderTitle
     };
 
     updateMemorization({
       id: item.memorizationId,
-      req: cleanPayload as any
+      req: cleanPayload
     }, {
       onError: () => Alert.alert("Error", "Failed to update favorite status")
     });
@@ -252,12 +258,11 @@ const NotesScreen = ({ navigation, route }: any) => {
       </View>
       <Text style={styles.noteText}>{item.noteText}</Text>
 
-      {/* Hiển thị icon đồng hồ nếu note này có hẹn giờ (chỉ hiển thị nếu backend trả data) */}
-      {(item as any).reminderTime && (
+      {item.isReminderEnabled && item.reminderTime && (
         <View style={{ flexDirection: 'row', marginBottom: 8, alignItems: 'center' }}>
           <Icon name="alarm" size={14} color="#6B7280" />
           <Text style={{ fontSize: 12, color: '#6B7280', marginLeft: 4 }}>
-            {(item as any).reminderTime}
+            {item.reminderTime} ({item.repeatType})
           </Text>
         </View>
       )}
@@ -288,6 +293,7 @@ const NotesScreen = ({ navigation, route }: any) => {
 
   return (
     <ScreenLayout style={styles.container}>
+      {/* ... Phần Header và Search giữ nguyên ... */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#37352F" />
@@ -353,6 +359,7 @@ const NotesScreen = ({ navigation, route }: any) => {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              {/* ... Phần Form giữ nguyên như code trước ... */}
               <View style={styles.typeSelector}>
                 {(["word", "phrase", "grammar"] as const).map(type => (
                   <TouchableOpacity

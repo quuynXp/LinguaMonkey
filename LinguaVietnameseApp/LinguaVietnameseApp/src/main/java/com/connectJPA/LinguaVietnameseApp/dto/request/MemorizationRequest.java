@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.ContentType;
+import com.connectJPA.LinguaVietnameseApp.enums.RepeatType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -22,5 +23,10 @@ public class MemorizationRequest {
 
     private String noteText;
 
-    private boolean isFavorite;
+    private boolean isFavorite; // Jackson sẽ map với field "favorite" hoặc "isFavorite" tùy config, tốt nhất FE gửi "favorite"
+
+    private boolean isReminderEnabled;
+    private String reminderTime; // Format "HH:mm"
+    private RepeatType repeatType;
+    private String reminderTitle;
 }
