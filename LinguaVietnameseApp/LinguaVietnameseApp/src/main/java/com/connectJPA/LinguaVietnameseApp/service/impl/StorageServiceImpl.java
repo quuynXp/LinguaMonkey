@@ -86,8 +86,7 @@ public class StorageServiceImpl implements StorageService {
 
             log.info("Uploaded {} to Drive (OAuth2). ID: {}", fileName, fileId);
             
-            // Return the constructed URL
-            return getFileUrl(fileId); 
+            return fileId; 
         } catch (IOException e) {
             log.error("Google Drive stream upload failed", e);
             throw new RuntimeException("Failed to upload stream to Google Drive: " + e.getMessage(), e);

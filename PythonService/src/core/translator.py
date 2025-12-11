@@ -3,7 +3,8 @@ import logging
 import asyncio
 import json
 import re
-from typing import Tuple, List
+import string
+from typing import Tuple, List, Dict, Any
 from langdetect import detect, LangDetectException
 import google.generativeai as genai
 from google.generativeai import GenerativeModel
@@ -15,7 +16,7 @@ from src.core.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
-# Config GenAI (Load Once at Module Level)
+# Config GenAI
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if GOOGLE_API_KEY:
@@ -23,7 +24,6 @@ if GOOGLE_API_KEY:
 else:
     logger.error("Missing GOOGLE_API_KEY. Translation fallback will fail.")
 
-# Model tiers for translation, prioritized from most capable/fastest down to fallbacks
 TRANSLATION_MODEL_TIERS = [
     {"name": "gemini-2.5-flash", "purpose": "Flash - High-Speed Translation"},
     {"name": "gemini-2.5-pro", "purpose": "Pro - High-Quality Translation (as fallback)"},
@@ -37,7 +37,11 @@ class HybridTranslator:
 
     def _normalize(self, text: str) -> str:
         if not text: return ""
-        return text.strip().lower()
+        # Bỏ dấu câu ở cuối câu để tra cứu chính xác hơn (VD: "Hello?" -> "hello")
+        text = text.strip().lower()
+        if text and text[-1] in string.punctuation:
+            text = text[:-1]
+        return text
 
     def _get_redis_key(self, lang: str, text: str) -> str:
         return f"lex:{lang}:{self._normalize(text)}"
@@ -60,14 +64,23 @@ class HybridTranslator:
             return "en"
 
     def _tokenize(self, text: str, lang: str) -> List[str]:
+        """
+        Tách từ thông minh: Loại bỏ dấu câu dính liền để tăng khả năng hit cache.
+        VD: "Hello, world!" -> ["Hello", "world"] (thay vì ["Hello,", "world!"])
+        """
         if not text: return []
         
+        # Với tiếng Trung/Nhật/Hàn -> tách từng ký tự (hoặc dùng thư viện chuyên dụng nếu cần)
         if lang in ['zh-CN', 'zh-TW', 'ja', 'ko', 'zh']:
-            return [char for char in text if char.strip()]
+            return [char for char in text if char.strip() and char not in string.punctuation]
 
-        return re.findall(r'\b\w+\b', text) if text else []
+        # Thay thế tất cả dấu câu bằng khoảng trắng, sau đó split
+        translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+        clean_text = text.translate(translator)
+        return clean_text.split()
 
     async def _save_to_db(self, original_text: str, src_lang: str, target_lang: str, translated_text: str):
+        """Lưu vào DB với xử lý lỗi dictionary update sequence"""
         async with AsyncSessionLocal() as db:
             try:
                 stmt = select(TranslationLexicon).where(
@@ -78,10 +91,20 @@ class HybridTranslator:
                 lexicon_entry = result.scalar_one_or_none()
 
                 if lexicon_entry:
-                    current_translations = dict(lexicon_entry.translations) if lexicon_entry.translations else {}
-                    current_translations[target_lang] = translated_text
+                    # FIX: Xử lý an toàn cho trường JSON translations
+                    current_translations = {}
+                    if lexicon_entry.translations:
+                        if isinstance(lexicon_entry.translations, dict):
+                            current_translations = lexicon_entry.translations
+                        elif isinstance(lexicon_entry.translations, str):
+                            try:
+                                current_translations = json.loads(lexicon_entry.translations)
+                            except:
+                                current_translations = {}
                     
-                    lexicon_entry.translations = current_translations
+                    # Cập nhật và gán lại bản sao dict mới
+                    current_translations[target_lang] = translated_text
+                    lexicon_entry.translations = dict(current_translations)
                     lexicon_entry.usage_count += 1
                 else:
                     new_entry = TranslationLexicon(
@@ -94,14 +117,13 @@ class HybridTranslator:
                 
                 await db.commit()
             except Exception as e:
-                logger.error(f"❌ Failed to save translation to DB: {e}")
+                # Log warning thay vì Error để tránh spam log
+                logger.warning(f"⚠️ Background DB Save Skipped: {e}")
                 await db.rollback()
 
     async def lpm_translate(self, text: str, src_lang: str, target_lang: str) -> Tuple[str, float]:
-        if src_lang in ['zh-CN', 'zh-TW', 'ja', 'zh']:
-             words = list(text) 
-        else:
-             words = text.split() 
+        # Sử dụng tokenizer mới đã lọc dấu câu
+        words = self._tokenize(text, src_lang)
         
         n = len(words)
         if n == 0: return text, 0.0
@@ -112,6 +134,7 @@ class HybridTranslator:
 
         while i < n:
             matched = False
+            # Giới hạn window size hợp lý (8 từ)
             max_window = min(n - i, 8)
             
             for j in range(max_window, 0, -1):
@@ -139,9 +162,11 @@ class HybridTranslator:
                     break
             
             if not matched:
+                # Nếu không khớp, giữ nguyên từ gốc từ list words
                 translated_chunks.append(words[i])
                 i += 1
         
+        # Ghép lại câu
         if src_lang in ['zh-CN', 'zh-TW', 'ja', 'zh'] and target_lang in ['zh-CN', 'zh-TW', 'ja', 'zh']:
              final_text = "".join(translated_chunks)
         else:
@@ -166,13 +191,11 @@ class HybridTranslator:
         # 1. Try LPM (Fast Path)
         lpm_result, coverage = await self.lpm_translate(text, detected_lang, target_lang)
         
-        is_dictionary_dump = False
-        if len(text.split()) > 1:
-            if len(lpm_result) > len(text) * 4: 
-                is_dictionary_dump = True
+        # Logic: Nếu coverage cao hoặc câu ngắn (dưới 5 từ) mà có match -> Dùng luôn
+        word_count = len(text.split())
+        threshold = 0.85 if word_count > 3 else 0.5 # Giảm ngưỡng cho câu ngắn
         
-        threshold = 0.90 if len(text.split()) > 2 else 0.99
-        if coverage >= threshold and not is_dictionary_dump:
+        if coverage >= threshold:
             return lpm_result, detected_lang
 
         if not GOOGLE_API_KEY:
@@ -185,17 +208,13 @@ class HybridTranslator:
         elif target_lang == 'en': target_lang_name = "English"
 
         prompt = (
-            f"Translate the following text from {detected_lang} to {target_lang_name}.\n"
+            f"Translate from {detected_lang} to {target_lang_name}.\n"
             f"Text: {text}\n"
-            "Requirements:\n"
-            "1. Output ONLY JSON.\n"
-            "2. Format: {\"translated_text\": \"string\", \"detected_source_lang\": \"string\"}\n"
-            "3. Keep special characters, emojis, and numbers intact."
+            "Output JSON: {\"translated_text\": \"...\", \"detected_source_lang\": \"...\"}"
         )
 
         for tier in TRANSLATION_MODEL_TIERS:
             current_model_name = tier["name"]
-            
             try:
                 model = GenerativeModel(
                     current_model_name,
@@ -204,45 +223,28 @@ class HybridTranslator:
                 
                 response = await model.generate_content_async(prompt)
                 raw = response.text.strip()
-
                 json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-                if json_match:
-                    raw = json_match.group(0)
+                if json_match: raw = json_match.group(0)
                 
                 parsed = json.loads(raw)
                 final_text = parsed.get("translated_text", "").strip()
                 detected_from_model = parsed.get("detected_source_lang", detected_lang)
                 
                 if final_text:
-                    if len(text.split()) < 20: 
+                    # Cache kết quả Gemini vào Redis để lần sau không phải gọi lại
+                    if word_count < 30: 
                         key = self._get_redis_key(detected_lang, text)
                         await self.redis.hset(key, mapping={target_lang: final_text})
-                        await self.redis.expire(key, 86400 * 7)
+                        await self.redis.expire(key, 86400 * 7) # 7 ngày
                         asyncio.create_task(self._save_to_db(text, detected_lang, target_lang, final_text))
                     
-                    logger.info(f"Successfully translated using {current_model_name}")
                     return final_text, detected_from_model
-                else:
-                    logger.warning(f"Model {current_model_name} returned empty text. Falling back...")
-                    continue
-
-            except ResourceExhausted:
-                logger.warning(f"Rate limit hit for model {current_model_name}. Falling back...")
-                continue
-            except NotFound as e:
-                logger.error(f"Model {current_model_name} not found: {str(e)}")
-                continue 
-            except PermissionDenied as e:
-                logger.critical(f"Permission denied for model {current_model_name}: {str(e)}")
-                return lpm_result, detected_lang
-            except (GoogleAPICallError, json.JSONDecodeError) as e:
-                logger.error(f"Error with {current_model_name}: {type(e).__name__} - {str(e)}")
-                continue
+                
             except Exception as e:
-                logger.error(f"Generic error with {current_model_name}: {str(e)}")
+                logger.warning(f"Fallback {current_model_name} failed: {e}")
                 continue 
 
-        logger.error(f"External Translation Failed for '{text}': All model tiers failed.")
+        logger.error(f"Translation Failed for '{text}': All tiers failed.")
         return lpm_result, detected_lang
 
 _translator = None

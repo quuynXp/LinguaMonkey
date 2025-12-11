@@ -974,6 +974,13 @@ async def audio_endpoint(
 
     await audio_manager.connect(websocket, normalized_room_id, user_id=user_id, native_lang=nativeLang)
     buffer_key = f"{normalized_room_id}_{user_id}"
+
+
+    debug_wav_filename = f"debug_{user_id}_{int(time.time())}.wav"
+    debug_wav_file = wave.open(debug_wav_filename, "wb")
+    debug_wav_file.setnchannels(1)
+    debug_wav_file.setsampwidth(2)
+    debug_wav_file.setframerate(16000)
     
     # Callback Interim (Đang nói)
     async def handle_interim_result(text: str, detected_lang_code: str):
@@ -1070,16 +1077,14 @@ async def audio_endpoint(
                 b64_audio = msg_json.get("audio")
                 if b64_audio:
                     pcm_data = binascii.a2b_base64(b64_audio)
-                    louder_data = amplify_audio(pcm_data)
+                    # louder_data = amplify_audio(pcm_data) 
+                    # louder_data = pcm_data # Dùng raw data
                     
+                    debug_wav_file.writeframes(louder_data)
+
                     print(f"DEBUG: Received audio bytes: {len(louder_data)}")
 
-                    if check_voice_activity(louder_data):
-                        print("DEBUG: Voice detected! Sending to Azure...")
-                        transcriber.write_stream(louder_data)
-                    else:
-                        print("DEBUG: Silence...")
-                        pass
+                    transcriber.write_stream(pcm_data)
 
             except Exception:
                 continue
@@ -1090,6 +1095,7 @@ async def audio_endpoint(
         logger.error(f"Audio WS Error: {e}")
         audio_manager.disconnect(websocket, normalized_room_id)
     finally:
+        debug_wav_file.close()
         transcriber.stop()
 
 @app.websocket("/signal")

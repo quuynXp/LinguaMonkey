@@ -265,7 +265,7 @@ const WebRTCCallScreen = () => {
     channels: 1,
     bitsPerSample: 16,
     audioSource: Platform.OS === 'android' ? 7 : 0,
-    bufferSize: 4096,
+    bufferSize: 2048,
     wavFile: 'temp.wav'
   }), []);
 
