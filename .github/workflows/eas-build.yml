@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Local EAS)
+name: LinguamonkeyFe - Signed APK Build (Gradle Direct)
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # Bước này xóa file webp để tránh lỗi trùng lặp resource
+      # Xóa file webp để tránh lỗi trùng lặp resource (giữ nguyên logic của bạn)
       - name: 🧹 Clean up duplicate icon files
         run: |
           echo "✨ Cleaning up duplicate icon files (removing .webp)..."
@@ -44,33 +44,24 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # --- BƯỚC KHẮC PHỤC LỖI NDK 27 ---
-      # Xóa sạch bản 27 để Gradle không còn lựa chọn nào khác ngoài dùng bản 26
-      - name: 🗑️ Force remove NDK 27 & Setup NDK 26
+      # --- BƯỚC QUAN TRỌNG: Cài NDK 26 ---
+      - name: 🔧 Setup Android NDK 26
+        id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r26c
           add-to-path: true
-      
-      - name: 💣 Delete conflicting NDK versions
+
+      # --- BƯỚC KHẮC PHỤC TRIỆT ĐỂ: Xóa NDK 27 ---
+      # Xóa cứng thư mục NDK 27 mặc định của GitHub Runner để không còn gì cho hệ thống nhận diện sai
+      - name: 💣 Nuke NDK 27
         run: |
-          echo "Checking for NDK versions..."
-          ls -al $ANDROID_HOME/ndk/ || true
-          
-          echo "🗑️ DELETING NDK 27 to force CMake to use NDK 26..."
-          sudo rm -rf $ANDROID_HOME/ndk/27.*
+          echo "🔥 Deleting NDK 27 from standard paths..."
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.1.12297006
           sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
-          
-          echo "✅ Remaining NDK versions:"
-          ls -al $ANDROID_HOME/ndk/
-
-      # Ghi đè file local.properties để trỏ thẳng vào NDK cài đặt
-      - name: 📍 Force Local Properties to NDK 26
-        run: |
-          echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" >> ./android/local.properties
-          cat ./android/local.properties
-
-      # ---------------------------------
+          sudo rm -rf $ANDROID_HOME/ndk/27.*
+          echo "✅ Done. Remaining NDKs:"
+          ls -al /usr/local/lib/android/sdk/ndk/ || true
 
       - name: 🐘 Cache Gradle dependencies
         uses: actions/cache@v4
@@ -81,37 +72,36 @@ jobs:
           key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
-            
-      - name: 🧹 Clean up large components
+
+      - name: 🔐 Setup Keystore
         run: |
-          sudo rm -rf /usr/share/dotnet/
-          sudo apt-get clean
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ./android/app/my-release-key.keystore
 
-      - name: 🔐 Install EAS CLI
-        run: npm install -g eas-cli
-
-      - name: 🔑 Decode Android keystore
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
-          chmod 600 my-release-key.keystore
-
-      - name: ⚙️ Build signed APK locally
+      # --- DÙNG GRADLE THAY VÌ EAS ---
+      # Gradle sẽ build trực tiếp, tôn trọng biến ANDROID_NDK_HOME
+      - name: ⚙️ Build APK with Gradle
         env:
-          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
-          ANDROID_KEYSTORE_PATH: ./my-release-key.keystore
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          # Ép buộc biến môi trường lần nữa
+          # Chỉ định chính xác NDK path từ bước setup-ndk
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+          # Các biến signing để Gradle tự ký (Cần config trong build.gradle hoặc dùng params)
+          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_FILE: my-release-key.keystore
+          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "🔧 Start signed local EAS build..."
-          # --skip-project-configuration: Giữ nguyên để không bị đè file webp
-          eas build --platform android --profile production-apk --local --non-interactive --output ./app-release.apk --skip-project-configuration
+          cd android
+          chmod +x gradlew
+          echo "🔨 Building with NDK at: $ANDROID_NDK_HOME"
+          
+          # Lệnh này sẽ tạo file APK release
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
+            -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: 📤 Upload signed APK
         uses: actions/upload-artifact@v4
         with:
           name: android-signed-apk
-          path: LinguamonkeyFe/app-release.apk
+          path: LinguamonkeyFe/android/app/build/outputs/apk/release/app-release.apk

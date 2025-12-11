@@ -10,7 +10,6 @@ import {
 export const flashcardKeys = {
   all: ["flashcards"] as const,
   lists: () => [...flashcardKeys.all, "list"] as const,
-  // Differentiate My vs Community keys
   myList: (lessonId: string, params: any) => [...flashcardKeys.lists(), "my", lessonId, params] as const,
   communityList: (lessonId: string, params: any) => [...flashcardKeys.lists(), "community", lessonId, params] as const,
   due: (lessonId: string) => [...flashcardKeys.lists(), "due", lessonId] as const,
@@ -21,7 +20,6 @@ export const flashcardKeys = {
 export const useFlashcards = () => {
   const queryClient = useQueryClient();
 
-  // 1. GET /api/v1/lessons/{lessonId}/flashcards/my
   const useGetMyFlashcards = (
     lessonId: string | null,
     params: { page?: number; size?: number; query?: string }
