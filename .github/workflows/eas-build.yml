@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Gradle Direct)
+name: LinguamonkeyFe - Signed APK Build (Gradle Direct Optimized)
 
 on:
   push:
@@ -19,6 +19,33 @@ jobs:
       - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
+      # --- BƯỚC DỌN DẸP KHÔNG GIAN ĐĨA (QUAN TRỌNG) ---
+      - name: 🗑️ AGGRESSIVE DISK CLEANUP (Max Space)
+        run: |
+          echo "🔥 Dọn dẹp mạnh mẽ: Giải phóng dung lượng đĩa trước khi build..."
+          
+          # 1. Dọn dẹp các SDK và toolset lớn không cần thiết
+          sudo rm -rf /usr/share/dotnet/ # .NET SDKs
+          sudo rm -rf /usr/local/share/boost/ # Boost libraries
+          sudo rm -rf /usr/local/lib/android/sdk/docs # Android SDK Docs
+          
+          # 2. Dọn dẹp cache hệ thống và log
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo find /var/log -type f -delete # Xóa log hệ thống
+          sudo rm -rf /tmp/*
+          
+          # 3. Dọn dẹp cache của Yarn/NPM (đã được cài đặt trước đó)
+          npm cache clean --force || true
+          yarn cache clean --all || true
+          
+          # 4. Dọn dẹp cache Gradle từ các lần chạy trước
+          rm -rf ~/.gradle/caches/
+          
+          # 5. Xóa Docker images không dùng
+          docker system prune -a -f --volumes || true
+      # --- KẾT THÚC DỌN DẸP ---
+
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -32,7 +59,6 @@ jobs:
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # Xóa file webp để tránh lỗi trùng lặp resource (giữ nguyên logic của bạn)
       - name: 🧹 Clean up duplicate icon files
         run: |
           echo "✨ Cleaning up duplicate icon files (removing .webp)..."
@@ -44,7 +70,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # --- BƯỚC QUAN TRỌNG: Cài NDK 26 ---
+      # Cài đặt NDK 26
       - name: 🔧 Setup Android NDK 26
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -52,23 +78,26 @@ jobs:
           ndk-version: r26c
           add-to-path: true
 
-      # --- BƯỚC KHẮC PHỤC TRIỆT ĐỂ: Xóa NDK 27 ---
-      # Xóa cứng thư mục NDK 27 mặc định của GitHub Runner để không còn gì cho hệ thống nhận diện sai
-      - name: 💣 Nuke NDK 27
+      # FIX LỖI NDK 27 (C++ CMake)
+      - name: 💣 Nuke NDK 27 Remnants (Force NDK 26)
         run: |
-          echo "🔥 Deleting NDK 27 from standard paths..."
-          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.1.12297006
+          echo "🔥 Xóa NDK 27 để khắc phục lỗi CMake..."
           sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
           sudo rm -rf $ANDROID_HOME/ndk/27.*
-          echo "✅ Done. Remaining NDKs:"
-          ls -al /usr/local/lib/android/sdk/ndk/ || true
+          echo "✅ NDK 27 đã bị xóa."
+
+      - name: 📍 Force Local Properties to NDK 26
+        run: |
+          # Ghi đè file local.properties để trỏ thẳng vào NDK đã cài đặt
+          echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" >> ./android/local.properties
+          cat ./android/local.properties
 
       - name: 🐘 Cache Gradle dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ~/.gradle/caches
             ~/.gradle/wrapper
+          # Chỉ cache wrapper, vì ta đã xóa caches trong bước dọn dẹp
           key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
@@ -77,13 +106,9 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ./android/app/my-release-key.keystore
 
-      # --- DÙNG GRADLE THAY VÌ EAS ---
-      # Gradle sẽ build trực tiếp, tôn trọng biến ANDROID_NDK_HOME
       - name: ⚙️ Build APK with Gradle
         env:
-          # Chỉ định chính xác NDK path từ bước setup-ndk
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          # Các biến signing để Gradle tự ký (Cần config trong build.gradle hoặc dùng params)
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_FILE: my-release-key.keystore
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -93,7 +118,6 @@ jobs:
           chmod +x gradlew
           echo "🔨 Building with NDK at: $ANDROID_NDK_HOME"
           
-          # Lệnh này sẽ tạo file APK release
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
@@ -105,3 +129,8 @@ jobs:
         with:
           name: android-signed-apk
           path: LinguamonkeyFe/android/app/build/outputs/apk/release/app-release.apk
+
+      # Dọn dẹp cuối cùng (có thể không cần thiết do đã dọn dẹp mạnh ở đầu)
+      - name: 🧹 Final Clean Up
+        if: always()
+        run: rm -f ./android/app/my-release-key.keystore
