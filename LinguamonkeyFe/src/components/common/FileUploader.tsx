@@ -4,6 +4,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadTemp } from '../../services/cloudinary';
 import { useTranslation } from 'react-i18next';
+// Đảm bảo đường dẫn import đúng với project của bạn
+import { validateFileSignature } from '../../utils/FileUtils';
 
 type MediaType = 'image' | 'video' | 'audio' | 'document' | 'all';
 
@@ -35,9 +37,17 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     const { t } = useTranslation();
     const [isProcessing, setIsProcessing] = useState(false);
 
-    const validateFile = (fileSize: number | undefined, duration: number | undefined, type: string) => {
+    // Hàm validate đã được update thêm tham số uri
+    const validateFile = async (fileSize: number | undefined, duration: number | undefined, type: string, uri: string) => {
         if (fileSize && fileSize > maxSizeMB * 1024 * 1024) {
             Alert.alert(t('common.error'), t('errors.fileTooLarge', { size: maxSizeMB }));
+            return false;
+        }
+
+        // FIX ERROR: Ép kiểu 'as any' để tránh lỗi TS nếu FileUtils yêu cầu strict literal
+        const isSafe = await validateFileSignature(uri, type as any);
+        if (!isSafe) {
+            Alert.alert(t('common.error'), "Định dạng file không hợp lệ hoặc có dấu hiệu giả mạo.");
             return false;
         }
         return true;
@@ -76,14 +86,12 @@ const FileUploader: React.FC<FileUploaderProps> = ({
                 return;
             }
 
-            // FIX: Use explicit string arrays cast to 'any' to bypass TS check but satisfy Runtime
             let mediaTypes: any;
             if (mediaType === 'video') {
                 mediaTypes = ['videos'];
             } else if (mediaType === 'image') {
                 mediaTypes = ['images'];
             } else {
-                // 'all' -> images AND videos
                 mediaTypes = ['images', 'videos'];
             }
 
@@ -95,7 +103,16 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
-                if (!validateFile(asset.fileSize, asset.duration, asset.type || 'image')) return;
+
+                // FIX ERROR: Thêm await và truyền đủ 4 tham số (bao gồm uri)
+                const isValid = await validateFile(
+                    asset.fileSize,
+                    asset.duration,
+                    asset.type || 'image',
+                    asset.uri // <-- Đã thêm
+                );
+
+                if (!isValid) return;
 
                 const filePayload = {
                     uri: asset.uri,
@@ -127,7 +144,16 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
-                if (!validateFile(asset.size, undefined, asset.mimeType || 'application')) return;
+
+                // FIX ERROR: Thêm await và truyền đủ 4 tham số (bao gồm uri)
+                const isValid = await validateFile(
+                    asset.size,
+                    undefined,
+                    asset.mimeType || 'application',
+                    asset.uri // <-- Đã thêm
+                );
+
+                if (!isValid) return;
 
                 const filePayload = {
                     uri: asset.uri,

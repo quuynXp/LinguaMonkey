@@ -146,17 +146,19 @@ public class BadgeServiceImpl implements BadgeService {
         }
     }
 
-    @Override
+   @Override
     public List<BadgeProgressResponse> getBadgeProgressForUser(UUID userId) {
-        
-        List<Badge> allBadges = badgeRepository.findAll().stream()
-                .collect(Collectors.toList());
+        List<Badge> allBadges = badgeRepository.findAll();
 
         if (allBadges.isEmpty()) {
             return new ArrayList<>();
         }
 
-        User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        // Lấy User để check tiến độ (streak, exp, etc.)
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+                
+        // Map các badge user đã sở hữu
         Map<UUID, UserBadge> ownedBadgesMap = userBadgeRepository.findByIdUserIdAndIsDeletedFalse(userId).stream()
                 .collect(Collectors.toMap(ub -> ub.getBadge().getBadgeId(), Function.identity()));
 
@@ -166,39 +168,36 @@ public class BadgeServiceImpl implements BadgeService {
             boolean isOwned = ownedBadgesMap.containsKey(badge.getBadgeId());
             int currentProgress = 0;
 
-            // Tính toán progress thực tế
+            // Logic tính toán progress
             if (isOwned) {
                 currentProgress = badge.getCriteriaThreshold();
             } else {
-                // Tính progress dựa trên BadgeType và chỉ số hiện tại của User
                 if (badge.getBadgeType() != null) {
                     switch (badge.getBadgeType()) {
                         case STREAK_MILESTONE:
                             currentProgress = user.getStreak();
                             break;
-                        // Thêm các case khác tùy vào db User có field gì
-                        // Ví dụ: case TOTAL_EXP: currentProgress = user.getExp(); break;
                         default:
                             currentProgress = 0;
                     }
                 }
             }
 
-            // Cap progress không vượt quá threshold
+            // Cap progress
             if (currentProgress > badge.getCriteriaThreshold()) {
                 currentProgress = badge.getCriteriaThreshold();
             }
 
-            // Build response thủ công để đảm bảo đúng field UI cần
+            // --- FIX: Map đầy đủ fields ---
             BadgeProgressResponse response = BadgeProgressResponse.builder()
                     .badgeId(badge.getBadgeId())
                     .badgeName(badge.getBadgeName())
                     .description(badge.getDescription())
                     .imageUrl(badge.getImageUrl())
+                    .criteriaType(badge.getCriteriaType()) 
                     .criteriaThreshold(badge.getCriteriaThreshold())
                     .currentUserProgress(currentProgress)
                     .isAchieved(isOwned)
-                    // Thêm các field UI cần nếu có trong DTO
                     .build();
             
             progressList.add(response);

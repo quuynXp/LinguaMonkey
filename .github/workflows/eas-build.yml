@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Final Fix Syntax)
+name: LinguamonkeyFe - Signed APK Build (Absolute Final Fix)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
-      # --- 1. DỌN DẸP DISK ---
+      # --- 1. DỌN DẸP (GIỮ NGUYÊN) ---
       - name: 🗑️ AGGRESSIVE DISK CLEANUP
         run: |
           echo "🔥 Freeing up disk space..."
@@ -30,8 +30,7 @@ jobs:
           sudo rm -rf /tmp/*
           sudo rm -rf /usr/local/lib/android/sdk/system-images
           
-          # Xóa sạch folder NDK để tránh nhận nhầm bản 27
-          echo "💣 Removing default NDK folder..."
+          echo "💣 Removing default NDK 27..."
           sudo rm -rf /usr/local/lib/android/sdk/ndk
           echo "✅ Disk space cleaned."
 
@@ -48,7 +47,7 @@ jobs:
       - name: 💣 Delete existing Android folder
         run: rm -rf android
 
-      # --- 2. SETUP NDK 26 ---
+      # --- 2. CÀI NDK 26 ---
       - name: 🔧 Setup Android NDK r26b
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -58,27 +57,31 @@ jobs:
 
       # --- 3. PREBUILD ---
       - name: 🛠️ Generate Android directory (Prebuild)
+        env:
+          EXPO_ANDROID_NDK_VERSION: "26.1.10909125"
         run: npx expo prebuild --platform android --no-install
 
-      # --- 4. GHI ĐÈ CẤU HÌNH (SAFE MODE + NEWLINE FIX) ---
-      - name: 🚑 Force NDK via Gradle Properties
+      # --- 4. 🚑 PHẪU THUẬT (SỬA LẠI LOGIC) ---
+      - name: 💀 Force Fix NDK Version Everywhere
         run: |
-          echo "🔧 Injecting NDK version into gradle.properties..."
+          echo "☢️ Overriding NDK configurations..."
           
-          # Đảm bảo file tồn tại
-          touch android/gradle.properties
-          
-          # --- FIX QUAN TRỌNG: THÊM DÒNG TRỐNG TRƯỚC KHI GHI ---
-          # Để tránh bị dính vào dòng cuối cùng (ví dụ: kotlinVersion=2.2.20android.ndkVersion...)
-          echo "" >> android/gradle.properties
-          
-          # Ghi đè phiên bản NDK
+          # 1. Ghi đè gradle.properties (Cái này bạn làm đúng, giữ lại)
           echo "android.ndkVersion=26.1.10909125" >> android/gradle.properties
           
-          # Ghi đè đường dẫn NDK vào local.properties
-          echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" > android/local.properties
+          # 2. CHÈN TRỰC TIẾP vào app/build.gradle (Quan trọng!)
+          # Expo thường để ndkVersion = rootProject.ext.ndkVersion
+          # Chúng ta sẽ thay thế dòng đó bằng string cứng luôn.
+          sed -i 's/ndkVersion rootProject.ext.ndkVersion/ndkVersion "26.1.10909125"/' android/app/build.gradle || true
           
-          echo "✅ Configuration injected correctly."
+          # Phòng trường hợp cấu trúc khác, ta dùng regex tìm dòng ndkVersion bất kỳ trong app/build.gradle và ép lại
+          sed -i 's/ndkVersion\s*=.*/ndkVersion "26.1.10909125"/' android/app/build.gradle
+
+          # 3. Sửa root build.gradle (Phòng hờ)
+          sed -i 's/ndkVersion\s*=\s*["'\'']27\..*["'\'']/ndkVersion = "26.1.10909125"/' android/build.gradle || true
+
+          echo "🔍 Check android/app/build.gradle:"
+          grep "ndkVersion" android/app/build.gradle
 
       - name: 🧹 Clean up duplicate icon files
         run: |
@@ -98,9 +101,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v8-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v7-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v8-
+            ${{ runner.os }}-gradle-fe-v7-
 
       - name: 🔐 Setup Keystore
         run: |
@@ -113,10 +116,13 @@ jobs:
           cd android
           chmod +x gradlew
           
-          echo "🔨 Building with NDK: $ANDROID_NDK_HOME"
+          echo "ndk.dir=$ANDROID_NDK_HOME" > local.properties
           
-          # Vẫn giữ -P để chắc ăn, nhưng quan trọng là file gradle.properties đã được sửa đúng
-          ./gradlew assembleRelease --no-daemon \
+          echo "🔨 Building with FORCED NDK Version: 26.1.10909125"
+          
+          # THAY ĐỔI QUAN TRỌNG: Thêm lại tham số -Pandroid.ndkVersion
+          # Tham số này có quyền lực cao nhất, cao hơn cả file config.
+          ./gradlew assembleRelease --no-daemon --stacktrace \
             -Pandroid.ndkVersion=26.1.10909125 \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \

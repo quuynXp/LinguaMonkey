@@ -5,8 +5,12 @@ import com.connectJPA.LinguaVietnameseApp.entity.UserMedia;
 import com.connectJPA.LinguaVietnameseApp.enums.MediaType;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserMediaRepository;
 import com.connectJPA.LinguaVietnameseApp.service.StorageService;
+import com.connectJPA.LinguaVietnameseApp.service.VirusScanService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,10 +29,17 @@ public class FileController {
     private final StorageService storageService;
     private final UserMediaRepository userMediaRepository;
 
+    @Autowired
+    private VirusScanService virusScanService;
+
     @PostMapping(value = "/upload-temp", consumes = "multipart/form-data")
-    public ResponseEntity<FileResponse> uploadTemp(@RequestPart("file") MultipartFile file) {
+    public ResponseEntity<?> uploadTemp(@RequestPart("file") MultipartFile file) {
         log.info("Received upload request. Name: {}, Size: {}", file.getOriginalFilename(), file.getSize());
         
+        if (!virusScanService.isSafeByHash(file)) {
+            return ResponseEntity.status(400).body("File bị phát hiện có chứa mã độc.");
+        }
+
         String fileId = storageService.uploadTemp(file);
         String fileUrl = storageService.getFileUrl(fileId);
 
