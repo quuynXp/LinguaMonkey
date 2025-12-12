@@ -72,6 +72,52 @@ public class VideoCallServiceImpl implements VideoCallService {
     }
 
     @Override
+    @Transactional
+    public VideoCallResponse initiateCallForMatchedRoom(UUID roomId, UUID callerId, UUID receiverId) {
+        // 1. Validate Room
+        if (!roomRepository.existsById(roomId)) {
+            throw new AppException(ErrorCode.ROOM_NOT_FOUND);
+        }
+
+        // 2. Tạo bản ghi VideoCall trạng thái INITIATED
+        VideoCall videoCall = VideoCall.builder()
+                .roomId(roomId)
+                .callerId(callerId)
+                .calleeId(receiverId) 
+                .videoCallType(VideoCallType.ONE_TO_ONE)
+                .status(VideoCallStatus.INITIATED)
+                .startTime(OffsetDateTime.now())
+                .build();
+
+        videoCall = videoCallRepository.save(videoCall);
+
+        // 3. Tạo Participants (Optional: Nếu bạn muốn track từng user join/leave kỹ hơn)
+        List<VideoCallParticipant> participants = new ArrayList<>();
+        
+        participants.add(VideoCallParticipant.builder()
+                .id(new VideoCallParticipantId(videoCall.getVideoCallId(), callerId))
+                .videoCall(videoCall)
+                .user(userRepository.getReferenceById(callerId))
+                .joinedAt(OffsetDateTime.now())
+                .role(VideoCallRole.HOST)
+                .status(VideoCallParticipantStatus.WAITING)
+                .build());
+
+        participants.add(VideoCallParticipant.builder()
+                .id(new VideoCallParticipantId(videoCall.getVideoCallId(), receiverId))
+                .videoCall(videoCall)
+                .user(userRepository.getReferenceById(receiverId))
+                .joinedAt(OffsetDateTime.now())
+                .role(VideoCallRole.GUEST)
+                .status(VideoCallParticipantStatus.WAITING)
+                .build());
+
+        videoCallParticipantRepository.saveAll(participants);
+
+        return videoCallMapper.toResponse(videoCall);
+    }
+
+    @Override
     public VideoCallResponse getVideoCallById(UUID id) {
         try {
             if (id == null) {

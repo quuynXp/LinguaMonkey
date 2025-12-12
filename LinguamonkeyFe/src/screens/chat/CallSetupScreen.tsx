@@ -348,7 +348,6 @@ const CallSetupScreen = ({ navigation }: any) => {
     }
   }, [isSearching])
 
-  // ... (Phần Render UI giữ nguyên) ...
   const renderOptionButton = (options: any[], selectedValue: any, onSelect: (val: any) => void) => (
     <View style={styles.optionsContainer}>
       {options.map((option) => (

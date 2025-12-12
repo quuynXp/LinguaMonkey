@@ -1,25 +1,31 @@
 import uuid
+import logging
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, and_
 from src.core.models import VideoCall, VideoCallStatus, VideoCallType
+
+logger = logging.getLogger(__name__)
 
 async def start_or_join_call(session: AsyncSession, room_id: str, user_id: str):
     """
-    Khi user join room:
-    1. Kiểm tra xem có call nào đang ONGOING hoặc WAITING trong room này không.
-    2. Nếu chưa có -> Tạo mới (INITIATED -> ONGOING).
-    3. Nếu có -> Giữ nguyên, update metrics hoặc người tham gia nếu cần.
+    Xử lý khi user join room:
+    - Nếu chưa có call -> Tạo mới (ONGOING).
+    - Nếu có call (WAITING/ONGOING) -> Return call đó.
     """
     try:
         room_uuid = uuid.UUID(str(room_id))
         user_uuid = uuid.UUID(str(user_id))
 
-        # Tìm cuộc gọi đang diễn ra gần nhất
+        # 1. Tìm cuộc gọi đang active (Bao gồm cả WAITING và ONGOING)
         stmt = select(VideoCall).where(
             and_(
                 VideoCall.room_id == room_uuid,
-                VideoCall.status.in_([VideoCallStatus.WAITING, VideoCallStatus.ONGOING, VideoCallStatus.INITIATED])
+                VideoCall.status.in_([
+                    VideoCallStatus.WAITING, 
+                    VideoCallStatus.ONGOING, 
+                    VideoCallStatus.INITIATED
+                ])
             )
         ).order_by(VideoCall.start_time.desc()).limit(1)
         
@@ -27,56 +33,69 @@ async def start_or_join_call(session: AsyncSession, room_id: str, user_id: str):
         active_call = result.scalar_one_or_none()
 
         if not active_call:
-            # Tạo cuộc gọi mới
+            # 2. Tạo mới nếu chưa có
+            logger.info(f"Creating NEW call for room {room_id}")
             new_call = VideoCall(
                 video_call_id=uuid.uuid4(),
                 room_id=room_uuid,
-                caller_id=user_uuid, # Người đầu tiên join coi như caller
-                status=VideoCallStatus.ONGOING, # Chuyển ngay sang ONGOING khi connect WebSocket
+                caller_id=user_uuid,
+                status=VideoCallStatus.ONGOING, # Set ONGOING ngay vì user đã join
                 start_time=datetime.utcnow(),
-                video_call_type=VideoCallType.GROUP # Mặc định set Group, logic chi tiết tùy bạn
+                video_call_type=VideoCallType.GROUP
             )
             session.add(new_call)
             await session.commit()
+            await session.refresh(new_call) # Refresh để lấy data mới nhất
             return new_call
         else:
-            # Nếu đang WAITING/INITIATED thì chuyển sang ONGOING vì đã có người vào signal
+            # 3. Nếu đã có, đảm bảo status là ONGOING
+            logger.info(f"Joining EXISTING call {active_call.video_call_id}")
             if active_call.status != VideoCallStatus.ONGOING:
                 active_call.status = VideoCallStatus.ONGOING
                 if not active_call.start_time:
                     active_call.start_time = datetime.utcnow()
                 await session.commit()
+                await session.refresh(active_call)
+            
             return active_call
 
     except Exception as e:
-        print(f"Error starting call: {e}")
+        logger.error(f"Error start_or_join_call: {e}")
+        await session.rollback() # Rollback nếu lỗi
         return None
 
 async def end_call_if_empty(session: AsyncSession, room_id: str):
     """
-    Được gọi khi WebSocket disconnect.
-    Logic: Chúng ta sẽ update trạng thái thành ENDED.
-    Lưu ý: Logic kiểm tra "phòng trống" nằm ở ConnectionManager, 
-    hàm này chỉ thực hiện việc ghi DB.
+    Kết thúc cuộc gọi khi phòng trống.
+    Sửa lỗi: Check cả status WAITING và INITIATED để tránh sót call rác.
     """
     try:
         room_uuid = uuid.UUID(str(room_id))
         
-        # Tìm cuộc gọi đang active
+        # Tìm các cuộc gọi chưa kết thúc trong phòng
         stmt = select(VideoCall).where(
             and_(
                 VideoCall.room_id == room_uuid,
-                VideoCall.status == VideoCallStatus.ONGOING
+                VideoCall.status.in_([
+                    VideoCallStatus.ONGOING, 
+                    VideoCallStatus.WAITING, 
+                    VideoCallStatus.INITIATED
+                ])
             )
         )
         result = await session.execute(stmt)
-        active_call = result.scalar_one_or_none()
+        active_calls = result.scalars().all() # Có thể có nhiều hơn 1 do lỗi logic cũ
 
-        if active_call:
-            active_call.status = VideoCallStatus.ENDED
-            active_call.end_time = datetime.utcnow()
+        if active_calls:
+            for call in active_calls:
+                logger.info(f"Ending call {call.video_call_id} in room {room_id}")
+                call.status = VideoCallStatus.ENDED
+                call.end_time = datetime.utcnow()
+            
             await session.commit()
-            print(f"Call in room {room_id} has ENDED.")
+        else:
+            logger.info(f"No active call found to end in room {room_id}")
             
     except Exception as e:
-        print(f"Error ending call: {e}")
+        logger.error(f"Error end_call_if_empty: {e}")
+        await session.rollback()

@@ -18,6 +18,8 @@ public interface VideoCallService {
     VideoCallResponse getVideoCallById(UUID id);
     VideoCallResponse createVideoCall(VideoCallRequest request);
 
+    VideoCallResponse initiateCallForMatchedRoom(UUID roomId, UUID callerId, UUID receiverId);
+    
     // Participants management
     @Transactional
     void addParticipant(UUID videoCallId, UUID userId);

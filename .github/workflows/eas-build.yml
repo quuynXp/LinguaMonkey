@@ -112,6 +112,7 @@ jobs:
           # Dùng --no-daemon để ổn định memory
           ./gradlew assembleRelease --no-daemon \
             -Pandroid.ndkPath=$ANDROID_NDK_HOME \
+            -Pandroid.ndkVersion=26.1.10909125 \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
