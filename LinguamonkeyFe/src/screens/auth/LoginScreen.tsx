@@ -15,7 +15,7 @@ import ScreenLayout from '../../components/layout/ScreenLayout';
 import * as AuthSession from 'expo-auth-session';
 import { useAppStore } from '../../stores/appStore';
 
-WebBrowser.maybeCompleteAuthSession();
+WebBrowser.maybeCompleteAuthSession(); 
 
 const GOOGLE_CLIENT_ID_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID;
 const FACEBOOK_CLIENT_ID = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID;
