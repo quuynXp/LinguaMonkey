@@ -3,12 +3,9 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CallPreferencesRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.VideoCallResponse;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.service.MatchmakingQueueService;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
-import com.connectJPA.LinguaVietnameseApp.service.VideoCallService;
-
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +25,6 @@ public class MatchmakingController {
 
     private final MatchmakingQueueService queueService;
     private final RoomService roomService;
-    private final VideoCallService videoCallService;
     private final SimpMessagingTemplate messagingTemplate;
 
     @Operation(summary = "Find a call partner", description = "Adds user to queue and tries to find a best match.")
@@ -51,7 +47,6 @@ public class MatchmakingController {
         MatchmakingQueueService.MatchResult pendingMatch = queueService.checkPendingMatch(currentUserId);
         if (pendingMatch != null) {
             RoomResponse room = roomService.getRoomById(pendingMatch.getRoomId());
-            
             return buildMatchedResponse(room, pendingMatch.getScore());
         }
 
@@ -66,11 +61,6 @@ public class MatchmakingController {
             // Create a private room for both
             RoomResponse room = roomService.findOrCreatePrivateRoom(currentUserId, partnerId);
 
-            VideoCallResponse videoCall = videoCallService.initiateCallForMatchedRoom(
-                room.getRoomId(), 
-                currentUserId, 
-                partnerId
-            );
             // 4. Notify myself (Immediate return)
             queueService.removeFromQueue(currentUserId);
             
@@ -83,9 +73,9 @@ public class MatchmakingController {
             );
             
             queueService.notifyPartner(partnerId, partnerResult);
-            sendMatchNotificationToPartner(partnerId, room, matchResult.getScore(), videoCall);
+            sendMatchNotificationToPartner(partnerId, room, matchResult.getScore());
 
-            return buildMatchedResponse(room, matchResult.getScore(), videoCall);
+            return buildMatchedResponse(room, matchResult.getScore());
         } else {
             // No match found yet
             Map<String, Object> responseData = new HashMap<>();
@@ -102,14 +92,13 @@ public class MatchmakingController {
         }
     }
     
-   private void sendMatchNotificationToPartner(UUID partnerId, RoomResponse room, int score, VideoCallResponse videoCall) {
+   private void sendMatchNotificationToPartner(UUID partnerId, RoomResponse room, int score) {
     try {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "MATCH_FOUND");
         payload.put("status", "MATCHED");
         payload.put("room", room);
         payload.put("score", score);
-        payload.put("videoCallId", videoCall.getVideoCallId());
         
         String destination = "/topic/match-updates/" + partnerId.toString();
         
@@ -121,40 +110,22 @@ public class MatchmakingController {
     }
 }
 
-    private AppApiResponse<Map<String, Object>> buildMatchedResponse(RoomResponse room, int score, VideoCallResponse videoCall) {
-        Map<String, Object> responseData = new HashMap<>();
-        responseData.put("status", "MATCHED");
-        
-        Map<String, Object> roomData = new HashMap<>();
-        roomData.put("roomId", room.getRoomId().toString()); 
-        
-        responseData.put("room", room);
-        responseData.put("score", score);
-        responseData.put("videoCallId", videoCall.getVideoCallId());
-
-        return AppApiResponse.<Map<String, Object>>builder()
-                .code(200)
-                .message("Match found successfully!")
-                .result(responseData)
-                .build();
-    }
-
     private AppApiResponse<Map<String, Object>> buildMatchedResponse(RoomResponse room, int score) {
-        Map<String, Object> responseData = new HashMap<>();
-        responseData.put("status", "MATCHED");
-        
-        Map<String, Object> roomData = new HashMap<>();
-        roomData.put("roomId", room.getRoomId().toString()); 
-        
-        responseData.put("room", room);
-        responseData.put("score", score);
+    Map<String, Object> responseData = new HashMap<>();
+    responseData.put("status", "MATCHED");
+    
+    Map<String, Object> roomData = new HashMap<>();
+    roomData.put("roomId", room.getRoomId().toString()); 
+    
+    responseData.put("room", room); // Jackson thường xử lý UUID tốt thành String "xxxx-xxxx..."
+    responseData.put("score", score);
 
-        return AppApiResponse.<Map<String, Object>>builder()
-                .code(200)
-                .message("Match found successfully!")
-                .result(responseData)
-                .build();
-    }
+    return AppApiResponse.<Map<String, Object>>builder()
+            .code(200)
+            .message("Match found successfully!")
+            .result(responseData)
+            .build();
+}
 
     @PostMapping("/cancel")
     public AppApiResponse<Void> cancelSearch(@RequestBody Map<String, UUID> requestBody) {

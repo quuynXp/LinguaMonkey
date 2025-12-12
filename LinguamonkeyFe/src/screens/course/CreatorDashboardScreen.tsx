@@ -24,10 +24,8 @@ const CreatorDashboardScreen = () => {
     const user = useUserStore((state) => state.user);
     const [revenueFilter, setRevenueFilter] = useState<'day' | 'week' | 'month' | 'year'>('month');
 
-    // Hooks
     const { useCreatorCourses, useCreateCourse, useCreatorStats } = useCourses();
 
-    // Data Fetching
     const { data: statsData, isLoading: isStatsLoading, refetch: refetchStats } = useCreatorStats(user?.userId);
     const { data: coursesData, isLoading: isCoursesLoading, refetch: refetchCourses } = useCreatorCourses(user?.userId, 0, 50);
     const { mutate: createCourse, isPending: isCreating } = useCreateCourse();
@@ -40,7 +38,6 @@ const CreatorDashboardScreen = () => {
         refetchStats();
     }, [refetchCourses, refetchStats]);
 
-    // Auto refresh when going back to this screen
     useFocusEffect(
         useCallback(() => {
             handleRefresh();
@@ -49,7 +46,6 @@ const CreatorDashboardScreen = () => {
 
     const handleCreateNewCourse = () => {
         // Logic tạo course nhanh (hoặc mở modal nhập tên)
-        // Ở đây giả lập tạo nhanh với tên mặc định, sau đó vào màn hình edit để sửa
         const defaultTitle = `New Course ${new Date().toLocaleDateString()}`;
         if (user?.userId) {
             createCourse(

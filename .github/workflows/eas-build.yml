@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Final SDK Fix)
+name: LinguamonkeyFe - Signed APK Build (Final Fix NDK)
 
 on:
   push:
@@ -22,24 +22,17 @@ jobs:
       - name: 🗑️ AGGRESSIVE DISK CLEANUP
         run: |
           echo "🔥 Freeing up disk space..."
-          # Xóa .NET (Rất nặng, không dùng cho React Native)
           sudo rm -rf /usr/share/dotnet
-          # Xóa CodeQL
           sudo rm -rf /opt/hostedtoolcache/CodeQL
-          # Xóa Docker images
           sudo docker image prune --all --force
-          # Xóa cache apt
           sudo apt-get clean
-          # Xóa thư mục tmp
           sudo rm -rf /tmp/*
-          
-          # QUAN TRỌNG: KHÔNG ĐƯỢC XÓA /usr/local/lib/android (đây là SDK)
-          # Chỉ xóa system-images của Android (nặng và chỉ dùng cho Emulator) để tiết kiệm chỗ
           sudo rm -rf /usr/local/lib/android/sdk/system-images
-
-          echo "💣 Removing default NDKs..."
-          sudo rm -rf /usr/local/lib/android/sdk/ndk
           
+          # Xóa sạch NDK mặc định của GitHub Runner (bản 27)
+          # Để đảm bảo nó không tự nhận nhầm
+          echo "💣 Removing default NDK 27..."
+          sudo rm -rf /usr/local/lib/android/sdk/ndk
           echo "✅ Disk space cleaned."
 
       - name: 🧩 Setup Node.js
@@ -52,17 +45,23 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
-      # --- 2. XÓA ANDROID CŨ ĐỂ PREBUILD LẠI TỪ ĐẦU ---
       - name: 💣 Delete existing Android folder
         run: rm -rf android
 
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # --- 3. XÓA FILE WEBP (Tránh lỗi Duplicate Resource) ---
+      - name: 🚑 Force Fix NDK Version in Gradle File
+        run: |
+          echo "🔧 Patching android/build.gradle to force NDK 26..."
+          # Tìm chuỗi phiên bản 27 và thay bằng 26.1.10909125 trong file build.gradle
+          sed -i 's/27.1.12297006/26.1.10909125/g' android/build.gradle
+          
+          # Kiểm tra lại xem đã sửa chưa
+          grep "ndkVersion" android/build.gradle || echo "⚠️ Warning: Could not find ndkVersion in root build.gradle"
+
       - name: 🧹 Clean up duplicate icon files
         run: |
-          echo "✨ Cleaning up duplicate icon files (removing .webp)..."
           if [ -d "./android/app/src/main/res" ]; then
             find ./android/app/src/main/res -name "*.webp" -delete
           fi
@@ -73,7 +72,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # --- 4. CÀI ĐẶT NDK 26.1 (r26b) ---
       - name: 🔧 Setup Android NDK r26b
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -87,9 +85,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v3-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v4-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v3-
+            ${{ runner.os }}-gradle-fe-v4-
 
       - name: 🔐 Setup Keystore
         run: |
@@ -98,21 +96,17 @@ jobs:
       - name: ⚙️ Build APK with Gradle
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_FILE: my-release-key.keystore
-          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew
-          echo "🔨 Building with NDK at: $ANDROID_NDK_HOME"
-
-          echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
           
-          # Dùng --no-daemon để ổn định memory
+          # Ghi đè file local.properties lần cuối
+          echo "ndk.dir=$ANDROID_NDK_HOME" > local.properties
+          
+          echo "🔨 Building with verified NDK Version..."
+          
+          # Không cần tham số -P hack nữa vì file build.gradle đã chuẩn rồi
           ./gradlew assembleRelease --no-daemon \
-            -Pandroid.ndkPath=$ANDROID_NDK_HOME \
-            -Pandroid.ndkVersion=26.1.10909125 \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
