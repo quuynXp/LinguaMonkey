@@ -9,7 +9,6 @@ import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
-import com.connectJPA.LinguaVietnameseApp.enums.MessageType;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -23,7 +22,6 @@ import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +34,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.lang.reflect.Type;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -59,6 +56,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final NotificationService notificationService;
     private final GrpcClientService grpcClientService;
     private final UserService userService;
+    
+    // Gson vẫn giữ lại chỉ để dùng cho Notification Payload, không dùng cho translation nữa
     private final Gson gson = new Gson();
 
     @Lazy
@@ -68,25 +67,13 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     private static final UUID AI_BOT_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
-    private Map<String, String> parseTranslations(String json) {
-        if (json == null || json.isEmpty()) return new HashMap<>();
-        try {
-            Type type = new TypeToken<Map<String, String>>(){}.getType();
-            return gson.fromJson(json, type);
-        } catch (Exception e) {
-            log.error("Failed to parse translations JSON: {}", json, e);
-            return new HashMap<>();
-        }
-    }
-
-    private String serializeTranslations(Map<String, String> map) {
-        if (map == null) return "{}";
-        return gson.toJson(map);
-    }
+    // --- ĐÃ XÓA: parseTranslations và serializeTranslations (vì Entity giờ là Map) ---
 
     private ChatMessageResponse mapToResponse(ChatMessage entity, RoomPurpose purpose) {
         ChatMessageResponse response = chatMessageMapper.toResponse(entity);
-        response.setTranslations(parseTranslations(entity.getTranslations()));
+        // Entity.translations bây giờ là Map, Response.translations cũng là Map
+        // MapStruct đã tự map, nhưng nếu cần override thủ công:
+        response.setTranslations(entity.getTranslations()); 
         response.setPurpose(purpose);
         return response;
     }
@@ -131,7 +118,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
         
-        message.setTranslations("{}");
+        // FIX: Khởi tạo Map rỗng thay vì String "{}"
+        message.setTranslations(new HashMap<>());
 
         ChatMessage savedMessage = chatMessageRepository.save(message);
         room.setUpdatedAt(OffsetDateTime.now());
@@ -150,10 +138,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
         try {
-            // STOMP Broadcast - Fast and immediate
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
             
-            // Notification Logic
             List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
                 .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(request.getSenderId())).toList();
 
@@ -167,6 +153,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                         "screen", "TabApp", "stackScreen", "GroupChatScreen",
                         "roomId", roomId.toString(), "initialFocusMessageId", response.getChatMessageId().toString()
                     );
+                    // Gson vẫn dùng để serialize payload cho Notification (String)
                     String payloadJson = gson.toJson(dataPayload);
                     NotificationRequest nreq = NotificationRequest.builder().userId(uId).title("New message").content(response.getContent() != null ? response.getContent() : "You sent an attachment").type("CHAT_MESSAGE").payload(payloadJson).build();
                     notificationService.createPushNotification(nreq);
@@ -223,7 +210,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
 
             message.setContent(newContent);
-            message.setTranslations("{}"); 
+            
+            // FIX: Reset về Map rỗng khi edit (logic cũ là reset về "{}")
+            message.setTranslations(new HashMap<>()); 
+            
             message.setUpdatedAt(OffsetDateTime.now());
             message = chatMessageRepository.save(message);
 
@@ -281,7 +271,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .roomId(userMessage.getRoomId()).senderId(AI_BOT_ID)
                     .content("AI response to: " + userMessage.getContent())
                     .messageType(userMessage.getMessageType()).isRead(false)
-                    .translations("{}") 
+                    // FIX: Khởi tạo Map rỗng
+                    .translations(new HashMap<>()) 
                     .build();
             aiMessage = chatMessageRepository.save(aiMessage);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(userMessage.getRoomId())
@@ -318,11 +309,17 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
 
-            Map<String, String> translations = parseTranslations(message.getTranslations());
+            // --- FIX LOGIC: Thao tác trực tiếp với Map ---
+            Map<String, String> translations = message.getTranslations();
+            if (translations == null) {
+                translations = new HashMap<>();
+            }
             
+            // Put trực tiếp vào Map
             translations.put(targetLang, translatedText);
             
-            message.setTranslations(serializeTranslations(translations));
+            // Set lại Map vào entity (JPA sẽ tự lo việc convert sang JSONB)
+            message.setTranslations(translations);
             
             ChatMessage saved = chatMessageRepository.save(message);
 
@@ -336,7 +333,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-            // BROADCAST UPDATE to others in room so their UI updates if they are watching
             ChatMessageResponse response = mapToResponse(saved, room.getPurpose());
             messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), response);
 
@@ -345,5 +341,5 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             log.error("Error saving translation for message {}", messageId, e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
-    }
+    } 
 }

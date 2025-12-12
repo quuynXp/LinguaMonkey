@@ -23,13 +23,11 @@ public class VideoCallParticipant extends BaseEntity {
     private VideoCallParticipantId id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("userId")
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", insertable = false, updatable = false) // Chỉ để query
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("videoCallId")
-    @JoinColumn(name = "video_call_id")
+    @JoinColumn(name = "video_call_id", insertable = false, updatable = false) // Chỉ để query
     private VideoCall videoCall;
 
     @Column(name = "joined_at")

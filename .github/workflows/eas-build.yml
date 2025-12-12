@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Final SDK Fix)
+name: LinguamonkeyFe - Signed APK Build (Force NDK 26 Match)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🗑️ AGGRESSIVE DISK CLEANUP & REMOVE CONFLICTING NDK
+      - name: 🗑️ AGGRESSIVE DISK CLEANUP
         run: |
           echo "🔥 Freeing up disk space..."
           sudo rm -rf /usr/share/dotnet
@@ -28,14 +28,12 @@ jobs:
           sudo apt-get clean
           sudo rm -rf /tmp/*
           
-          # --- QUAN TRỌNG: XÓA NDK CÓ SẴN (Bản 27 gây lỗi) ---
-          echo "💣 Removing pre-installed NDKs to force version 26..."
+          # --- XÓA NDK CÓ SẴN (Bản 27 gây xung đột) ---
+          echo "💣 Removing pre-installed NDKs..."
           sudo rm -rf /usr/local/lib/android/sdk/ndk
           # ---------------------------------------------------
 
-          # Chỉ xóa system-images của Android (nặng và chỉ dùng cho Emulator)
           sudo rm -rf /usr/local/lib/android/sdk/system-images
-          
           echo "✅ Disk space cleaned."
 
       - name: 🧩 Setup Node.js
@@ -48,14 +46,23 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
-      # --- 2. XÓA ANDROID CŨ ĐỂ PREBUILD LẠI TỪ ĐẦU ---
       - name: 💣 Delete existing Android folder
         run: rm -rf android
 
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # --- 3. XÓA FILE WEBP (Tránh lỗi Duplicate Resource) ---
+      # --- BƯỚC MỚI QUAN TRỌNG: FIX BUILD.GRADLE ---
+      # Bước này tìm dòng quy định phiên bản NDK trong file cấu hình và sửa nó thành 26.1.10909125
+      - name: 🔧 Force build.gradle to use NDK 26
+        run: |
+          echo "📝 Patching android/build.gradle to enforce NDK 26..."
+          # Tìm file build.gradle gốc và thay thế phiên bản NDK
+          sed -i 's/ndkVersion = .*/ndkVersion = "26.1.10909125"/' android/build.gradle
+          
+          # Kiểm tra lại xem đã sửa chưa
+          grep "ndkVersion" android/build.gradle
+
       - name: 🧹 Clean up duplicate icon files
         run: |
           echo "✨ Cleaning up duplicate icon files (removing .webp)..."
@@ -69,7 +76,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # --- 4. CÀI ĐẶT NDK 26.1 (r26b) ---
+      # --- CÀI ĐẶT NDK 26.1 ---
       - name: 🔧 Setup Android NDK r26b
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -77,8 +84,7 @@ jobs:
           ndk-version: r26b
           add-to-path: true
 
-      # --- BƯỚC MỚI: FORCE LOCAL.PROPERTIES ---
-      # Đảm bảo Gradle trỏ đúng vào NDK 26 vừa cài, không đi lung tung
+      # --- FORCE LOCAL.PROPERTIES ---
       - name: 📝 Force NDK Path in local.properties
         run: |
           echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" >> ./android/local.properties
@@ -90,9 +96,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v3-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v4-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v3-
+            ${{ runner.os }}-gradle-fe-v4-
 
       - name: 🔐 Setup Keystore
         run: |
@@ -110,8 +116,9 @@ jobs:
           chmod +x gradlew
           echo "🔨 Building with NDK at: $ANDROID_NDK_HOME"
           
-          # Dùng --no-daemon để ổn định memory
+          # Thêm tham số -Pandroid.ndkVersion để ghi đè biến toàn cục một lần nữa cho chắc
           ./gradlew assembleRelease --no-daemon \
+            -Pandroid.ndkVersion=26.1.10909125 \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \

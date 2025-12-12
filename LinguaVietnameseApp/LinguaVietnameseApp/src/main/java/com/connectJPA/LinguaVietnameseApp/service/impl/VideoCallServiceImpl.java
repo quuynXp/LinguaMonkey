@@ -156,8 +156,6 @@ public class VideoCallServiceImpl implements VideoCallService {
         for (UUID userId : participantIds) {
             VideoCallParticipant participant = VideoCallParticipant.builder()
                     .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
-                    .videoCall(videoCall)
-                    .user(userRepository.getReferenceById(userId))
                     .joinedAt(OffsetDateTime.now())
                     .role(VideoCallRole.GUEST)
                     .status(VideoCallParticipantStatus.WAITING)

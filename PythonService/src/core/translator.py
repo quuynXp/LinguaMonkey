@@ -27,7 +27,6 @@ else:
 TRANSLATION_MODEL_TIERS = [
     {"name": "gemini-2.5-flash", "purpose": "Flash - Balanced"},
     {"name": "gemini-2.5-flash-lite", "purpose": "Lite - Cost Effective"},
-    {"name": "gemini-2.5-flash-live", "purpose": "LIVE - Fallback"},
 ]
 
 class HybridTranslator:

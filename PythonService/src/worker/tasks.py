@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import json
 from celery import Celery
 from celery.signals import worker_ready
 from sqlalchemy import select, func, desc
@@ -15,7 +14,10 @@ from src.core.session import AsyncSessionLocal
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-REDIS_URL = os.environ.get("REDIS_URL", "redis://:redisPass123@redis:6379/0")
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "redisPass123")
+REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:6379/0"
+
 celery_app = Celery("lingua_worker", broker=REDIS_URL, backend=REDIS_URL)
 
 celery_app.conf.update(
@@ -43,12 +45,11 @@ DATASET_SOURCES = [
         "mapping": {"en": "en", "zh": "zh"},
         "limit": 100000
     },
-    # 2. THÊM MỚI: Tatoeba Challenge (Chuyên câu ngắn, từ vựng giao tiếp)
-    # Dataset này sẽ fix lỗi thiếu từ "Hi", "Love", "Hello"
+    # 2. Tatoeba: Câu ngắn, từ vựng giao tiếp
     {
         "name": "Helsinki-NLP/tatoeba_mt",
-        "config": "eng-vie", # Config mã ngôn ngữ của Tatoeba hơi khác chút
-        "split": "test",      # Tatoeba thường dùng split test/validation cho clean data
+        "config": "eng-vie", 
+        "split": "test",
         "mapping": {"eng": "en", "vie": "vi"},
         "limit": 50000 
     },
@@ -56,13 +57,13 @@ DATASET_SOURCES = [
         "name": "Helsinki-NLP/tatoeba_mt",
         "config": "eng-zho", 
         "split": "test",
-        "mapping": {"eng": "en", "zho": "zh-CN"}, # Map zho sang zh-CN
+        "mapping": {"eng": "en", "zho": "zh-CN"}, 
         "limit": 50000
     }
 ]
 
-# Đổi key version để worker chạy lại việc nạp dữ liệu
-INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v202" 
+# Đổi key version để bắt buộc chạy lại việc nạp dữ liệu
+INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v203" 
 
 def normalize_text(text: str) -> str:
     if not text: return ""
@@ -107,13 +108,13 @@ def ingest_huggingface_task():
             for source in DATASET_SOURCES:
                 logger.info(f"📥 Loading dataset: {source['name']} ({source['config']})....")
                 try:
-                    # Tải dataset
+                    # Tải dataset (ĐÃ XÓA trust_remote_code=True)
                     dataset = await asyncio.to_thread(
                         load_dataset, 
                         source['name'], 
                         source['config'], 
-                        split=source['split'],
-                        trust_remote_code=True
+                        split=source['split']
+                        # trust_remote_code=True # <-- Đã bỏ, vì gây lỗi cho Opus-100
                     )
                     
                     if source.get("limit"):
@@ -123,6 +124,7 @@ def ingest_huggingface_task():
                     logger.info(f"✅ Loaded {len(dataset)} rows. Processing...")
                     
                     # Xác định key source/target
+                    # Sử dụng mapping keys từ config để linh hoạt với các dataset khác nhau
                     src_lang_dataset = list(source["mapping"].keys())[0] # vd: eng
                     tgt_lang_dataset = list(source["mapping"].keys())[1] # vd: vie
                     
@@ -133,17 +135,11 @@ def ingest_huggingface_task():
                     pipe_batch = redis.pipeline()
 
                     for row in dataset:
-                        # Cấu trúc dataset có thể khác nhau (translation nested hoặc flat)
-                        if "sourceString" in row and "targetString" in row:
-                            # Cấu trúc Tatoeba cũ hoặc một số dataset khác
-                            s_text = row["sourceString"]
-                            t_text = row["targetString"]
-                        else:
-                            # Cấu trúc chuẩn OPUS/Tatoeba MT
-                            tr = row.get("translation", {})
-                            s_text = tr.get(src_lang_dataset, "")
-                            t_text = tr.get(tgt_lang_dataset, "")
-
+                        # Logic bóc tách dữ liệu từ row
+                        tr = row.get("translation", {})
+                        s_text = tr.get(src_lang_dataset, "")
+                        t_text = tr.get(tgt_lang_dataset, "")
+                        
                         if not s_text or not t_text: continue
                         
                         s_clean = s_text.strip()
@@ -167,7 +163,7 @@ def ingest_huggingface_task():
                     logger.info(f"✨ Ingested {count} pairs from {source['config']}")
 
                 except Exception as e:
-                    logger.error(f"❌ Failed source {source['name']}: {e}")
+                    logger.error(f"❌ Failed source {source['name']} ({source['config']}): {e}")
                     continue
 
             if total_processed > 0:

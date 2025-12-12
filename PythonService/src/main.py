@@ -503,7 +503,7 @@ from contextlib import asynccontextmanager
 from asyncio import Queue, Semaphore
 import numpy as np
 import uvicorn
-import functools # Import thêm để xử lý partial function
+import functools
 
 from fastapi import (
     FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query
@@ -536,10 +536,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- CONFIG ---
-VOLUME_GAIN_FACTOR = 1.0 # Tắt Amplify để test raw data
+VOLUME_GAIN_FACTOR = 1.0 # Để Azure tự xử lý Gain
 MAX_INT16 = 32767
 MIN_INT16 = -32768
-RESET_BUFFER_TIMEOUT = 2.0 
+RESET_BUFFER_TIMEOUT = 3.0 # Tăng timeout nối câu lên 3s để UI đỡ bị giật
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 
 # VAD Mode 2
@@ -628,7 +628,7 @@ class ConnectionManager:
         except Exception:
             dead_list.append(ws)
 
-    # --- GROUP TRANSLATION ---
+    # --- GROUP TRANSLATION & UI OPTIMIZATION ---
     async def broadcast_subtitle(self, text: str, detected_lang: str, room_id: str, sender_id: str, is_final: bool = False):
         if room_id not in self.active_connections or not text.strip(): 
             return
@@ -640,25 +640,29 @@ class ConnectionManager:
         translation_groups = defaultdict(list)
         direct_send_sockets = []
 
+        # 1. Gom nhóm User
         for meta in self.active_connections[room_id]:
-            user_id_recv = meta["user_id"]
             config = meta.get("config", {})
             if config.get("subtitleMode") == "off": continue
 
             recv_native = meta.get("native_lang", "vi")
             recv_lang_norm = recv_native.split('-')[0].lower()
 
+            # Nếu cùng ngôn ngữ hoặc mode original -> Không dịch
             if src_lang_norm == recv_lang_norm or config.get("subtitleMode") == "original":
                 direct_send_sockets.append(meta["ws"])
             else:
                 translation_groups[recv_native].append(meta["ws"])
 
+        # 2. Dịch (Chỉ khi Final để tối ưu performance)
         translation_results = {}
         if is_final and translation_groups:
             tasks = []
             target_langs = list(translation_groups.keys())
+            
             async def translate_single_lang(target):
                 try:
+                    # Gọi Translator (có Redis Cache bên trong)
                     t_text, _ = await translator.translate(text, detected_lang, target)
                     translation_results[target] = t_text
                 except Exception as e:
@@ -667,28 +671,34 @@ class ConnectionManager:
 
             await asyncio.gather(*[translate_single_lang(lang) for lang in target_langs])
 
+        # 3. Chuẩn bị Payload (FIXED KEY NAMES)
         send_coroutines = []
         dead_sockets = []
+        
+        # KEY FIX: Frontend của bạn dùng 'originalFull' để hiển thị
         payload_base = {
             "type": "subtitle",
             "status": "complete" if is_final else "processing",
             "senderId": sender_id,
-            "original": text,
+            "originalFull": text,        # <--- QUAN TRỌNG: Key này phải khớp với FE
+            "original": text,            # Giữ lại fallback
             "originalLang": detected_lang,
             "translated": ""
         }
 
+        # 3a. Gửi nhóm Direct
         if direct_send_sockets:
             msg_direct = json.dumps(payload_base, ensure_ascii=False)
             for ws in direct_send_sockets:
                 send_coroutines.append(self._safe_send(ws, msg_direct, dead_sockets))
 
+        # 3b. Gửi nhóm Translated
         for lang, sockets in translation_groups.items():
             payload = payload_base.copy()
             if is_final:
                 payload["translated"] = translation_results.get(lang, "")
             else:
-                payload["translated"] = "" 
+                payload["translated"] = "..." # Hiệu ứng đang dịch cho sinh động
             
             msg_trans = json.dumps(payload, ensure_ascii=False)
             for ws in sockets:
@@ -708,15 +718,6 @@ audio_manager = ConnectionManager()
 user_text_cache: Dict[str, str] = defaultdict(str)
 user_last_speech_time: Dict[str, float] = defaultdict(float)
 user_last_final_text: Dict[str, str] = defaultdict(str)
-
-def create_wav_bytes(pcm_data: bytes, sample_rate=16000) -> bytes:
-    io_buf = io.BytesIO()
-    with wave.open(io_buf, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        wav.writeframes(pcm_data)
-    return io_buf.getvalue()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -773,6 +774,7 @@ async def manual_translate(
     try:
         translator = get_translator(redis)
         translated_text, detected_lang = await translator.translate(request.text, request.source_lang, request.target_lang)
+        
         if request.message_id:
             try:
                 msg_uuid = uuid.UUID(request.message_id)
@@ -780,7 +782,11 @@ async def manual_translate(
                 result = await db.execute(stmt)
                 message = result.scalar_one_or_none()
                 if message:
-                    current_map = dict(message.translations) if message.translations else {}
+                    # FIX DB ERROR: Ensure dictionary update is safe
+                    current_map = {}
+                    if message.translations and isinstance(message.translations, dict):
+                        current_map = dict(message.translations)
+                    
                     current_map[request.target_lang] = translated_text
                     message.translations = current_map
                     flag_modified(message, "translations")
@@ -883,12 +889,12 @@ async def audio_endpoint(
     await audio_manager.connect(websocket, normalized_room_id, user_id=user_id, native_lang=nativeLang)
     buffer_key = f"{normalized_room_id}_{user_id}"
 
-    # Lấy Event Loop hiện tại để bridge
     loop = asyncio.get_running_loop()
 
-    # --- ASYNC HANDLERS (LOGIC CHÍNH) ---
+    # --- ASYNC HANDLERS (LOGIC) ---
     async def handle_interim_async(text: str, detected_lang_code: str):
         if len(text) > 1:
+            # Gửi Interim với key 'originalFull'
             await audio_manager.broadcast_subtitle(
                 text=text, detected_lang=detected_lang_code,
                 room_id=normalized_room_id, sender_id=user_id, is_final=False
@@ -899,47 +905,49 @@ async def audio_endpoint(
             clean_text = text.strip()
             if not clean_text: return
             
-            # Anti-echo
+            # 1. Anti-echo
             last_text = user_last_final_text[buffer_key]
             if clean_text.lower() == last_text.lower(): return
             if last_text and (clean_text in last_text or last_text in clean_text):
                  if len(clean_text) < len(last_text) * 0.8: return
             user_last_final_text[buffer_key] = clean_text 
 
-            # Append text
+            # 2. Logic nối câu (UI Display Optimization)
             current_time = time.time()
             if user_last_speech_time[buffer_key] > 0 and (current_time - user_last_speech_time[buffer_key]) > RESET_BUFFER_TIMEOUT:
                 user_text_cache[buffer_key] = ""
             user_last_speech_time[buffer_key] = current_time
             previous_text = user_text_cache[buffer_key]
-            if previous_text and not previous_text.endswith(('.', '?', '!')):
+            
+            # Logic: Nếu câu trước chưa kết thúc bằng dấu chấm, nối tiếp
+            if previous_text and not previous_text.endswith(('.', '?', '!', '。')):
                 new_full = (previous_text + " " + clean_text).strip()
             else:
                 new_full = clean_text
+            
             user_text_cache[buffer_key] = new_full
 
-            is_sentence_end = clean_text.endswith(('.', '?', '!'))
-            if is_sentence_end or len(new_full) > 150: 
+            # Reset nếu câu quá dài hoặc kết thúc câu
+            is_sentence_end = clean_text.endswith(('.', '?', '!', '。'))
+            if is_sentence_end or len(new_full) > 200: 
                 user_text_cache[buffer_key] = ""
 
+            # 3. Broadcast
             await audio_manager.broadcast_subtitle(
                 text=clean_text, detected_lang=detected_lang_code,
                 room_id=normalized_room_id, sender_id=user_id, is_final=True
             )
-            # Log để biết đã dịch xong
             logger.info(f"✅ Translated Final: {clean_text}")
         except Exception as e:
             logger.error(f"Handle final error: {e}")
 
-    # --- SYNC BRIDGE WRAPPERS (CẦU NỐI QUAN TRỌNG NHẤT) ---
-    # Azure Thread gọi hàm này -> Hàm này đẩy coroutine vào Main Loop
+    # --- SYNC BRIDGE WRAPPERS ---
     def handle_interim_sync(text: str, lang: str):
         asyncio.run_coroutine_threadsafe(handle_interim_async(text, lang), loop)
 
     def handle_final_sync(text: str, lang: str):
         asyncio.run_coroutine_threadsafe(handle_final_async(text, lang), loop)
 
-    # Config Azure với SYNC Wrapper
     transcriber = AzureTranscriber(
         callback_final=handle_final_sync,
         callback_interim=handle_interim_sync,
@@ -971,11 +979,10 @@ async def audio_endpoint(
                 b64_audio = msg_json.get("audio")
                 if b64_audio:
                     pcm_data = binascii.a2b_base64(b64_audio)
-                    # GỬI THẲNG STREAM VÀO AZURE ĐỂ NÓ TỰ XỬ LÝ TIME-SERIES & VAD
+                    # Gửi trực tiếp stream để Azure tự xử lý VAD & Time-series
                     transcriber.write_stream(pcm_data)
 
             except Exception as e:
-                # logger.error(f"WS Loop Error: {e}")
                 continue
 
     except WebSocketDisconnect:

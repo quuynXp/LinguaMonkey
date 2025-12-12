@@ -10,9 +10,13 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
+
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -55,6 +59,7 @@ public class ChatMessage {
     private boolean isRead;
 
     // Format: {"vi": "xin chao", "zh": "ni hao", "en": "hello"}
-    @Column(name = "translations", columnDefinition = "TEXT")
-    private String translations;
+    @JdbcTypeCode(SqlTypes.JSON) 
+    @Column(name = "translations", columnDefinition = "jsonb") // Đảm bảo PostgreSQL dùng JSONB
+    private Map<String, String> translations;
 }

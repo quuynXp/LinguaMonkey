@@ -17,7 +17,6 @@ MODEL_TIERS = [
     {"name": "gemini-2.5-pro", "purpose": "Pro - Max Quality"},
     {"name": "gemini-2.5-flash", "purpose": "Flash - Balanced"},
     {"name": "gemini-2.5-flash-lite", "purpose": "Lite - Cost Effective"},
-    {"name": "gemini-2.5-flash-live", "purpose": "LIVE - Fallback"},
 ]
 
 async def chat_with_ai(
