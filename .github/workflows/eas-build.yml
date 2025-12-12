@@ -90,11 +90,11 @@ jobs:
 
 
 
-      - name: 🚀 Configure Gradle Memory (Fix OOM)
+      - name: 🚀 Configure Gradle Memory (Fix Daemon Start)
 
         run: |
 
-          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxPermSize=512m -client -XX:+HeapDumpOnOutOfMemoryError -Dkotlin.daemon.jvm.options=\"-Xmx2g\"" >> ./android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dkotlin.daemon.jvm.options=\"-Xmx2g\"" >> ./android/gradle.properties
 
           echo "android.enableR8=true" >> ./android/gradle.properties
 

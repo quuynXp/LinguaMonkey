@@ -451,7 +451,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   fetchLexiconMaster: async () => {
     try {
-      const res = await instance.get<AppApiResponse<LexiconEntry[]>>('/api/py/lexicon/top', { params: { limit: 500 } });
+      const res = await instance.get<AppApiResponse<LexiconEntry[]>>('/api/py/lexicon/top', { params: { limit: 5000 } });
       const lexiconData = res.data.result || [];
 
       const newLexicon = new Map<string, LexiconEntry>();

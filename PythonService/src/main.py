@@ -802,7 +802,7 @@ async def verify_token_http(credentials: HTTPAuthorizationCredentials = Depends(
 
 @protected_router.get("/lexicon/top")
 async def get_top_lexicon(
-    limit: int = Query(200, ge=1, le=1000), 
+    limit: int = Query(200, ge=1, le=10000), 
     db: AsyncSession = Depends(get_db)
 ):
     """
