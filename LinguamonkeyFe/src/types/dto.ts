@@ -553,7 +553,7 @@ export interface MemorizationRequest {
     noteText: string;
     favorite: boolean;
 
-    isReminderEnabled?: boolean;
+    reminderEnabled?: boolean;
     reminderTime?: string | null; // Format "HH:mm"
     repeatType?: Enums.RepeatType | null;
     reminderTitle?: string | null;
@@ -1558,7 +1558,7 @@ export interface MemorizationResponse {
     createdAt: string;
     updatedAt: string;
 
-    isReminderEnabled: boolean;
+    reminderEnabled: boolean;
     reminderTime: string | null;
     repeatType: Enums.RepeatType | null;
     reminderTitle: string | null;

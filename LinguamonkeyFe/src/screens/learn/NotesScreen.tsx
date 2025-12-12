@@ -130,7 +130,7 @@ const NotesScreen = ({ navigation, route }: any) => {
 
     // Bây giờ lấy thẳng từ item vì Backend đã trả về (đã update DTO)
     // Cần update Interface MemorizationResponse trong Frontend để có các field này
-    if (item.isReminderEnabled && item.reminderTime) {
+    if (item.reminderEnabled && item.reminderTime) {
       setIsReminderEnabled(true);
       const [h, m] = item.reminderTime.split(':');
       setReminderHour(h || "09");
@@ -162,7 +162,7 @@ const NotesScreen = ({ navigation, route }: any) => {
       userId: user.userId,
       contentType: mapNoteTypeToContentType(selectedNoteType),
       noteText: newNote.trim(),
-      isReminderEnabled: isReminderEnabled,
+      reminderEnabled: isReminderEnabled,
       reminderTime: isReminderEnabled ? timeString : undefined,
       repeatType: isReminderEnabled ? reminderRepeat : undefined,
       reminderTitle: isReminderEnabled ? reminderTitle : undefined,
@@ -221,10 +221,7 @@ const NotesScreen = ({ navigation, route }: any) => {
       noteText: item.noteText,
       favorite: !item.favorite,
       ...(item.contentId ? { contentId: item.contentId } : {}),
-      // Khi toggle favorite nhanh, ta không cần gửi lại info reminder (hoặc gửi null nếu backend cho phép partial update)
-      // Nhưng với logic backend trên, nếu gửi thiếu trường reminder thì nó hiểu là null/false -> mất reminder
-      // Nên tốt nhất lấy lại info cũ của item
-      isReminderEnabled: item.isReminderEnabled,
+      reminderEnabled: item.reminderEnabled,
       reminderTime: item.reminderTime,
       repeatType: item.repeatType,
       reminderTitle: item.reminderTitle
@@ -258,7 +255,7 @@ const NotesScreen = ({ navigation, route }: any) => {
       </View>
       <Text style={styles.noteText}>{item.noteText}</Text>
 
-      {item.isReminderEnabled && item.reminderTime && (
+      {item.reminderEnabled && item.reminderTime && (
         <View style={{ flexDirection: 'row', marginBottom: 8, alignItems: 'center' }}>
           <Icon name="alarm" size={14} color="#6B7280" />
           <Text style={{ fontSize: 12, color: '#6B7280', marginLeft: 4 }}>

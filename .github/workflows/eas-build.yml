@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Final Stable)
+name: LinguamonkeyFe - Signed APK Build (Final Fix Syntax)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
-      # --- 1. DỌN DẸP DISK (GIỮ NGUYÊN) ---
+      # --- 1. DỌN DẸP DISK ---
       - name: 🗑️ AGGRESSIVE DISK CLEANUP
         run: |
           echo "🔥 Freeing up disk space..."
@@ -30,7 +30,7 @@ jobs:
           sudo rm -rf /tmp/*
           sudo rm -rf /usr/local/lib/android/sdk/system-images
           
-          # ⚠️ Xóa sạch folder NDK để tránh máy nhận nhầm bản 27
+          # Xóa sạch folder NDK để tránh nhận nhầm bản 27
           echo "💣 Removing default NDK folder..."
           sudo rm -rf /usr/local/lib/android/sdk/ndk
           echo "✅ Disk space cleaned."
@@ -60,9 +60,7 @@ jobs:
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # --- 4. GHI ĐÈ CẤU HÌNH (SAFE MODE) ---
-      # Thay vì dùng sed sửa code, ta ghi đè vào gradle.properties.
-      # Gradle luôn ưu tiên giá trị trong file này hơn giá trị mặc định trong build.gradle
+      # --- 4. GHI ĐÈ CẤU HÌNH (SAFE MODE + NEWLINE FIX) ---
       - name: 🚑 Force NDK via Gradle Properties
         run: |
           echo "🔧 Injecting NDK version into gradle.properties..."
@@ -70,14 +68,17 @@ jobs:
           # Đảm bảo file tồn tại
           touch android/gradle.properties
           
+          # --- FIX QUAN TRỌNG: THÊM DÒNG TRỐNG TRƯỚC KHI GHI ---
+          # Để tránh bị dính vào dòng cuối cùng (ví dụ: kotlinVersion=2.2.20android.ndkVersion...)
+          echo "" >> android/gradle.properties
+          
           # Ghi đè phiên bản NDK
           echo "android.ndkVersion=26.1.10909125" >> android/gradle.properties
           
           # Ghi đè đường dẫn NDK vào local.properties
           echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" > android/local.properties
           
-          echo "✅ Configuration injected."
-          # KHÔNG dùng grep để check nữa để tránh crash script
+          echo "✅ Configuration injected correctly."
 
       - name: 🧹 Clean up duplicate icon files
         run: |
@@ -97,9 +98,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v7-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v8-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v7-
+            ${{ runner.os }}-gradle-fe-v8-
 
       - name: 🔐 Setup Keystore
         run: |
@@ -114,8 +115,7 @@ jobs:
           
           echo "🔨 Building with NDK: $ANDROID_NDK_HOME"
           
-          # Thêm tham số --no-daemon để tránh cache process cũ
-          # Quan trọng: Truyền đè -Pandroid.ndkVersion một lần nữa cho chắc
+          # Vẫn giữ -P để chắc ăn, nhưng quan trọng là file gradle.properties đã được sửa đúng
           ./gradlew assembleRelease --no-daemon \
             -Pandroid.ndkVersion=26.1.10909125 \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
