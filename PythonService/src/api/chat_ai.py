@@ -1,31 +1,27 @@
 import os
 import logging
 from dotenv import load_dotenv
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted, NotFound, PermissionDenied, GoogleAPICallError
+from litellm import acompletion
+from litellm.exceptions import RateLimitError, APIError, AuthenticationError, ServiceUnavailableError
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-else:
-    logger.error("Missing GOOGLE_API_KEY in Chat AI Service")
+if not os.getenv("GOOGLE_API_KEY"):
+    logger.error("Missing GOOGLE_API_KEY in environment variables.")
+if not os.getenv("OPENAI_API_KEY"):
+    logger.warning("Missing OPENAI_API_KEY. Fallback to OpenAI will fail.")
 
-MODEL_TIERS = [
-    {"name": "gemini-2.5-pro", "purpose": "Pro - Max Quality"},
-    {"name": "gemini-2.5-flash", "purpose": "Flash - Balanced"},
-    {"name": "gemini-2.5-flash-lite", "purpose": "Lite - Cost Effective"},
+FALLBACK_MODEL_CHAIN = [
+    "gemini/gemini-2.5-pro",        # Priority 1: High Quality
+    "gemini/gemini-2.5-flash",      # Priority 2: High Speed/Balanced
+    "openai/gpt-3.5-turbo",         # Priority 3: Stable Fallback (khi Gemini bị rate limit)
 ]
 
-async def chat_with_ai(
-        message: str,
-        history: list[dict],
-        language: str,
-        user_profile: dict | None = None,
-) -> tuple[str, str]:
-    
+MODEL_STREAM = "gemini/gemini-2.5-flash"
+
+def _build_system_instruction(user_profile: dict | None) -> str:
+    """Helper function to construct the system prompt based on user profile."""
     system_instruction = (
         "You are a friendly and helpful language learning assistant "
         "for the 'MonkeyLingua' app."
@@ -51,115 +47,90 @@ async def chat_with_ai(
             "Tailor your explanations, vocabulary level, and examples to this user's stated proficiency and goals.\n"
             "----------------------------------------------------------"
         )
+    return system_instruction
+
+def _format_messages(message: str, history: list[dict], system_instruction: str) -> list[dict]:
+    """Helper function to format messages for LiteLLM (OpenAI format)."""
+    messages = [{"role": "system", "content": system_instruction}]
     
-    messages = []
     for h in history:
-        role = "model" if h.get("role") == "assistant" else h.get("role")
+        # Normalize role: 'model' -> 'assistant'
+        role = "assistant" if h.get("role") in ["assistant", "model"] else h.get("role")
         content = h.get("content")
-        if isinstance(content, str):
-            messages.append({'role': role, 'parts': [{'text': content}]})
-    
-    messages.append({'role': 'user', 'parts': [{'text': message}]})
-
-    for tier in MODEL_TIERS:
-        current_model = tier["name"]
         
-        try:
-            # Note: GenerativeModel client instantiation is lightweight. 
-            # The actual heavy lifting is done on Google's servers.
-            model = genai.GenerativeModel(
-                current_model,
-                system_instruction=system_instruction
-            )
-            
-            response = await model.generate_content_async(messages)
-            reply_text = response.text
+        if isinstance(content, str):
+            messages.append({'role': role, 'content': content})
+    
+    messages.append({'role': 'user', 'content': message})
+    return messages
 
-            if reply_text.strip():
-                logging.info(f"Successfully received response from {current_model}")
-                return reply_text, ""
-            else:
-                logging.warning(f"Model {current_model} returned empty response. Falling back...")
-                continue 
+async def chat_with_ai(
+        message: str,
+        history: list[dict],
+        language: str,
+        user_profile: dict | None = None,
+) -> tuple[str, str]:
+    
+    system_instruction = _build_system_instruction(user_profile)
+    messages = _format_messages(message, history, system_instruction)
 
-        except ResourceExhausted:
-            logging.warning(f"Rate limit hit for model {current_model}. Falling back...")
-            continue
-        except NotFound as e:
-            logging.error(f"Model {current_model} not found: {str(e)}", exc_info=True)
-            continue 
-        except PermissionDenied as e:
-            logging.critical(f"Permission denied for model {current_model}: {str(e)}")
-            return "", f"Authentication error on model {current_model}."
-        except GoogleAPICallError as e:
-            logging.error(f"Google API Call Error with {current_model}: {str(e)}", exc_info=True)
-            continue
-        except Exception as e:
-            logging.error(f"Generic error with {current_model}: {str(e)}", exc_info=True)
-            continue 
+    # Tách model đầu tiên và danh sách fallback
+    primary_model = FALLBACK_MODEL_CHAIN[0]
+    fallback_models = FALLBACK_MODEL_CHAIN[1:]
 
-    logging.error("All model tiers failed.")
-    return "", "All language services are currently unavailable."
+    try:
+        # LiteLLM xử lý logic fallback tự động qua tham số 'fallbacks'
+        response = await acompletion(
+            model=primary_model,
+            messages=messages,
+            fallbacks=fallback_models,
+            # Tự động map exception để trigger fallback
+            # (ví dụ: Google ResourceExhausted -> LiteLLM RateLimitError)
+        )
+        
+        reply_text = response.choices[0].message.content
+        model_used = response.model
+
+        if reply_text and reply_text.strip():
+            logger.info(f"Response received from model: {model_used}")
+            return reply_text, ""
+        else:
+            logger.warning(f"Model {model_used} returned empty response.")
+            return "", "AI service returned no content."
+
+    except RateLimitError:
+        logger.error("All models in the chain hit Rate Limits.")
+        return "", "System is currently busy. Please try again later."
+    except AuthenticationError as e:
+        logger.critical(f"Authentication failed: {str(e)}")
+        return "", "Service configuration error."
+    except Exception as e:
+        logger.error(f"Unexpected error in chat_with_ai: {str(e)}", exc_info=True)
+        return "", "An unexpected error occurred."
 
 async def chat_with_ai_stream(
         message: str,
         history: list[dict],
         user_profile: dict | None = None,
 ):
-    MODEL_STREAM = "gemini-2.5-flash" 
+    system_instruction = _build_system_instruction(user_profile)
+    messages = _format_messages(message, history, system_instruction)
     
     try:
-        system_instruction = (
-            "You are a friendly and helpful language learning assistant "
-            "for the 'MonkeyLingua' app."
-        )
-        
-        if user_profile:
-            profile_summary = f"User ID: {user_profile.get('user_id')}. "
-            if user_profile.get("proficiency"):
-                profile_summary += f"Current proficiency: {user_profile['proficiency']}. "
-            if user_profile.get("learning_languages"):
-                langs = ', '.join([f"{l['lang']} ({l['level']})" for l in user_profile['learning_languages']])
-                profile_summary += f"Learning languages: {langs}. "
-            if user_profile.get("recent_chat_summary"):
-                profile_summary += (
-                    "Recent chat summary: "
-                    f"'{user_profile.get('recent_chat_summary')}'. "
-                )
-
-            system_instruction += (
-                "\n\n--User Context (Use this to personalize your response)\n"
-                f"{profile_summary.strip()}\n"
-                "Tailor your explanations, vocabulary level, and examples to this user's stated proficiency and goals.\n"
-                "----------------------------------------------------------"
-            )
-
-        messages = []
-        for h in history:
-            role = "model" if h["role"] == "assistant" else h["role"]
-            content = h.get("content")
-            if isinstance(content, str):
-                messages.append({'role': role, 'parts': [{'text': content}]})
-
-        messages.append({'role': 'user', 'parts': [{'text': message}]})
-
-        model = genai.GenerativeModel(
-            MODEL_STREAM,
-            system_instruction=system_instruction
-        )
-        
-        response_stream = await model.generate_content_async(
-            messages,
+        response_stream = await acompletion(
+            model=MODEL_STREAM,
+            messages=messages,
             stream=True
         )
 
         async for chunk in response_stream:
-            if chunk.parts and chunk.parts[0].text:
-                yield chunk.parts[0].text
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
 
-    except ResourceExhausted:
-        logging.error(f"Gemini streaming rate limit hit for {MODEL_STREAM}.", exc_info=True)
-        yield "Error: Chat service is currently busy. Please try non-streaming mode."
+    except RateLimitError:
+        logger.warning(f"Rate limit hit for stream model {MODEL_STREAM}. Suggest retry without streaming.")
+        yield "Error: Streaming service busy. Please try standard chat."
     except Exception as e:
-        logging.error(f"Gemini streaming chat error: {str(e)}", exc_info=True)
-        yield f"Error: Failed to stream response ({type(e).__name__})."
+        logger.error(f"Error in chat_with_ai_stream: {str(e)}", exc_info=True)
+        yield "Error: Connection interrupted."

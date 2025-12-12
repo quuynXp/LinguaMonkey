@@ -1,15 +1,17 @@
 import asyncio
 import logging
 import os
+import json
 from celery import Celery
 from celery.signals import worker_ready
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, update, func, desc
 from sqlalchemy.dialects.postgresql import insert
-from datasets import load_dataset 
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.models import TranslationLexicon
 from src.core.session import AsyncSessionLocal
+from src.worker.huggingface_loader import ingest_huggingface_data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,159 +30,53 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-# --- CẤU HÌNH DATASET ---
-DATASET_SOURCES = [
-    # 1. Opus-100: Câu văn bản dài
-    {
-        "name": "Helsinki-NLP/opus-100",
-        "config": "en-vi",
-        "split": "train",
-        "mapping": {"en": "en", "vi": "vi"},
-        "limit": 100000 
-    },
-    {
-        "name": "Helsinki-NLP/opus-100",
-        "config": "en-zh",
-        "split": "train",
-        "mapping": {"en": "en", "zh": "zh"},
-        "limit": 100000
-    },
-    # 2. Tatoeba: Câu ngắn, từ vựng giao tiếp
-    {
-        "name": "Helsinki-NLP/tatoeba_mt",
-        "config": "eng-vie", 
-        "split": "test",
-        "mapping": {"eng": "en", "vie": "vi"},
-        "limit": 50000 
-    },
-    {
-        "name": "Helsinki-NLP/tatoeba_mt",
-        "config": "eng-zho", 
-        "split": "test",
-        "mapping": {"eng": "en", "zho": "zh-CN"}, 
-        "limit": 50000
-    }
-]
-
-# Đổi key version để bắt buộc chạy lại việc nạp dữ liệu
-INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v203" 
-
-def normalize_text(text: str) -> str:
-    if not text: return ""
-    return text.strip().lower()
-
-def get_redis_key(lang: str, text: str) -> str:
-    return f"lex:{lang}:{normalize_text(text)}"
-
 def run_async(coro):
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
     if loop.is_closed():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
     return loop.run_until_complete(coro)
 
+# --- TRIGGER ON STARTUP ---
 @worker_ready.connect
 def trigger_startup_tasks(sender, **kwargs):
+    """Tự động chạy task ingest khi worker khởi động"""
     with sender.app.connection() as conn:
         sender.app.send_task("src.worker.tasks.ingest_huggingface_task", connection=conn)
-        logger.info("🚀 [Startup] Triggered ingest task.")
+        logger.info("🚀 [Startup] Triggered ingest_huggingface_task automatically.")
 
 # ==============================================================================
-#  TASK 1: INGEST DATA
+#  TASK 1: INGEST DATA FROM HUGGING FACE
 # ==============================================================================
 @celery_app.task(name="src.worker.tasks.ingest_huggingface_task")
 def ingest_huggingface_task():
-    logger.info("🚀 [Celery] Starting Ingestion (Opus + Tatoeba)...")
+    logger.info("🚀 [Celery] Starting Hugging Face Ingestion Task...")
     async def wrapper():
         redis = await get_redis_client()
         try:
-            if await redis.exists(INGESTION_FLAG_KEY):
-                logger.info(f"⚡ [SKIP] Data already ingested ({INGESTION_FLAG_KEY}).")
-                return
-
-            pipeline = redis.pipeline()
-            total_processed = 0
-
-            for source in DATASET_SOURCES:
-                logger.info(f"📥 Loading dataset: {source['name']} ({source['config']})....")
-                try:
-                    # Tải dataset (ĐÃ XÓA trust_remote_code=True)
-                    dataset = await asyncio.to_thread(
-                        load_dataset, 
-                        source['name'], 
-                        source['config'], 
-                        split=source['split']
-                        # trust_remote_code=True # <-- Đã bỏ, vì gây lỗi cho Opus-100
-                    )
-                    
-                    if source.get("limit"):
-                        limit = min(len(dataset), source["limit"])
-                        dataset = dataset.select(range(limit))
-
-                    logger.info(f"✅ Loaded {len(dataset)} rows. Processing...")
-                    
-                    # Xác định key source/target
-                    # Sử dụng mapping keys từ config để linh hoạt với các dataset khác nhau
-                    src_lang_dataset = list(source["mapping"].keys())[0] # vd: eng
-                    tgt_lang_dataset = list(source["mapping"].keys())[1] # vd: vie
-                    
-                    src_lang_redis = source["mapping"][src_lang_dataset] # vd: en
-                    tgt_lang_redis = source["mapping"][tgt_lang_dataset] # vd: vi
-
-                    count = 0
-                    pipe_batch = redis.pipeline()
-
-                    for row in dataset:
-                        # Logic bóc tách dữ liệu từ row
-                        tr = row.get("translation", {})
-                        s_text = tr.get(src_lang_dataset, "")
-                        t_text = tr.get(tgt_lang_dataset, "")
-                        
-                        if not s_text or not t_text: continue
-                        
-                        s_clean = s_text.strip()
-                        t_clean = t_text.strip()
-
-                        # Lưu Redis (2 chiều)
-                        key_src = get_redis_key(src_lang_redis, s_clean)
-                        pipe_batch.hset(key_src, mapping={tgt_lang_redis: t_clean})
-                        pipe_batch.expire(key_src, 60 * 60 * 24 * 60)
-
-                        key_tgt = get_redis_key(tgt_lang_redis, t_clean)
-                        pipe_batch.hset(key_tgt, mapping={src_lang_redis: s_clean})
-                        pipe_batch.expire(key_tgt, 60 * 60 * 24 * 60)
-
-                        count += 1
-                        if count % 2000 == 0:
-                            await pipe_batch.execute()
-                    
-                    await pipe_batch.execute()
-                    total_processed += count
-                    logger.info(f"✨ Ingested {count} pairs from {source['config']}")
-
-                except Exception as e:
-                    logger.error(f"❌ Failed source {source['name']} ({source['config']}): {e}")
-                    continue
-
-            if total_processed > 0:
-                await redis.set(INGESTION_FLAG_KEY, "1")
-                logger.info(f"🎉 Total ingested: {total_processed} pairs.")
-            else:
-                logger.warning("⚠️ No data ingested.")
-
+            await ingest_huggingface_data(redis)
         except Exception as e:
-            logger.error(f"Ingestion Error: {e}")
+            logger.error(f"Error inside wrapper: {e}")
+            raise e
         finally:
             await close_redis_client()
 
-    run_async(wrapper())
+    try:
+        run_async(wrapper())
+        logger.info("✅ [Celery] Hugging Face Ingestion Task Completed.")
+        return "Success"
+    except Exception as e:
+        logger.error(f"❌ [Celery] Task Failed: {e}")
+        return f"Failed: {str(e)}"
 
 # ==============================================================================
-#  TASK 2: DB SYNC
+#  TASK 2: RUNTIME SYNC (Save specific word to DB immediately)
 # ==============================================================================
 @celery_app.task(name="src.worker.tasks.sync_translation_to_db_task")
 def sync_translation_to_db_task(original_text: str, src_lang: str, translations: dict):
@@ -194,14 +90,14 @@ def sync_translation_to_db_task(original_text: str, src_lang: str, translations:
                     usage_count=1
                 )
                 stmt = stmt.on_conflict_do_update(
-                    index_elements=['id'], 
+                    index_elements=['id'],
                     set_={
                         "translations": translations,
                         "usage_count": TranslationLexicon.usage_count + 1,
                         "last_used_at": func.now()
                     }
                 )
-                # Fallback an toàn
+                
                 existing = await session.execute(
                     select(TranslationLexicon).where(
                         TranslationLexicon.original_text == original_text,
@@ -226,7 +122,7 @@ def sync_translation_to_db_task(original_text: str, src_lang: str, translations:
                     session.add(new_entry)
                 
                 await session.commit()
-                logger.info(f"💾 DB Sync: {original_text}")
+                logger.info(f"💾 Runtime Sync to DB: {original_text}")
             except Exception as e:
                 logger.error(f"DB Sync Failed: {e}")
                 await session.rollback()
@@ -255,8 +151,7 @@ def backup_redis_to_db_task():
                     if len(parts) < 3: continue
                     
                     lang = parts[1]
-                    # Ghép lại text vì text có thể chứa dấu :
-                    text = ":".join(parts[2:])
+                    text = parts[2]
 
                     data = await redis.hgetall(key)
                     if not data: continue
@@ -277,7 +172,6 @@ def backup_redis_to_db_task():
                     
                     if not translations: continue
 
-                    # Tìm và cập nhật DB
                     stmt = select(TranslationLexicon).where(
                         TranslationLexicon.original_text == text,
                         TranslationLexicon.original_lang == lang
@@ -329,7 +223,7 @@ def restore_db_to_redis_task():
             
             pipeline = redis.pipeline()
             for entry in entries:
-                key = f"lex:{entry.original_lang}:{normalize_text(entry.original_text)}"
+                key = f"lex:{entry.original_lang}:{entry.original_text}"
                 mapping_data = dict(entry.translations) if entry.translations else {}
                 mapping_data["usage"] = str(entry.usage_count)
                 
@@ -338,5 +232,5 @@ def restore_db_to_redis_task():
             
             await pipeline.execute()
             logger.info(f"✅ Restored {len(entries)} 'hot' words to Redis.")
-
+ 
     run_async(_logic())

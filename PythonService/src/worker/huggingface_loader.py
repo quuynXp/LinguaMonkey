@@ -23,11 +23,26 @@ DATASET_SOURCES = [
         "mapping": {"en": "en", "zh": "zh"},
         "limit": 100000
     }
+     # 2. THÊM MỚI: Tatoeba Challenge (Chuyên câu ngắn, từ vựng giao tiếp)
+    # Dataset này sẽ fix lỗi thiếu từ "Hi", "Love", "Hello"
+    {
+        "name": "Helsinki-NLP/tatoeba_mt",
+        "config": "eng-vie",
+        "split": "test",   
+        "mapping": {"eng": "en", "vie": "vi"},
+        "limit": 50000 
+    },
+    {
+        "name": "Helsinki-NLP/tatoeba_mt",
+        "config": "eng-zho", 
+        "split": "test",
+        "mapping": {"eng": "en", "zho": "zh-CN"}, # Map zho sang zh-CN
+        "limit": 50000
+    }
 ]
 
 BATCH_SIZE = 2000
 REDIS_EXPIRY = 60 * 60 * 24 * 60
-# UPDATE: Bumped version to v5 to force re-ingestion
 INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v5" 
 
 def normalize_text(text: str) -> str:

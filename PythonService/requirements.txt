@@ -13,7 +13,6 @@ aiohttp
 PyJWT==2.10.1
 sentence_transformers
 cryptography==45.0.6
-# gRPC (Phiên bản 1.62.2 tương thích tốt với protobuf 4.25.3)
 grpcio==1.62.2
 grpcio-tools==1.62.2
 protobuf==4.25.3
@@ -25,6 +24,7 @@ torch==2.6.0
 torchaudio==2.6.0
 numpy==1.26.4
 pyarrow==12.0.1
+litellm
 soundfile==0.12.1
 azure-cognitiveservices-speech==1.35.0
 # Utils

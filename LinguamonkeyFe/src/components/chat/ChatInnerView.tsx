@@ -300,7 +300,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     useEffect(() => {
         if (!messages.length) return;
-        // Debounce scroll to end to allow layout to calculate
         const timer = setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
         }, 200);
@@ -344,16 +343,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
-        // VISIBILITY LOGIC:
-        // Check if the translated text is effectively the same as the original text (case-insensitive).
-        // The backend returns the original text if source_lang == target_lang.
-        // If they are the same, we hide the translation line to improve UX.
         const isTranslationSameAsOriginal = item.text?.trim().toLowerCase() === item.translatedText?.trim().toLowerCase();
 
-        // 1. Show Translated Text IF: AutoTranslate is ON AND Translation Exists AND Not Media AND NOT USER (Self) AND Translation != Original
         const showTranslatedText = autoTranslate && !!item.translatedText && !isMedia && !isUser && !isTranslationSameAsOriginal;
 
-        // 2. Show Manual Button IF: AutoTranslate is OFF AND Not Media AND Not User
         const showManualButton = !autoTranslate && !isMedia && !isUser;
 
         const isTranslating = translatingId === item.id;

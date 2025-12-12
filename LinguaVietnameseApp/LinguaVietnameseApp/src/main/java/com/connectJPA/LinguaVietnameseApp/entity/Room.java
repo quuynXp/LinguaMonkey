@@ -30,7 +30,6 @@ public class Room extends BaseEntity {
     @Column(name = "room_name", nullable = false)
     private String roomName;
 
-
     @Column(name = "course_id")
     private UUID courseId;
     

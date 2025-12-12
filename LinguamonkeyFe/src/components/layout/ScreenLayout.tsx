@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StatusBar, ViewStyle, StatusBarStyle, Platform } from 'react-native';
+import React, { useEffect } from 'react'; // Import thêm useEffect
+import { View, StatusBar, ViewStyle, StatusBarStyle, Platform, BackHandler } from 'react-native'; // Import BackHandler
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { GestureDetector, Gesture, Directions } from 'react-native-gesture-handler';
@@ -54,6 +54,27 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
         }
     };
 
+    // --- ANDROID ---
+    useEffect(() => {
+        const onBackPress = () => {
+            if (enableSwipeBack) {
+                handleGoBack();
+                return true; // Return true để chặn hành động mặc định (thoát app/về home)
+            }
+            return false; // Nếu không enableSwipeBack, cho phép hệ thống xử lý mặc định
+        };
+
+        if (Platform.OS === 'android') {
+            const subscription = BackHandler.addEventListener(
+                'hardwareBackPress',
+                onBackPress
+            );
+            return () => subscription.remove();
+        }
+    }, [enableSwipeBack]);
+
+    // --- CẤU HÌNH GESTURE ---
+
     const swipeLeftGesture = Gesture.Fling()
         .direction(Directions.LEFT)
         .onEnd(() => {
@@ -65,12 +86,15 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     const swipeRightGesture = Gesture.Fling()
         .direction(Directions.RIGHT)
         .onEnd(() => {
-            if (enableSwipeBack) {
+            // Chỉ chạy logic vuốt tay trên iOS. 
+            // Trên Android, việc vuốt mép đã được BackHandler (ở trên) xử lý.
+            // Nếu để cả 2 sẽ gây xung đột hoặc chạy hàm goBack 2 lần.
+            if (Platform.OS === 'ios' && enableSwipeBack) {
                 runOnJS(handleGoBack)();
             }
         });
 
-    // Kết hợp gesture: Race để ưu tiên cái nào xảy ra trước
+    // Kết hợp gesture
     const composedGestures = Gesture.Race(swipeLeftGesture, swipeRightGesture);
 
     return (
