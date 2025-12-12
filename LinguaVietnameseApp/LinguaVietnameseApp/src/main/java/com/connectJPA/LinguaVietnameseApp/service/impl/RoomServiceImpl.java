@@ -373,13 +373,13 @@ public class RoomServiceImpl implements RoomService {
         } else {
              User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
              RoomMember newMember = RoomMember.builder()
-                .id(new RoomMemberId(room.getRoomId(), userId))
-                .room(room)
-                .user(user)
-                .role(RoomRole.MEMBER)
-                .isAdmin(false)
-                .joinedAt(OffsetDateTime.now())
-                .build();
+                 .id(new RoomMemberId(room.getRoomId(), userId))
+                 .room(room)
+                 .user(user)
+                 .role(RoomRole.MEMBER)
+                 .isAdmin(false)
+                 .joinedAt(OffsetDateTime.now())
+                 .build();
              roomMemberRepository.save(newMember);
         }
     }
@@ -557,12 +557,12 @@ public class RoomServiceImpl implements RoomService {
 
                 if (hoursSinceLastMessage < 8) {
                     log.info("Reusing AI room {} (Last active {} hours ago)", latestRoom.getRoomId(), hoursSinceLastMessage);
-                    return roomMapper.toResponse(latestRoom);
+                    return toRoomResponseWithMembers(latestRoom); // <-- Cập nhật để trả về response đầy đủ
                 }
             } else {
                  long hoursSinceCreation = ChronoUnit.HOURS.between(latestRoom.getCreatedAt(), OffsetDateTime.now());
                  if (hoursSinceCreation < 8) {
-                     return roomMapper.toResponse(latestRoom);
+                     return toRoomResponseWithMembers(latestRoom); // <-- Cập nhật để trả về response đầy đủ
                  }
             }
         }
@@ -591,7 +591,7 @@ public class RoomServiceImpl implements RoomService {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-            // Hàm này bây giờ đã bao gồm logic tính toán online/offline
+            // Hàm này bây giờ đã bao gồm logic tính toán online/offline và members
             return toRoomResponseWithMembers(room);
         } catch (Exception e) {
             log.error("Error while fetching room by ID {}: {}", id, e.getMessage());
@@ -600,16 +600,16 @@ public class RoomServiceImpl implements RoomService {
     }
 
     private String generateUniqueRoomCode() {
-       Random random = new Random();
-       String code;
-       int attempts = 0;
-       do {
-           int number = random.nextInt(1000000);
-           code = String.format("%06d", number);
-           attempts++;
-           if (attempts > 10) throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-       } while (roomRepository.existsByRoomCode(code));
-       return code;
+        Random random = new Random();
+        String code;
+        int attempts = 0;
+        do {
+            int number = random.nextInt(1000000);
+            code = String.format("%06d", number);
+            attempts++;
+            if (attempts > 10) throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        } while (roomRepository.existsByRoomCode(code));
+        return code;
     }
 
     @Override
@@ -622,16 +622,16 @@ public class RoomServiceImpl implements RoomService {
         Room room = roomRepository.findByCourseIdAndIsDeletedFalse(courseId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-        RoomResponse response = roomMapper.toResponse(room);
-        response.setMemberCount((int) roomRepository.countMembersByRoomId(room.getRoomId()));
-
+        // Hàm toRoomResponseWithMembers đã bao gồm memberCount, creator info (nếu cần) và members.
+        RoomResponse response = toRoomResponseWithMembers(room);
+        
         userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
                 .ifPresent(creator -> {
                     response.setCreatorName(StringUtils.hasText(creator.getNickname()) ? creator.getNickname() : creator.getFullname());
                     response.setCreatorAvatarUrl(creator.getAvatarUrl());
                 });
 
-        return toRoomResponseWithMembers(room);
+        return response;
     }
 
     @Transactional
@@ -662,7 +662,7 @@ public class RoomServiceImpl implements RoomService {
         }
 
         if (roomMemberRepository.existsById(new RoomMemberId(room.getRoomId(), userId))) {
-            return roomMapper.toResponse(room);
+            return toRoomResponseWithMembers(room); // <-- Cập nhật để trả về response đầy đủ
         }
 
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
@@ -801,6 +801,6 @@ public class RoomServiceImpl implements RoomService {
             roomMemberRepository.save(member);
         }
 
-        return toRoomResponseWithMembers(roomToJoin);
+        return toRoomResponseWithMembers(roomToJoin); // <-- Cập nhật để trả về response đầy đủ
     }
 }

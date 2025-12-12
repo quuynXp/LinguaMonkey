@@ -534,6 +534,7 @@ from src.worker.tasks import ingest_huggingface_task
 load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+redis_subscriber = None
 
 # --- CONFIG ---
 VOLUME_GAIN_FACTOR = 1.0 # Để Azure tự xử lý Gain
@@ -599,6 +600,22 @@ class ConnectionManager:
             logger.info(f"❌ WS DISCONNECTED: Room={room_id}")
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
+
+    def get_translation_demands(self, room_id: str) -> Dict[str, List[WebSocket]]:
+        """
+        Trả về: { 'vi': [ws1, ws2, ws3], 'zh': [ws4] }
+        Gom nhóm các socket cần dịch theo ngôn ngữ đích.
+        """
+        demands = defaultdict(list)
+        if room_id not in self.active_connections:
+            return demands
+
+        for meta in self.active_connections[room_id]:
+            if meta["auto_translate"]:
+                target = meta["target_lang"]
+                demands[target].append(meta["ws"])
+        
+        return demands
 
     def get_participant_count(self, room_id: str) -> int:
         return len(self.active_connections.get(room_id, []))
@@ -719,6 +736,106 @@ user_text_cache: Dict[str, str] = defaultdict(str)
 user_last_speech_time: Dict[str, float] = defaultdict(float)
 user_last_final_text: Dict[str, str] = defaultdict(str)
 
+
+async def redis_event_listener():
+    """Lắng nghe sự kiện từ Java"""
+    redis = await get_redis_client()
+    pubsub = redis.pubsub()
+    await pubsub.subscribe("chat_events")
+    
+    logger.info("🎧 Python listening to Redis channel: chat_events")
+
+    async for message in pubsub.listen():
+        if message["type"] == "message":
+            try:
+                data = json.loads(message["data"])
+                if data.get("type") == "NEW_MESSAGE_EVENT":
+                    # Xử lý bất đồng bộ để không chặn luồng listener
+                    asyncio.create_task(process_translation_job(data))
+            except Exception as e:
+                logger.error(f"Error processing redis msg: {e}")
+
+async def process_translation_job(data: dict):
+    room_id = data["roomId"]
+    content = data["content"]
+    message_id = data["messageId"]
+    
+    # 1. Kiểm tra nhu cầu của Room (Logic tối ưu ở đây)
+    # Lấy danh sách socket đang active trong room và nhóm theo ngôn ngữ
+    # Ví dụ: demands = {'vi': [ws1, ws2], 'ja': [ws3]}
+    demands = signal_manager.get_translation_demands(room_id) # Dùng lại instance ConnectionManager
+    
+    if not demands:
+        logger.info(f"Room {room_id}: No auto-translate needed.")
+        return
+
+    # 2. Khởi tạo Translator
+    redis = await get_redis_client()
+    translator = get_translator(redis)
+    
+    # Detect ngôn ngữ gốc 1 lần duy nhất
+    detected_lang = translator.detect_language(content)
+    
+    # 3. Chạy dịch song song cho các ngôn ngữ đích (Deduplication)
+    # Nếu có 100 user cần 'vi', chỉ dịch 1 lần.
+    async def translate_and_broadcast(target_lang, sockets):
+        if target_lang == detected_lang:
+            return # Không dịch nếu trùng ngôn ngữ gốc
+
+        try:
+            # A. Dịch (Có thể dùng chế độ Stream của Gemini để realtime hơn)
+            # Ở đây dùng hàm translate thường, nhưng nếu muốn xịn có thể viết hàm stream_translate
+            translated_text, _ = await translator.translate(content, detected_lang, target_lang)
+            
+            # B. Lưu DB (Python lưu trực tiếp, không cần gọi lại Java)
+            # Code lưu DB vào bảng message_translations/update chat_messages json
+            await save_translation_to_db(message_id, target_lang, translated_text)
+
+            # C. Bắn Socket xuống đúng nhóm User cần
+            payload = {
+                "type": "translation_update",
+                "messageId": messageId,
+                "translatedText": translatedText,
+                "targetLang": targetLang,
+                "isFinal": True
+            }
+            msg_str = json.dumps(payload)
+            
+            # Gửi song song cho tất cả user cần ngôn ngữ này
+            await asyncio.gather(*[ws.send_text(msg_str) for ws in sockets], return_exceptions=True)
+            
+        except Exception as e:
+            logger.error(f"Trans job failed for {target_lang}: {e}")
+
+    tasks = []
+    for target_lang, sockets in demands.items():
+        tasks.append(translate_and_broadcast(target_lang, sockets))
+    
+    await asyncio.gather(*tasks)
+
+async def save_translation_to_db(message_id: str, target_lang: str, text: str):
+    async with AsyncSessionLocal() as db:
+        try:
+            # 1. Update JSON Map trong ChatMessage (cho nhanh)
+            stmt = select(ChatMessage).where(ChatMessage.chat_message_id == message_id)
+            result = await db.execute(stmt)
+            msg = result.scalar_one_or_none()
+            
+            if msg:
+                # Update dict translations
+                current_trans = dict(msg.translations) if msg.translations else {}
+                current_trans[target_lang] = text
+                msg.translations = current_trans
+                flag_modified(msg, "translations")
+                
+            # 2. (Tuỳ chọn) Insert vào bảng MessageTranslation nếu cần tracking history
+            # ...
+            
+            await db.commit()
+        except Exception as e:
+            logger.error(f"DB Update failed: {e}")
+            await db.rollback()
+            
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     redis = await get_redis_client()
@@ -872,6 +989,12 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
     except WebSocketDisconnect: pass
     except Exception as e: logger.error(f"Chat WS Error: {e}")
     finally: await db_session.close()
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(redis_event_listener())
+
 
 @app.websocket("/subtitles-audio")
 async def audio_endpoint(

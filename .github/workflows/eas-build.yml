@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Fixed Newline Issue)
+name: LinguamonkeyFe - Signed APK Build (Final Fix - Force Expo NDK)
 
 on:
   push:
@@ -61,27 +61,32 @@ jobs:
           EXPO_ANDROID_NDK_VERSION: "26.1.10909125"
         run: npx expo prebuild --platform android --no-install
 
-      # --- 4. 🚑 PHẪU THUẬT (ĐÃ FIX LỖI DÍNH DÒNG) ---
+      # --- 4. 🚑 PHẪU THUẬT (MỚI: ÉP NDK TRONG EXPO MODULE) ---
       - name: 💀 Force Fix NDK Version Everywhere
         run: |
-          echo "☢️ Overriding NDK configurations..."
+          NDK_VERSION="26.1.10909125"
+          echo "☢️ Overriding NDK configurations with $NDK_VERSION..."
           
-          # QUAN TRỌNG: Thêm dòng trống trước để tránh bị dính vào dòng cuối cùng của file
+          # 4.1. Fix lỗi dính dòng + Ghi đè android/gradle.properties
           echo "" >> android/gradle.properties
-          echo "android.ndkVersion=26.1.10909125" >> android/gradle.properties
+          echo "android.ndkVersion=$NDK_VERSION" >> android/gradle.properties
           
-          # Force thay thế trong app/build.gradle
-          # Thay thế dòng tham chiếu biến bằng giá trị cứng
-          sed -i 's/ndkVersion rootProject.ext.ndkVersion/ndkVersion "26.1.10909125"/' android/app/build.gradle || true
-          
-          # Phòng hờ: Thay thế bất kỳ dòng ndkVersion nào khác
-          sed -i 's/ndkVersion\s*=.*/ndkVersion "26.1.10909125"/' android/app/build.gradle
+          # 4.2. Force thay thế trong app/build.gradle
+          sed -i "s/ndkVersion rootProject.ext.ndkVersion/ndkVersion \"$NDK_VERSION\"/" android/app/build.gradle || true
+          sed -i "s/ndkVersion\s*=.*/ndkVersion \"$NDK_VERSION\"/" android/app/build.gradle
 
-          # Fix root build.gradle
-          sed -i 's/ndkVersion\s*=\s*["'\'']27\..*["'\'']/ndkVersion = "26.1.10909125"/' android/build.gradle || true
+          # 4.3. Fix root build.gradle
+          sed -i "s/ndkVersion\s*=\s*[\"']27\..*[\"']/ndkVersion = \"$NDK_VERSION\"/" android/build.gradle || true
 
-          echo "🔍 Check android/gradle.properties content (Last 5 lines):"
-          tail -n 5 android/gradle.properties
+          # 4.4. QUAN TRỌNG NHẤT: ÉP NDK TRONG FILE BUILD CỦA EXPO MODULES GỐC
+          # File bị lỗi: /node_modules/expo/android/build.gradle (nơi lỗi CXX1104 xảy ra)
+          echo "⚔️ Forcing NDK version in node_modules/expo/android/build.gradle..."
+          sed -i 's/ndk.dir property/ndk.dir property\n\n\
+              // Forced NDK Fix for CXX1104 in expo-modules-core\n\
+              android.ndkVersion = "26.1.10909125"/' node_modules/expo/android/build.gradle || true
+
+          echo "🔍 Double Check NDK config in android/app/build.gradle:"
+          grep "ndkVersion" android/app/build.gradle
 
       - name: 🧹 Clean up duplicate icon files
         run: |
@@ -101,9 +106,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v8-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v9-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v8-
+            ${{ runner.os }}-gradle-fe-v9-
 
       - name: 🔐 Setup Keystore
         run: |

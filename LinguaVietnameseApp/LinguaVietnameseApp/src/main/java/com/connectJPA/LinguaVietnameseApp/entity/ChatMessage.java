@@ -29,8 +29,17 @@ public class ChatMessage {
     @EmbeddedId
     private ChatMessagesId id;
 
-    @Column(name = "content")
+    @Column(name = "content", columnDefinition = "TEXT") // Content đã MÃ HÓA (Ciphertext)
     private String content;
+
+    @Column(name = "sender_ephemeral_key", length = 512) // Public Key tạm thời của Người Gửi
+    private String senderEphemeralKey;
+
+    @Column(name = "used_prekey_id") // ID của One-Time PreKey đã sử dụng (cho người nhận)
+    private Integer usedPreKeyId;
+
+    @Column(name = "initialization_vector", length = 64) // IV/Nonce
+    private String initializationVector;
 
     @Column(name = "media_url")
     private String mediaUrl;

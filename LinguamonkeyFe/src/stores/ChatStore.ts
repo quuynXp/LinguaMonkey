@@ -9,6 +9,8 @@ import { useUserStore } from "./UserStore";
 import { RoomPurpose } from "../types/enums";
 import { playInAppSound } from '../utils/soundUtils';
 import { useAppStore } from './appStore';
+import { e2eeService } from '../services/E2EEService';
+import { showToast } from '../components/Toast';
 
 const AI_BOT_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -130,37 +132,57 @@ const normalizeMessage = (msg: any): Message => {
     translatedText: source.translatedText || null,
   });
 
-  // CRITICAL FIX: Robust ID Extraction
-  // Priority 1: Nested id.chatMessageId (Standard Entity)
+  const baseMsg = {
+    ...msg,
+    translationsMap: parsedTranslations,
+    senderEphemeralKey: msg.senderEphemeralKey,
+    usedPreKeyId: msg.usedPreKeyId,
+    initializationVector: msg.initializationVector,
+  };
+
   if (msg?.id?.chatMessageId) {
-    return { ...msg, ...mapTranslationFields(msg) } as Message;
+    // FIX 2: Thực hiện giải mã ngay khi tin nhắn được normalize
+    baseMsg.decryptedContent = e2eeService.decrypt(baseMsg as Message);
+    return baseMsg as Message;
   }
 
-  // Priority 2: Flat chatMessageId (DTO / Projection)
   if (msg?.chatMessageId) {
-    return {
+    const rawMsg = {
       ...msg,
       id: { chatMessageId: msg.chatMessageId, sentAt: msg.sentAt || new Date().toISOString() },
       senderId: msg.senderId,
       content: msg.content,
-      ...mapTranslationFields(msg)
-    } as Message;
+      translationsMap: parsedTranslations,
+      senderEphemeralKey: msg.senderEphemeralKey,
+      usedPreKeyId: msg.usedPreKeyId,
+      initializationVector: msg.initializationVector,
+    };
+    // FIX 2: Thực hiện giải mã ngay khi tin nhắn được normalize
+    rawMsg.decryptedContent = e2eeService.decrypt(msg as Message);
+    return msg as Message;
   }
 
-  // Priority 3: 'id' field as string (Simplified DTO)
   if (msg?.id && typeof msg.id === 'string') {
-    return {
+    const rawMsg = {
       ...msg,
       id: { chatMessageId: msg.id, sentAt: msg.sentAt || new Date().toISOString() },
-      ...mapTranslationFields(msg)
-    } as Message;
+      translationsMap: parsedTranslations,
+      senderEphemeralKey: msg.senderEphemeralKey,
+      usedPreKeyId: msg.usedPreKeyId,
+      initializationVector: msg.initializationVector,
+    };
+    // FIX 2: Thực hiện giải mã ngay khi tin nhắn được normalize
+    rawMsg.decryptedContent = e2eeService.decrypt(msg as Message);
+    return msg as Message;
   }
 
-  // Fallback (Should rarely happen if backend is correct)
-  return {
+  // Fallback
+  const fallbackMsg = {
     ...msg,
     id: { chatMessageId: 'unknown-' + Math.random(), sentAt: new Date().toISOString() }
-  } as Message;
+  };
+  fallbackMsg.decryptedContent = e2eeService.decrypt(fallbackMsg as Message);
+  return fallbackMsg as Message;
 };
 
 const parseDate = (dateInput: any): number => {
@@ -626,33 +648,81 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     } catch (e) { set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } })); }
   },
 
-  sendMessage: (roomId, content, type, mediaUrl) => {
+  sendMessage: async (roomId, content, type, mediaUrl) => { // Cần thêm 'async' ở đây
     const state = get();
+    const user = useUserStore.getState().user;
     const room = state.rooms[roomId];
-    const payload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null };
 
-    // Optimistic ID must strictly start with 'local-' for detection logic
+    // Tìm receiverId cho private chat
+    const receiverId = room?.members?.find(m => m.userId !== user?.userId)?.userId || null;
+
+    // Bước 1: Optimistic Message Setup
     const optimisticId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    let finalPayload: any;
+    let optimisticContent = content;
+    let optimisticMetadata: any = {};
+
+    // Bước 2: Xử lý E2EE (Chỉ mã hóa nếu là PRIVATE_CHAT và không phải AI)
+    if (room?.purpose === RoomPurpose.PRIVATE_CHAT && receiverId && type === 'TEXT') {
+      try {
+        // FIX: Thêm 'await' để lấy kết quả từ Promise
+        const encryptedData = await e2eeService.encrypt(receiverId, content);
+
+        finalPayload = {
+          roomId,
+          messageType: type,
+          purpose: room.purpose,
+          mediaUrl: mediaUrl || null,
+          content: encryptedData.ciphertext, // Gửi Ciphertext
+          receiverId,
+
+          // Đính kèm E2EE Metadata
+          senderEphemeralKey: encryptedData.senderEphemeralKey,
+          usedPreKeyId: encryptedData.usedPreKeyId,
+          initializationVector: encryptedData.initializationVector,
+        };
+
+        optimisticContent = content; // Nội dung đã giải mã (DecryptedContent)
+        optimisticMetadata = {
+          senderEphemeralKey: finalPayload.senderEphemeralKey,
+          usedPreKeyId: finalPayload.usedPreKeyId,
+          initializationVector: finalPayload.initializationVector,
+        };
+      } catch (error) {
+        console.error("E2EE Encryption Failed:", error);
+        showToast({ message: "Encryption failed, sending plain text.", type: "error" });
+
+        // Fallback: Gửi tin nhắn không mã hóa (chỉ nên dùng trong dev)
+        finalPayload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null, receiverId };
+      }
+    } else {
+      // Tin nhắn GROUP_CHAT, AI, hoặc MEDIA không E2EE (hoặc E2EE được xử lý khác)
+      finalPayload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null, receiverId };
+    }
+
+
     const optimisticMsg = {
       id: { chatMessageId: optimisticId, sentAt: new Date().toISOString() },
-      senderId: useUserStore.getState().user?.userId,
-      content,
+      senderId: user?.userId,
+      content: finalPayload.content || optimisticContent, // Lưu Ciphertext nếu là E2EE, hoặc Plaintext
+      decryptedContent: optimisticContent, // Dữ liệu để hiển thị (chỉ dùng cho local user)
       messageType: type,
       mediaUrl: mediaUrl || null,
       isLocal: true,
       translatedText: null,
-      translatedLang: null
+      translationsMap: {},
+      ...optimisticMetadata, // Thêm metadata E2EE vào optimistic message
     } as any;
 
-    // Add optimistic message instantly
     set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], optimisticMsg) } }));
 
     const dest = `/app/chat/room/${roomId}`;
     if (stompService.isConnected) {
-      try { stompService.publish(dest, payload); }
-      catch (e) { set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload }] })); }
+      try { stompService.publish(dest, finalPayload); }
+      catch (e) { set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload: finalPayload }] })); }
     } else {
-      set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload }] }));
+      set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload: finalPayload }] }));
       get().initStompClient();
     }
   },

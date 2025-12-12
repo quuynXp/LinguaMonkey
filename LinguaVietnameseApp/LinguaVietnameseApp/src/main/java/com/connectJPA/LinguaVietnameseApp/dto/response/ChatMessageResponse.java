@@ -24,6 +24,10 @@ public class ChatMessageResponse {
     private String mediaUrl;
     private MessageType messageType;
     
+    private String senderEphemeralKey;
+    private Integer usedPreKeyId;
+    private String initializationVector;
+    
     private Map<String, String> translations;
     
     private RoomPurpose purpose;

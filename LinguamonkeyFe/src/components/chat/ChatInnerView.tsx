@@ -33,8 +33,8 @@ type UIMessage = {
     id: string;
     sender: 'user' | 'other';
     timestamp: string;
-    text: string;
-    content?: string;
+    text: string; // Nội dung hiển thị (Decrypted Content)
+    content?: string; // Nội dung gốc (Ciphertext hoặc Plaintext)
     mediaUrl?: string;
     messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
     translatedText?: string;
@@ -48,6 +48,8 @@ type UIMessage = {
     senderProfile?: UserProfileResponse;
     roomId?: string;
     isDeleted?: boolean;
+    // Thêm trường E2EE để biết đây là tin nhắn mã hóa hay không
+    isEncrypted?: boolean;
 };
 
 interface ChatInnerViewProps {
@@ -273,17 +275,25 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
             const senderProfile = msg.senderProfile || membersMap[senderId];
 
+            // FIX: Ưu tiên Decrypted Content để hiển thị
+            // Nếu có decryptedContent (tức là tin nhắn E2EE đã được giải mã), sử dụng nó.
+            // Ngược lại, sử dụng content (Plaintext cho Group chat/AI, hoặc Ciphertext cho tin nhắn cũ chưa E2EE).
+            const displayContent = msg.decryptedContent || msg.content || '';
+
+            // Xác định xem tin nhắn có phải là tin nhắn E2EE không
+            const isEncrypted = !!msg.senderEphemeralKey;
+
             return {
                 id: messageId,
                 sender: senderId === currentUserId ? 'user' : 'other',
                 senderId: senderId,
                 timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
-                text: msg.content || '',
-                content: msg.content || '',
-                translatedText: finalTranslation,
-                translatedLang: translationTargetLang,
+                text: displayContent, // Nội dung đã được giải mã/hiển thị
+                content: msg.content || '', // Nội dung gốc (Ciphertext)
                 mediaUrl: (msg as any).mediaUrl,
                 messageType: (msg as any).messageType || 'TEXT',
+                translatedText: finalTranslation,
+                translatedLang: translationTargetLang,
                 user: senderProfile?.fullname || senderProfile?.nickname || 'Unknown',
                 avatar: senderProfile?.avatarUrl || null,
                 sentAt: msg?.id?.sentAt,
@@ -291,7 +301,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 isLocal: (msg as any).isLocal,
                 senderProfile: senderProfile,
                 roomId: roomId,
-                isDeleted: msg.isDeleted
+                isDeleted: msg.isDeleted,
+                isEncrypted: isEncrypted,
             } as UIMessage;
         }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
     }, [serverMessages, eagerTranslations, translationTargetLang, currentUserId, membersMap]);
@@ -313,6 +324,9 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
         if (editingMessage) {
+            // Khi edit, phải gửi lại nội dung đã mã hóa (Ciphertext)
+            // Tuy nhiên, logic edit ở Client phải đảm bảo lấy được content gốc (Ciphertext) từ message item
+            // và tái mã hóa content mới với Session Key cũ, sau đó gửi lên.
             editMessage(roomId, editingMessage.id, inputText).then(() => { setEditingMessage(null); setInputText(""); }).catch(() => showToast({ message: t("chat.edit_error"), type: "error" }));
         } else {
             sendMessage(roomId, inputText, 'TEXT');
@@ -321,8 +335,14 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     };
 
     const handleManualTranslate = async (id: string, text: string) => {
+        // Lấy nội dung đã được giải mã để dịch
+        const messageToTranslate = serverMessages.find(m => m.id.chatMessageId === id);
+        const contentToTranslate = messageToTranslate?.decryptedContent || messageToTranslate?.content || text;
+
+        if (!contentToTranslate) return;
+
         setTranslatingId(id);
-        await performEagerTranslation(id, text, translationTargetLang);
+        await performEagerTranslation(id, contentToTranslate, translationTargetLang);
         setTranslatingId(null);
     };
 
@@ -330,6 +350,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const finalUrl = result?.secure_url || result?.url || result?.fileUrl;
 
         if (finalUrl) {
+            // Tin nhắn media thường không mã hóa E2EE, hoặc chỉ mã hóa URL và gửi đi. 
+            // Ở đây ta gửi Plaintext (rỗng) và URL.
             sendMessage(roomId, '', type, finalUrl);
         } else {
             console.warn("Upload success but no URL found in result:", result);
@@ -350,6 +372,17 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const showManualButton = !autoTranslate && !isMedia && !isUser;
 
         const isTranslating = translatingId === item.id;
+
+        // Cảnh báo nếu tin nhắn là E2EE nhưng không giải mã được
+        const showDecryptionError = item.isEncrypted && item.text?.startsWith('!! Decryption Failed !!');
+
+        // Nội dung hiển thị chính: text (đã giải mã)
+        let primaryText = item.text;
+        if (item.isEncrypted && primaryText === item.content) {
+            // Nếu là E2EE nhưng content (ciphertext) và text (decrypted content) giống nhau, có thể là lỗi giải mã
+            primaryText = showDecryptionError ? t('chat.decryption_failed') : t('chat.encrypted_message');
+        }
+
 
         return (
             <Pressable onLongPress={() => isUser && !isMedia && setEditingMessage(item)} style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther]}>
@@ -378,8 +411,17 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                             </View>
                         ) : (
                             <View>
-                                {/* Original Text Line */}
-                                <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
+                                {/* Original Text Line (Decrypted Content) */}
+                                <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>
+                                    {primaryText}
+                                </Text>
+
+                                {/* Decryption Error / Encrypted Status */}
+                                {showDecryptionError && (
+                                    <Text style={[styles.textOtherTrans, { fontSize: 12, color: '#D97706', marginTop: 4, fontStyle: 'italic' }]}>
+                                        {t('chat.decryption_error_hint')}
+                                    </Text>
+                                )}
 
                                 {/* Translated Text Line (Only if Auto is ON AND Not User AND Not Same as Original) */}
                                 {showTranslatedText && (
@@ -535,7 +577,6 @@ const styles = createScaledSheet({
     activeDot: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderColor: '#FFF' },
     uploadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 10, justifyContent: 'center', alignItems: 'center' },
 
-    // Dual Line Styles
     dualLineContainer: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.1)' },
     separator: { height: 0 },
     translatedText: { fontSize: 15, fontStyle: 'italic', lineHeight: 22 },

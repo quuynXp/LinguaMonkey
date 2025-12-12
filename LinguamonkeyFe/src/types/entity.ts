@@ -167,6 +167,7 @@ export interface Character3d extends BaseEntity {
 
 export interface ChatMessage {
     id: ChatMessagesId;
+
     content?: string;
     mediaUrl?: string;
     messageType: Enums.MessageType;
@@ -181,10 +182,13 @@ export interface ChatMessage {
     isRead: boolean;
 
     translations?: string;
-
     translationsMap?: Record<string, string>;
-    // Local UI state (không từ DB)
+
+    senderEphemeralKey?: string;
+    usedPreKeyId?: number;
+    initializationVector?: string;
     isLocal?: boolean;
+    decryptedContent?: string;
 }
 export interface Couple extends BaseEntity {
     id: string;
@@ -668,6 +672,7 @@ export interface Room extends BaseEntity {
     topic?: Enums.RoomTopic;
     roomType: Enums.RoomType;
     status: Enums.RoomStatus;
+    members: UserProfileResponse[];
 }
 
 export interface RoomMember extends BaseEntity {

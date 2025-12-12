@@ -29,6 +29,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -56,8 +57,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final NotificationService notificationService;
     private final GrpcClientService grpcClientService;
     private final UserService userService;
+    private final RedisTemplate<String, Object> redisTemplate;
     
-    // Gson vẫn giữ lại chỉ để dùng cho Notification Payload, không dùng cho translation nữa
     private final Gson gson = new Gson();
 
     @Lazy
@@ -67,14 +68,15 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     private static final UUID AI_BOT_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
-    // --- ĐÃ XÓA: parseTranslations và serializeTranslations (vì Entity giờ là Map) ---
-
     private ChatMessageResponse mapToResponse(ChatMessage entity, RoomPurpose purpose) {
         ChatMessageResponse response = chatMessageMapper.toResponse(entity);
-        // Entity.translations bây giờ là Map, Response.translations cũng là Map
-        // MapStruct đã tự map, nhưng nếu cần override thủ công:
         response.setTranslations(entity.getTranslations()); 
         response.setPurpose(purpose);
+        
+        response.setSenderEphemeralKey(entity.getSenderEphemeralKey());
+        response.setUsedPreKeyId(entity.getUsedPreKeyId());
+        response.setInitializationVector(entity.getInitializationVector());
+        
         return response;
     }
 
@@ -108,6 +110,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         ChatMessage message = chatMessageMapper.toEntity(request);
+        
+        message.setSenderEphemeralKey(request.getSenderEphemeralKey());
+        message.setUsedPreKeyId(request.getUsedPreKeyId());
+        message.setInitializationVector(request.getInitializationVector());
+        
         if (request.getMediaUrl() != null && !request.getMediaUrl().isEmpty()) {
             message.setMediaUrl(request.getMediaUrl());
         }
@@ -117,8 +124,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
-        
-        // FIX: Khởi tạo Map rỗng thay vì String "{}"
         message.setTranslations(new HashMap<>());
 
         ChatMessage savedMessage = chatMessageRepository.save(message);
@@ -143,6 +148,14 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
                 .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(request.getSenderId())).toList();
 
+            Map<String, Object> event = new HashMap<>();
+            event.put("type", "NEW_MESSAGE_EVENT");
+            event.put("messageId", savedMessage.getId().getChatMessageId().toString());
+            event.put("roomId", roomId.toString());
+            event.put("content", savedMessage.getContent()); // LƯU Ý: Đây là Ciphertext
+            event.put("senderId", savedMessage.getSenderId().toString());
+            
+            redisTemplate.convertAndSend("chat_events", event);
             for (UUID uId : memberIds) {
                 try {
                     messagingTemplate.convertAndSendToUser(uId.toString(), "/queue/notifications", response);
@@ -153,9 +166,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                         "screen", "TabApp", "stackScreen", "GroupChatScreen",
                         "roomId", roomId.toString(), "initialFocusMessageId", response.getChatMessageId().toString()
                     );
-                    // Gson vẫn dùng để serialize payload cho Notification (String)
+                    String contentForNotification = (response.getContent() != null && !response.getContent().isEmpty()) ? "Encrypted Message" : "You sent an attachment";
                     String payloadJson = gson.toJson(dataPayload);
-                    NotificationRequest nreq = NotificationRequest.builder().userId(uId).title("New message").content(response.getContent() != null ? response.getContent() : "You sent an attachment").type("CHAT_MESSAGE").payload(payloadJson).build();
+                    NotificationRequest nreq = NotificationRequest.builder().userId(uId).title("New message").content(contentForNotification).type("CHAT_MESSAGE").payload(payloadJson).build();
                     notificationService.createPushNotification(nreq);
                 } catch (Exception pushEx) { log.error("Failed to create push notification for user {}", uId); }
             }
@@ -210,9 +223,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
 
             message.setContent(newContent);
-            
-            // FIX: Reset về Map rỗng khi edit (logic cũ là reset về "{}")
             message.setTranslations(new HashMap<>()); 
+            
+            // LƯU Ý: Khi Edit Message, Client phải gửi lại Ciphertext đã được mã hóa lại
             
             message.setUpdatedAt(OffsetDateTime.now());
             message = chatMessageRepository.save(message);
@@ -271,7 +284,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .roomId(userMessage.getRoomId()).senderId(AI_BOT_ID)
                     .content("AI response to: " + userMessage.getContent())
                     .messageType(userMessage.getMessageType()).isRead(false)
-                    // FIX: Khởi tạo Map rỗng
                     .translations(new HashMap<>()) 
                     .build();
             aiMessage = chatMessageRepository.save(aiMessage);
@@ -309,16 +321,12 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
 
-            // --- FIX LOGIC: Thao tác trực tiếp với Map ---
             Map<String, String> translations = message.getTranslations();
             if (translations == null) {
                 translations = new HashMap<>();
             }
             
-            // Put trực tiếp vào Map
             translations.put(targetLang, translatedText);
-            
-            // Set lại Map vào entity (JPA sẽ tự lo việc convert sang JSONB)
             message.setTranslations(translations);
             
             ChatMessage saved = chatMessageRepository.save(message);
