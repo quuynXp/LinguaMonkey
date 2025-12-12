@@ -213,23 +213,16 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
     return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
   }
 
-  // Trigger translation for incoming text messages from others
   if (eagerCallback && msg.senderId !== currentUserId && msg.messageType === 'TEXT' && msg.content) {
     eagerCallback(msg);
   }
 
   let workingList = [...list];
 
-  // CRITICAL FIX: Remove local optimistic message when server message arrives
-  // Logic: If I am sender, and this new msg is NOT local (from server),
-  // find any local message with similar content and remove it before adding the real one.
   if (msg.senderId === currentUserId && !msg.isLocal) {
-    // We filter out any LOCAL message that has same content (trimmed)
     workingList = workingList.filter(m => {
       const isMyLocal = m.isLocal === true;
       const contentMatch = m.content?.trim() === msg.content?.trim();
-      // If it's my local message and content matches, DELETE IT (return false to filter out)
-      // because we are about to add the authoritative server version.
       return !(isMyLocal && contentMatch);
     });
   }
@@ -237,24 +230,17 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   const existsIndex = workingList.findIndex((m) => m.id.chatMessageId === msg.id.chatMessageId);
 
   if (existsIndex > -1) {
-    // Update existing message
     const existing = workingList[existsIndex];
-    // Preserve translation map if existing has more data
     if (Object.keys(existing.translationsMap || {}).length > Object.keys(msg.translationsMap || {}).length) {
       msg.translationsMap = { ...msg.translationsMap, ...existing.translationsMap };
     }
-    // Preserve local status if for some reason we are updating a local message
     if (existing.isLocal && !msg.id.chatMessageId.startsWith('local')) {
-      // If we matched ID but existing was local, it means ID was generated correctly client side? 
-      // Rare case, usually we swap. Let's trust the new msg unless it's strictly an update.
     }
     workingList[existsIndex] = msg;
   } else {
-    // Add new message
     workingList = [msg, ...workingList];
   }
 
-  // Sort Descending (Newest first) for Store storage
   return workingList.sort((a, b) => {
     const timeA = parseDate(a.id?.sentAt);
     const timeB = parseDate(b.id?.sentAt);
@@ -356,7 +342,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           const entry = lexicon.get(key);
 
           if (entry && entry.translations[targetLang]) {
-            // Tìm thấy bản dịch có sẵn trong Lexicon
             if (phrase.length > bestMatch.length) {
               bestMatch = phrase;
               bestTranslation = entry.translations[targetLang];
@@ -373,14 +358,13 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         i += bestJ - 1;
         matched = true;
       } else {
-        translatedText += words[i] + ' '; // Giữ lại từ gốc
+        translatedText += words[i] + ' ';
       }
     }
 
     const finalLocalTranslation = translatedText.trim();
 
     if (matched && finalLocalTranslation.length > 0) {
-      // Nếu có match (LPM HIT) -> Cập nhật Local State ngay lập tức
       set(state => ({
         eagerTranslations: {
           ...state.eagerTranslations,
@@ -388,14 +372,14 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         }
       }));
       console.log(`⚡ LPM Client HIT: ${text} -> ${finalLocalTranslation}`);
-      return; // Dịch thành công, kết thúc
+      return;
     }
 
     try {
       const res = await instance.post('/api/py/translate', {
         text,
         target_lang: targetLang,
-        source_lang: 'auto', // Để Backend tự detect
+        source_lang: 'auto',
         message_id: messageId.startsWith('local') ? undefined : messageId
       });
 
@@ -416,7 +400,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   fetchLexiconMaster: async () => {
     try {
-      // Gọi API Backend mới
       const res = await instance.get<AppApiResponse<LexiconEntry[]>>('/api/py/lexicon/top', { params: { limit: 500 } });
       const lexiconData = res.data.result || [];
 
@@ -744,20 +727,16 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const user = useUserStore.getState().user;
     const room = state.rooms[roomId];
 
-    // Tìm receiverId cho private chat
     const receiverId = room?.members?.find(m => m.userId !== user?.userId)?.userId || null;
 
-    // Bước 1: Optimistic Message Setup
     const optimisticId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     let finalPayload: any;
     let optimisticContent = content;
     let optimisticMetadata: any = {};
 
-    // Bước 2: Xử lý E2EE (Chỉ mã hóa nếu là PRIVATE_CHAT và không phải AI)
     if (room?.purpose === RoomPurpose.PRIVATE_CHAT && receiverId && type === 'TEXT') {
       try {
-        // FIX: Thêm 'await' để lấy kết quả từ Promise
         const encryptedData = await e2eeService.encrypt(receiverId, content);
 
         finalPayload = {
@@ -765,16 +744,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           messageType: type,
           purpose: room.purpose,
           mediaUrl: mediaUrl || null,
-          content: encryptedData.ciphertext, // Gửi Ciphertext
+          content: encryptedData.ciphertext,
           receiverId,
 
-          // Đính kèm E2EE Metadata
           senderEphemeralKey: encryptedData.senderEphemeralKey,
           usedPreKeyId: encryptedData.usedPreKeyId,
           initializationVector: encryptedData.initializationVector,
         };
 
-        optimisticContent = content; // Nội dung đã giải mã (DecryptedContent)
+        optimisticContent = content;
         optimisticMetadata = {
           senderEphemeralKey: finalPayload.senderEphemeralKey,
           usedPreKeyId: finalPayload.usedPreKeyId,
@@ -784,11 +762,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         console.error("E2EE Encryption Failed:", error);
         showToast({ message: "Encryption failed, sending plain text.", type: "error" });
 
-        // Fallback: Gửi tin nhắn không mã hóa (chỉ nên dùng trong dev)
         finalPayload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null, receiverId };
       }
     } else {
-      // Tin nhắn GROUP_CHAT, AI, hoặc MEDIA không E2EE (hoặc E2EE được xử lý khác)
       finalPayload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null, receiverId };
     }
 
@@ -796,14 +772,14 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const optimisticMsg = {
       id: { chatMessageId: optimisticId, sentAt: new Date().toISOString() },
       senderId: user?.userId,
-      content: finalPayload.content || optimisticContent, // Lưu Ciphertext nếu là E2EE, hoặc Plaintext
-      decryptedContent: optimisticContent, // Dữ liệu để hiển thị (chỉ dùng cho local user)
+      content: finalPayload.content || optimisticContent,
+      decryptedContent: optimisticContent,
       messageType: type,
       mediaUrl: mediaUrl || null,
       isLocal: true,
       translatedText: null,
       translationsMap: {},
-      ...optimisticMetadata, // Thêm metadata E2EE vào optimistic message
+      ...optimisticMetadata,
     } as any;
 
     set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], optimisticMsg) } }));

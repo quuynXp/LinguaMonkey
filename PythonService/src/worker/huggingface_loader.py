@@ -22,9 +22,7 @@ DATASET_SOURCES = [
         "split": "train",
         "mapping": {"en": "en", "zh": "zh"},
         "limit": 100000
-    }
-     # 2. THÊM MỚI: Tatoeba Challenge (Chuyên câu ngắn, từ vựng giao tiếp)
-    # Dataset này sẽ fix lỗi thiếu từ "Hi", "Love", "Hello"
+    },
     {
         "name": "Helsinki-NLP/tatoeba_mt",
         "config": "eng-vie",
