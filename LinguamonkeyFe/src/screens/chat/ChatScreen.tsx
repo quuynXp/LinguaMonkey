@@ -282,7 +282,7 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
           {/* VIDEO CALL HISTORY SECTION */}
           <View style={styles.section}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t("Call History")}</Text>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t("call.call_history")}</Text>
               {callHistory.length > 5 && (
                 <TouchableOpacity onPress={() => setShowHistoryModal(true)}>
                   <Text style={{ color: '#4F46E5', fontSize: 14, fontWeight: '500' }}>{t("See all")}</Text>
@@ -315,7 +315,7 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t("Full Call History")}</Text>
+              <Text style={styles.modalTitle}>{t("call.full_call_history")}</Text>
               <TouchableOpacity onPress={() => setShowHistoryModal(false)} style={styles.closeButton}>
                 <Icon name="close" size={24} color="#6B7280" />
               </TouchableOpacity>

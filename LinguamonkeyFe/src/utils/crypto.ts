@@ -16,14 +16,10 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
 
 /**
  * Tạo ra một Shared Session Key giả định.
- * Trong thực tế: Key này được tạo ra bằng X3DH/Double Ratchet.
- * Ở đây ta chỉ sinh ngẫu nhiên từ chuỗi ID cho mục đích chứng minh logic E2EE.
  * @param identifier Chuỗi ID để tạo key cố định.
  * @returns Khóa CryptoKey 256-bit
  */
 export async function getSessionKey(identifier: string): Promise<CryptoKey> {
-    // Luôn sinh cùng một key từ identifier để giải mã được.
-    // Hash identifier để tạo ra 32 byte key.
     const keyBytes = new Uint8Array(32);
     for (let i = 0; i < keyBytes.length; i++) {
         keyBytes[i] = (identifier.charCodeAt(i % identifier.length) + i) % 256;
@@ -33,7 +29,7 @@ export async function getSessionKey(identifier: string): Promise<CryptoKey> {
         "raw",
         keyBytes,
         { name: "AES-GCM" },
-        false, // Khóa này chỉ dùng trong nội bộ
+        false,
         ["encrypt", "decrypt"]
     );
 }
@@ -45,7 +41,7 @@ export async function getSessionKey(identifier: string): Promise<CryptoKey> {
  * @returns Tuple [IV (Base64), Ciphertext (Base64)].
  */
 export async function encryptAES(content: string, key: CryptoKey): Promise<[string, string]> {
-    const iv = crypto.getRandomValues(new Uint8Array(12)); // IV 12-byte cho AES-GCM
+    const iv = crypto.getRandomValues(new Uint8Array(12));
     const encodedContent = new TextEncoder().encode(content);
 
     const encryptedContent = await crypto.subtle.encrypt(
@@ -78,4 +74,79 @@ export async function decryptAES(ciphertextBase64: string, ivBase64: string, key
     );
 
     return new TextDecoder().decode(decryptedContent);
+}
+
+// --- BỔ SUNG CÁC HÀM SINH KHÓA X3DH ---
+
+/**
+ * Tạo một cặp khóa Elliptic Curve (ECDH) dùng cho Identity Key hoặc Signed PreKey.
+ * @returns Cặp khóa công khai và bí mật (CryptoKey).
+ */
+export async function generateKeyPair(): Promise<CryptoKeyPair> {
+    return crypto.subtle.generateKey(
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
+        ["deriveKey"]
+    );
+}
+
+/**
+ * Xuất khóa công khai từ cặp khóa thành Base64 string.
+ * @param key Khóa công khai CryptoKey.
+ * @returns Khóa công khai Base64.
+ */
+export async function exportPublicKey(key: CryptoKey): Promise<string> {
+    const exportedKey = await crypto.subtle.exportKey("raw", key);
+    return arrayBufferToBase64(exportedKey);
+}
+
+/**
+ * Tạo một cặp khóa dùng cho Signed PreKey (ECDSA để ký).
+ * @returns Cặp khóa ký.
+ */
+export async function generateSigningKeyPair(): Promise<CryptoKeyPair> {
+    return crypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign", "verify"]
+    );
+}
+
+/**
+ * Ký dữ liệu bằng Khóa bí mật (Signed PreKey Private Key).
+ * @param privateKey Khóa bí mật dùng để ký.
+ * @param data Dữ liệu cần ký (Identity Public Key ArrayBuffer).
+ * @returns Chữ ký Base64.
+ */
+export async function signData(privateKey: CryptoKey, data: ArrayBuffer): Promise<string> {
+    const signature = await crypto.subtle.sign(
+        { name: "ECDSA", hash: { name: "SHA-256" } },
+        privateKey,
+        data
+    );
+    return arrayBufferToBase64(signature);
+}
+
+/**
+ * Nhập khóa công khai để xác minh.
+ * @param publicKeyBase64 Khóa công khai Base64.
+ * @returns Khóa CryptoKey.
+ */
+export async function importPublicKey(publicKeyBase64: string): Promise<CryptoKey> {
+    const buffer = base64ToArrayBuffer(publicKeyBase64);
+    return crypto.subtle.importKey(
+        "raw",
+        buffer,
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
+        []
+    );
+}
+
+/**
+ * Sinh ngẫu nhiên một ID Key (giả định) cho One-Time PreKey.
+ * @returns Một số nguyên.
+ */
+export function generatePreKeyId(): number {
+    return Math.floor(Math.random() * (2 ** 31 - 1));
 }

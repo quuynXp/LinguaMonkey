@@ -1988,6 +1988,8 @@
     "social": "Social",
     "join": "Join",
     "chat": {
+        "no_active_chats": "Offline",
+        "start_conversation_hint": "Start a conversation by selecting AI Chat or User Chat",
         "active_now": "Online",
         "title": "Chat",
         "aiChat": "Chat with AI",
@@ -2127,7 +2129,10 @@
     "reactions": {
         "send": "Send Reactions"
     },
+    "Calls": "Calls",
     "call": {
+        "call_history": "Call History",
+        "full_call_history": "Full Call History",
         "setupTitle": "Call Setup",
         "findPartner": "Find Conversation Partner",
         "setupDescription": "Set up your preferences to find the right person for video calls",

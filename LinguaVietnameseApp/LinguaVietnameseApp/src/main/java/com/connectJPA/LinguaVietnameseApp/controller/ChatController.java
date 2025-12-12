@@ -24,8 +24,10 @@ import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
@@ -69,6 +71,8 @@ public class ChatController {
     // --- Inner Class for Status Request ---
     @Data
     @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
     public static class UserStatusRequest {
         private UUID userId;
         private String status; // ONLINE or OFFLINE

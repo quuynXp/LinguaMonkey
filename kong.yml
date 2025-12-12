@@ -113,6 +113,8 @@ services:
           - /api/v1/video-calls
           - /api/v1/wallets
           - /api/v1/wallets/
+          - /api/v1/keys
+          - /api/v1/keys/
     plugins:
       - name: jwt
         config:
@@ -173,7 +175,7 @@ services:
     routes:
       - name: python-api
         strip_path: true
-        methods: [POST, OPTIONS]
+        methods: [GET, POST, OPTIONS]
         paths:
           - /api/py/
         plugins:
