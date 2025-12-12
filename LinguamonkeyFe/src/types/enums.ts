@@ -136,7 +136,6 @@ export enum CriteriaType {
     DAILY_CHALLENGES_COMPLETED = "DAILY_CHALLENGES_COMPLETED",
     EXP_EARNED = "EXP_EARNED",
     LEARNING_TIME = "LEARNING_TIME",
-
 }
 
 export enum DatingInviteStatus {

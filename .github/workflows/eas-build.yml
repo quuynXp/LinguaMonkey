@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Absolute Final Fix)
+name: LinguamonkeyFe - Signed APK Build (Fixed Newline Issue)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
-      # --- 1. DỌN DẸP (GIỮ NGUYÊN) ---
+      # --- 1. DỌN DẸP ---
       - name: 🗑️ AGGRESSIVE DISK CLEANUP
         run: |
           echo "🔥 Freeing up disk space..."
@@ -61,27 +61,27 @@ jobs:
           EXPO_ANDROID_NDK_VERSION: "26.1.10909125"
         run: npx expo prebuild --platform android --no-install
 
-      # --- 4. 🚑 PHẪU THUẬT (SỬA LẠI LOGIC) ---
+      # --- 4. 🚑 PHẪU THUẬT (ĐÃ FIX LỖI DÍNH DÒNG) ---
       - name: 💀 Force Fix NDK Version Everywhere
         run: |
           echo "☢️ Overriding NDK configurations..."
           
-          # 1. Ghi đè gradle.properties (Cái này bạn làm đúng, giữ lại)
+          # QUAN TRỌNG: Thêm dòng trống trước để tránh bị dính vào dòng cuối cùng của file
+          echo "" >> android/gradle.properties
           echo "android.ndkVersion=26.1.10909125" >> android/gradle.properties
           
-          # 2. CHÈN TRỰC TIẾP vào app/build.gradle (Quan trọng!)
-          # Expo thường để ndkVersion = rootProject.ext.ndkVersion
-          # Chúng ta sẽ thay thế dòng đó bằng string cứng luôn.
+          # Force thay thế trong app/build.gradle
+          # Thay thế dòng tham chiếu biến bằng giá trị cứng
           sed -i 's/ndkVersion rootProject.ext.ndkVersion/ndkVersion "26.1.10909125"/' android/app/build.gradle || true
           
-          # Phòng trường hợp cấu trúc khác, ta dùng regex tìm dòng ndkVersion bất kỳ trong app/build.gradle và ép lại
+          # Phòng hờ: Thay thế bất kỳ dòng ndkVersion nào khác
           sed -i 's/ndkVersion\s*=.*/ndkVersion "26.1.10909125"/' android/app/build.gradle
 
-          # 3. Sửa root build.gradle (Phòng hờ)
+          # Fix root build.gradle
           sed -i 's/ndkVersion\s*=\s*["'\'']27\..*["'\'']/ndkVersion = "26.1.10909125"/' android/build.gradle || true
 
-          echo "🔍 Check android/app/build.gradle:"
-          grep "ndkVersion" android/app/build.gradle
+          echo "🔍 Check android/gradle.properties content (Last 5 lines):"
+          tail -n 5 android/gradle.properties
 
       - name: 🧹 Clean up duplicate icon files
         run: |
@@ -101,9 +101,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v7-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v8-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v7-
+            ${{ runner.os }}-gradle-fe-v8-
 
       - name: 🔐 Setup Keystore
         run: |
@@ -120,8 +120,7 @@ jobs:
           
           echo "🔨 Building with FORCED NDK Version: 26.1.10909125"
           
-          # THAY ĐỔI QUAN TRỌNG: Thêm lại tham số -Pandroid.ndkVersion
-          # Tham số này có quyền lực cao nhất, cao hơn cả file config.
+          # Vẫn giữ flag này để đảm bảo an toàn tuyệt đối
           ./gradlew assembleRelease --no-daemon --stacktrace \
             -Pandroid.ndkVersion=26.1.10909125 \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
