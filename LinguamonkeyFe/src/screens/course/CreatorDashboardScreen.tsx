@@ -104,7 +104,7 @@ const CreatorDashboardScreen = () => {
                     </View>
                 </View>
                 <Icon name="chevron-right" size={24} color="#9CA3AF" />
-            </TouchableOpacity>
+            </TouchableOpacity> 
         );
     };
 

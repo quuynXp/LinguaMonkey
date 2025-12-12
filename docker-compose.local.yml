@@ -68,11 +68,11 @@ services:
       - GRPC_SERVER_ADDRESS=0.0.0.0
       - PYTHON_GRPC_HOST=pythonservice
       - PYTHON_GRPC_PORT=50051
-      - VNPAY_TMNCODE=9HFGRBLQ
-      - VNPAY_HASHSECRET=7FPX1FWZ68R9ET24K830CDU2691C7RVZ
+      - VNPAY_TMNCODE=9PKGCENK
+      - VNPAY_HASHSECRET=NULTZ2US42FOF2YUNNB506E02XQV134K
       - VNPAY_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
       - VNPAY_RETURN_URL_PATH=/api/v1/transactions/vnpay-return
-      - APP_BACKEND_URL=https://093ea1fb6d89.ngrok-free.app
+      - APP_BACKEND_URL=https://fd17d227cf8d.ngrok-free.app
       - STRIPE_API_KEY=sk_test_51Rt1GiK4J6AVC7wy9H8RKaRG3qY6N9TnhcIHkVd7eDxcVM3xyeh9ZdynEfEdcQBe4ozHS0cfEaqvOM6JZXkHUPV2003YUKEFYK
       - STRIPE_WEBHOOK_SECRET=whsec_u0PCrs1tLmoYcjPCraF1e0gfD7BaYQDH
       - TWILIO_ACCOUNT_SID=ACbff92c92cf22146853ca99a75ff70082
