@@ -1,144 +1,215 @@
-name: LinguamonkeyFe - Signed APK Build (Final Fix - Force Expo NDK)
+name: LinguamonkeyFe - Signed APK Build (Final SDK Fix)
+
+
 
 on:
+
   push:
+
     paths:
+
       - "LinguamonkeyFe/**"
+
     branches:
+
       - master
+
   workflow_dispatch:
 
+
+
 jobs:
+
   build-android:
+
     runs-on: ubuntu-latest
+
     defaults:
+
       run:
+
         working-directory: ./LinguamonkeyFe
 
+
+
     steps:
+
       - name: 🧱 Checkout repository
+
         uses: actions/checkout@v4
 
-      # --- 1. DỌN DẸP ---
+
+
       - name: 🗑️ AGGRESSIVE DISK CLEANUP
+
         run: |
-          echo "🔥 Freeing up disk space..."
+
           sudo rm -rf /usr/share/dotnet
+
           sudo rm -rf /opt/hostedtoolcache/CodeQL
+
           sudo docker image prune --all --force
+
           sudo apt-get clean
+
           sudo rm -rf /tmp/*
+
           sudo rm -rf /usr/local/lib/android/sdk/system-images
-          
-          echo "💣 Removing default NDK 27..."
-          sudo rm -rf /usr/local/lib/android/sdk/ndk
-          echo "✅ Disk space cleaned."
+
+
 
       - name: 🧩 Setup Node.js
+
         uses: actions/setup-node@v4
+
         with:
+
           node-version: 22
+
           cache: 'yarn'
+
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
+
+
       - name: 📦 Install dependencies
+
         run: yarn install --frozen-lockfile
 
+
+
       - name: 💣 Delete existing Android folder
+
         run: rm -rf android
 
-      # --- 2. CÀI NDK 26 ---
-      - name: 🔧 Setup Android NDK r26b
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r26b
-          add-to-path: true
 
-      # --- 3. PREBUILD ---
+
       - name: 🛠️ Generate Android directory (Prebuild)
-        env:
-          EXPO_ANDROID_NDK_VERSION: "26.1.10909125"
+
         run: npx expo prebuild --platform android --no-install
 
-      # --- 4. 🚑 PHẪU THUẬT (MỚI: ÉP NDK TRONG EXPO MODULE) ---
-      - name: 💀 Force Fix NDK Version Everywhere
-        run: |
-          NDK_VERSION="26.1.10909125"
-          echo "☢️ Overriding NDK configurations with $NDK_VERSION..."
-          
-          # 4.1. Fix lỗi dính dòng + Ghi đè android/gradle.properties
-          echo "" >> android/gradle.properties
-          echo "android.ndkVersion=$NDK_VERSION" >> android/gradle.properties
-          
-          # 4.2. Force thay thế trong app/build.gradle
-          sed -i "s/ndkVersion rootProject.ext.ndkVersion/ndkVersion \"$NDK_VERSION\"/" android/app/build.gradle || true
-          sed -i "s/ndkVersion\s*=.*/ndkVersion \"$NDK_VERSION\"/" android/app/build.gradle
 
-          # 4.3. Fix root build.gradle
-          sed -i "s/ndkVersion\s*=\s*[\"']27\..*[\"']/ndkVersion = \"$NDK_VERSION\"/" android/build.gradle || true
-
-          # 4.4. QUAN TRỌNG NHẤT: ÉP NDK TRONG FILE BUILD CỦA EXPO MODULES GỐC
-          # File bị lỗi: /node_modules/expo/android/build.gradle (nơi lỗi CXX1104 xảy ra)
-          echo "⚔️ Forcing NDK version in node_modules/expo/android/build.gradle..."
-          sed -i 's/ndk.dir property/ndk.dir property\n\n\
-              // Forced NDK Fix for CXX1104 in expo-modules-core\n\
-              android.ndkVersion = "26.1.10909125"/' node_modules/expo/android/build.gradle || true
-
-          echo "🔍 Double Check NDK config in android/app/build.gradle:"
-          grep "ndkVersion" android/app/build.gradle
 
       - name: 🧹 Clean up duplicate icon files
+
         run: |
+
           if [ -d "./android/app/src/main/res" ]; then
+
             find ./android/app/src/main/res -name "*.webp" -delete
+
           fi
 
+
+
       - name: ☕ Setup Java (JDK)
+
         uses: actions/setup-java@v4
+
         with:
+
           distribution: 'temurin'
+
           java-version: '17'
 
-      - name: 🐘 Cache Gradle dependencies
-        uses: actions/cache@v4
+
+
+      - name: 🔧 Setup Android NDK r26b
+
+        id: setup-ndk
+
+        uses: nttld/setup-ndk@v1
+
         with:
+
+          ndk-version: r26b
+
+          add-to-path: true
+
+
+
+      - name: 📝 Create local.properties to fix NDK path
+
+        run: |
+
+          echo "sdk.dir=$ANDROID_HOME" > ./android/local.properties
+
+          echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" >> ./android/local.properties
+
+
+
+      - name: 🐘 Cache Gradle dependencies
+
+        uses: actions/cache@v4
+
+        with:
+
           path: |
+
             ~/.gradle/caches
+
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v9-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+
+          key: ${{ runner.os }}-gradle-fe-v3-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v9-
+
+            ${{ runner.os }}-gradle-fe-v3-
+
+
 
       - name: 🔐 Setup Keystore
+
         run: |
+
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ./android/app/my-release-key.keystore
 
+
+
       - name: ⚙️ Build APK with Gradle
+
         env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_FILE: my-release-key.keystore
+
+          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+
+          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+
+          ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
         run: |
+
           cd android
+
           chmod +x gradlew
-          
-          echo "ndk.dir=$ANDROID_NDK_HOME" > local.properties
-          
-          echo "🔨 Building with FORCED NDK Version: 26.1.10909125"
-          
-          # Vẫn giữ flag này để đảm bảo an toàn tuyệt đối
-          ./gradlew assembleRelease --no-daemon --stacktrace \
-            -Pandroid.ndkVersion=26.1.10909125 \
+
+          ./gradlew assembleRelease --no-daemon \
+
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
+
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+
             -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
+
             -Pandroid.injected.signing.key.password=${{ secrets.ANDROID_KEY_PASSWORD }}
 
+
+
       - name: 📤 Upload signed APK
+
         uses: actions/upload-artifact@v4
+
         with:
+
           name: android-signed-apk
+
           path: LinguamonkeyFe/android/app/build/outputs/apk/release/app-release.apk
 
+
+
       - name: 🧹 Final Clean Up
+
         if: always()
+
         run: rm -f ./android/app/my-release-key.keystore

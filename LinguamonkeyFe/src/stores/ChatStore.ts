@@ -22,6 +22,12 @@ type AiMessage = {
   roomId: string;
 };
 
+type LexiconEntry = {
+  original_text: string;
+  original_lang: string;
+  translations: Record<string, string>;
+};
+
 export type IncomingCall = {
   roomId: string;
   callerId: string;
@@ -43,6 +49,7 @@ interface UseChatState {
   rooms: { [roomId: string]: Room };
   userStatuses: { [userId: string]: UserStatus };
 
+  lexiconMaster: Map<string, LexiconEntry>;
   aiRoomList: Room[];
   pendingSubscriptions: string[];
   pendingPublishes: { destination: string, payload: any }[];
@@ -66,6 +73,7 @@ interface UseChatState {
   incomingCallRequest: IncomingCall | null;
   totalOnlineUsers: number;
 
+  fetchLexiconMaster: () => Promise<void>;
   disconnectStompClient: () => void;
 
   initStompClient: () => void;
@@ -259,6 +267,15 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   });
 }
 
+const normalizeLexiconText = (text: string) => {
+  if (!text) return "";
+  return text.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ");
+};
+
+const getLexiconKey = (lang: string, text: string) => {
+  return `${lang}:${normalizeLexiconText(text)}`;
+};
+
 function extractRoomIdFromTopic(topic: string) {
   const parts = topic.split('/');
   return parts[parts.length - 1];
@@ -278,6 +295,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   userStatuses: {},
   aiRoomList: [],
   messagesByRoom: {},
+  lexiconMaster: new Map(),
   pageByRoom: {},
   hasMoreByRoom: {},
   loadingByRoom: {},
@@ -312,35 +330,106 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
     if (!text || !messageId) return;
+
     const { nativeLanguage, chatSettings } = useAppStore.getState();
     const targetLang = overrideTargetLang || chatSettings?.targetLanguage || nativeLanguage || 'vi';
 
-    // Check if we already have it
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
 
+    const lexicon = get().lexiconMaster;
+    const words = text.split(/\s+/).filter(w => w); // Tokenize đơn giản
+    let translatedText = '';
+    let matched = false;
+
+    for (let i = 0; i < words.length; i++) {
+      let bestMatch = '';
+      let bestTranslation = '';
+      let bestJ = 0;
+
+      for (let j = Math.min(words.length - i, 5); j >= 1; j--) { // Max 5 từ
+        const phrase = words.slice(i, i + j).join(' ');
+        const sourceLangs = ['en', 'vi', 'zh-CN'];
+
+        let foundTranslation = false;
+        for (const srcLang of sourceLangs) {
+          const key = getLexiconKey(srcLang, phrase);
+          const entry = lexicon.get(key);
+
+          if (entry && entry.translations[targetLang]) {
+            // Tìm thấy bản dịch có sẵn trong Lexicon
+            if (phrase.length > bestMatch.length) {
+              bestMatch = phrase;
+              bestTranslation = entry.translations[targetLang];
+              bestJ = j;
+              foundTranslation = true;
+            }
+          }
+        }
+        if (foundTranslation) break;
+      }
+
+      if (bestJ > 0) {
+        translatedText += bestTranslation + ' ';
+        i += bestJ - 1;
+        matched = true;
+      } else {
+        translatedText += words[i] + ' '; // Giữ lại từ gốc
+      }
+    }
+
+    const finalLocalTranslation = translatedText.trim();
+
+    if (matched && finalLocalTranslation.length > 0) {
+      // Nếu có match (LPM HIT) -> Cập nhật Local State ngay lập tức
+      set(state => ({
+        eagerTranslations: {
+          ...state.eagerTranslations,
+          [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: finalLocalTranslation }
+        }
+      }));
+      console.log(`⚡ LPM Client HIT: ${text} -> ${finalLocalTranslation}`);
+      return; // Dịch thành công, kết thúc
+    }
+
     try {
-      // 1. Call Python API (Fastest Path)
       const res = await instance.post('/api/py/translate', {
         text,
         target_lang: targetLang,
-        source_lang: 'auto',
+        source_lang: 'auto', // Để Backend tự detect
         message_id: messageId.startsWith('local') ? undefined : messageId
       });
 
-      const translatedText = res.data.result?.translated_text;
+      const translatedTextFallback = res.data.result?.translated_text;
 
-      if (translatedText) {
-        // 2. Update Local State immediately for UI
+      if (translatedTextFallback) {
         set(state => ({
           eagerTranslations: {
             ...state.eagerTranslations,
-            [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: translatedText }
+            [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: translatedTextFallback }
           }
         }));
       }
-
     } catch (e) {
-      console.warn("Eager translation failed", e);
+      console.warn("Fallback translation failed", e);
+    }
+  },
+
+  fetchLexiconMaster: async () => {
+    try {
+      // Gọi API Backend mới
+      const res = await instance.get<AppApiResponse<LexiconEntry[]>>('/api/py/lexicon/top', { params: { limit: 500 } });
+      const lexiconData = res.data.result || [];
+
+      const newLexicon = new Map<string, LexiconEntry>();
+      lexiconData.forEach(entry => {
+        const key = getLexiconKey(entry.original_lang, entry.original_text);
+        newLexicon.set(key, entry);
+      });
+
+      set({ lexiconMaster: newLexicon });
+      console.log(`✅ Fetched and cached ${newLexicon.size} lexicon entries.`);
+    } catch (e) {
+      console.error("Failed to fetch lexicon master:", e);
     }
   },
 
@@ -421,6 +510,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       pendingPubs.forEach(p => { try { stompService.publish(p.destination, p.payload); } catch (e) { console.warn('Publish failed', e); } });
       set({ pendingPublishes: [] });
     }, (err) => { console.error('STOMP connect error', err); set({ stompConnected: false }); });
+
+    get().fetchLexiconMaster();
   },
 
   disconnectStompClient: () => {

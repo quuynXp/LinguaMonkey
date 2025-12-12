@@ -549,6 +549,14 @@ vad = webrtcvad.Vad(2)
 security = HTTPBearer()
 PUBLIC_KEY = None
 
+
+class LexiconEntryResponse(BaseModel):
+    original_text: str
+    original_lang: str
+    translations: Dict[str, str]
+    usage_count: int
+
+
 try:
     with open("public_key.pem", "rb") as f:
         PUBLIC_KEY = serialization.load_pem_public_key(
@@ -736,83 +744,6 @@ user_text_cache: Dict[str, str] = defaultdict(str)
 user_last_speech_time: Dict[str, float] = defaultdict(float)
 user_last_final_text: Dict[str, str] = defaultdict(str)
 
-
-async def redis_event_listener():
-    """Lắng nghe sự kiện từ Java"""
-    redis = await get_redis_client()
-    pubsub = redis.pubsub()
-    await pubsub.subscribe("chat_events")
-    
-    logger.info("🎧 Python listening to Redis channel: chat_events")
-
-    async for message in pubsub.listen():
-        if message["type"] == "message":
-            try:
-                data = json.loads(message["data"])
-                if data.get("type") == "NEW_MESSAGE_EVENT":
-                    # Xử lý bất đồng bộ để không chặn luồng listener
-                    asyncio.create_task(process_translation_job(data))
-            except Exception as e:
-                logger.error(f"Error processing redis msg: {e}")
-
-async def process_translation_job(data: dict):
-    room_id = data["roomId"]
-    content = data["content"]
-    message_id = data["messageId"]
-    
-    # 1. Kiểm tra nhu cầu của Room (Logic tối ưu ở đây)
-    # Lấy danh sách socket đang active trong room và nhóm theo ngôn ngữ
-    # Ví dụ: demands = {'vi': [ws1, ws2], 'ja': [ws3]}
-    demands = signal_manager.get_translation_demands(room_id) # Dùng lại instance ConnectionManager
-    
-    if not demands:
-        logger.info(f"Room {room_id}: No auto-translate needed.")
-        return
-
-    # 2. Khởi tạo Translator
-    redis = await get_redis_client()
-    translator = get_translator(redis)
-    
-    # Detect ngôn ngữ gốc 1 lần duy nhất
-    detected_lang = translator.detect_language(content)
-    
-    # 3. Chạy dịch song song cho các ngôn ngữ đích (Deduplication)
-    # Nếu có 100 user cần 'vi', chỉ dịch 1 lần.
-    async def translate_and_broadcast(target_lang, sockets):
-        if target_lang == detected_lang:
-            return # Không dịch nếu trùng ngôn ngữ gốc
-
-        try:
-            # A. Dịch (Có thể dùng chế độ Stream của Gemini để realtime hơn)
-            # Ở đây dùng hàm translate thường, nhưng nếu muốn xịn có thể viết hàm stream_translate
-            translated_text, _ = await translator.translate(content, detected_lang, target_lang)
-            
-            # B. Lưu DB (Python lưu trực tiếp, không cần gọi lại Java)
-            # Code lưu DB vào bảng message_translations/update chat_messages json
-            await save_translation_to_db(message_id, target_lang, translated_text)
-
-            # C. Bắn Socket xuống đúng nhóm User cần
-            payload = {
-                "type": "translation_update",
-                "messageId": messageId,
-                "translatedText": translatedText,
-                "targetLang": targetLang,
-                "isFinal": True
-            }
-            msg_str = json.dumps(payload)
-            
-            # Gửi song song cho tất cả user cần ngôn ngữ này
-            await asyncio.gather(*[ws.send_text(msg_str) for ws in sockets], return_exceptions=True)
-            
-        except Exception as e:
-            logger.error(f"Trans job failed for {target_lang}: {e}")
-
-    tasks = []
-    for target_lang, sockets in demands.items():
-        tasks.append(translate_and_broadcast(target_lang, sockets))
-    
-    await asyncio.gather(*tasks)
-
 async def save_translation_to_db(message_id: str, target_lang: str, text: str):
     async with AsyncSessionLocal() as db:
         try:
@@ -835,7 +766,7 @@ async def save_translation_to_db(message_id: str, target_lang: str, text: str):
         except Exception as e:
             logger.error(f"DB Update failed: {e}")
             await db.rollback()
-            
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     redis = await get_redis_client()
@@ -867,6 +798,38 @@ async def verify_token_http(credentials: HTTPAuthorizationCredentials = Depends(
         return jwt.decode(token, key, algorithms=["RS256"], issuer="LinguaMonkey.com", options=options)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+@protected_router.get("/lexicon/top")
+async def get_top_lexicon(
+    limit: int = Query(200, ge=1, le=1000), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Client gọi API này để tải về Top N từ/cụm từ đã được dịch và cache (Lexicon Master)
+    để sử dụng cho On-Device LPM Translation.
+    """
+    try:
+        # Lấy các entry được sử dụng nhiều nhất (usage_count DESC)
+        stmt = select(TranslationLexicon).order_by(TranslationLexicon.usage_count.desc()).limit(limit)
+        result = await db.execute(stmt)
+        lexicon_entries = result.scalars().all()
+
+        response_data = [
+            LexiconEntryResponse(
+                original_text=entry.original_text,
+                original_lang=entry.original_lang,
+                translations=entry.translations if entry.translations else {},
+                usage_count=entry.usage_count
+            )
+            for entry in lexicon_entries
+        ]
+        
+        return {"code": 200, "result": response_data}
+    except Exception as e:
+        logger.error(f"Failed to fetch lexicon: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve translation lexicon.")
+
 
 # --- REST ENDPOINTS ---
 @internal_router.post("/invalidate-cache")
@@ -989,12 +952,6 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
     except WebSocketDisconnect: pass
     except Exception as e: logger.error(f"Chat WS Error: {e}")
     finally: await db_session.close()
-
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(redis_event_listener())
-
 
 @app.websocket("/subtitles-audio")
 async def audio_endpoint(
