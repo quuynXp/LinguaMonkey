@@ -79,9 +79,7 @@ export default ({ config }) => {
             autoVerify: true,
 
             data: [
-              {
-                scheme: "monkeylingua",
-              },
+              { scheme: "monkeylingua" },
 
               {
                 scheme: "https",
@@ -147,9 +145,9 @@ export default ({ config }) => {
 
               kotlinVersion: "2.0.20",
 
-              cmake: {
-                version: "3.28.0",
-              },
+              // Sửa lỗi syntax tại đây: Dùng key-value chuẩn JS
+
+              extraMavenRepos: [],
             },
           },
         ],

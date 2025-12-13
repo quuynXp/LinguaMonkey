@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Final SDK Fix)
+name: LinguamonkeyFe - Signed APK Build (Final Fix)
 
 
 
@@ -90,29 +90,21 @@ jobs:
 
 
 
-      # --- BƯỚC QUAN TRỌNG: Cài CMake 3.28.1 trực tiếp vào Android SDK ---
+      # --- BƯỚC 1: Cài CMake 3.28.1 thủ công ---
 
-      - name: 🔧 Install CMake 3.28.1 manually to SDK
+      - name: 🔧 Install CMake 3.28.1
 
         run: |
 
           echo "⬇️ Downloading CMake 3.28.1..."
 
-          # Tải CMake 3.28.1 từ GitHub release
-
           wget -q https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-linux-x86_64.tar.gz -O cmake.tar.gz
 
           
 
-          # Tạo thư mục trong Android SDK để Gradle tự tìm thấy
+          # Cài đặt vào đúng chỗ Android SDK mong đợi
 
           sudo mkdir -p $ANDROID_HOME/cmake/3.28.1
-
-          
-
-          # Giải nén vào thư mục đó
-
-          echo "📂 Extracting to $ANDROID_HOME/cmake/3.28.1..."
 
           sudo tar -xf cmake.tar.gz -C $ANDROID_HOME/cmake/3.28.1 --strip-components=1
 
@@ -120,33 +112,33 @@ jobs:
 
           
 
-          # Tạo file local.properties chỉ định SDK (Dự phòng)
+          echo "✅ CMake 3.28.1 installed at $ANDROID_HOME/cmake/3.28.1"
 
-          echo "sdk.dir=$ANDROID_HOME" > ./android/local.properties
 
-          
 
-          # Ép build.gradle dùng version 3.28.1 (sử dụng subprojects để tránh lỗi timing)
+      # --- BƯỚC 2: Tạo Init Script để ép Version (Tránh lỗi Too Late) ---
 
-          echo "💉 Injecting Gradle configuration..."
+      - name: 💉 Create Gradle Init Script
 
-          cat <<EOF >> android/build.gradle
+        run: |
 
-          
+          cat <<EOF > cmake_fix.gradle
 
-          // FORCE CMAKE VERSION FOR ALL MODULES (NDK 27 FIX)
+          allprojects {
 
-          subprojects {
+              afterEvaluate { project ->
 
-              if (project.hasProperty("android")) {
+                  if (project.hasProperty("android")) {
 
-                  android {
+                      android {
 
-                      externalNativeBuild {
+                          externalNativeBuild {
 
-                          cmake {
+                              cmake {
 
-                              version "3.28.1"
+                                  version "3.28.1"
+
+                              }
 
                           }
 
@@ -166,9 +158,11 @@ jobs:
 
         run: |
 
-          # Cấu hình bộ nhớ để tránh OOM
+          # Đảm bảo xuống dòng (\n) để không lỗi KSP
 
           echo -e "\norg.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dkotlin.daemon.jvm.options=\"-Xmx2g\"" >> ./android/gradle.properties
+
+          echo "android.enableR8=true" >> ./android/gradle.properties
 
 
 
@@ -208,11 +202,11 @@ jobs:
 
             ~/.gradle/wrapper
 
-          key: ${{ runner.os }}-gradle-fe-v7-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v8-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
 
           restore-keys: |
 
-            ${{ runner.os }}-gradle-fe-v7-
+            ${{ runner.os }}-gradle-fe-v8-
 
 
 
@@ -223,6 +217,8 @@ jobs:
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ./android/app/my-release-key.keystore
 
 
+
+      # --- BƯỚC 3: Chạy Build với Init Script ---
 
       - name: ⚙️ Build APK with Gradle
 
@@ -242,7 +238,7 @@ jobs:
 
           chmod +x gradlew
 
-          ./gradlew assembleRelease \
+          ./gradlew assembleRelease --init-script ../cmake_fix.gradle \
 
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
 
