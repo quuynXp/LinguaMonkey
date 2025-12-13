@@ -11,7 +11,7 @@ import PublicRoomListScreen from '../../screens/chat/PublicRoomListScreen';
 import ChatScreen from '../../screens/chat/ChatScreen';
 // import CallSearchScreen from '../../screens/chat/CallSearchScreen';
 import WebRTCCallScreen from '../../screens/chat/WebRTCCallScreen';
-import VideoCallManagerScreen from '../../screens/chat/VideoCallManagerScreen';
+// import VideoCallManagerScreen from '../../screens/chat/VideoCallManagerScreen';
 import { useChatStore } from '../../stores/ChatStore';
 
 const Stack = createNativeStackNavigator();
@@ -34,7 +34,7 @@ const ChatStack = () => {
       <Stack.Screen name="CallSetupScreen" component={CallSetupScreen} />
       {/* <Stack.Screen name="CallSearchScreen" component={CallSearchScreen} /> */}
       <Stack.Screen name="WebRTCCallScreen" component={WebRTCCallScreen} />
-      <Stack.Screen name="VideoCallManagerScreen" component={VideoCallManagerScreen} />
+      {/* <Stack.Screen name="VideoCallManagerScreen" component={VideoCallManagerScreen} /> */}
       <Stack.Screen name="ChatSettingsScreen" component={ChatSettingsScreen} />
       <Stack.Screen name="PublicRoomListScreen" component={PublicRoomListScreen} />
     </Stack.Navigator>

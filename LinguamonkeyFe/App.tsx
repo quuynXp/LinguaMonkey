@@ -8,6 +8,12 @@ import "./src/i18n";
 import { toastConfig } from "./src/components/Toast";
 import { StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import 'react-native-get-random-values';
+import { webcrypto as crypto } from 'crypto';
+
+// if (!global.crypto) {
+//   global.crypto = crypto;
+// }
 
 export default function App() {
   return (

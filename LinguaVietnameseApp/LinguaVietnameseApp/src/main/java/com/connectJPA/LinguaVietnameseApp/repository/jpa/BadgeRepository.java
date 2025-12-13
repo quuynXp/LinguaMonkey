@@ -39,5 +39,7 @@ public interface BadgeRepository extends JpaRepository<Badge, UUID> {
     List<Badge> findByBadgeTypeAndIsDeletedFalse(BadgeType type);
 
     Page<Badge> findByLanguageCodeAndIsDeletedFalse(String languageCode, Pageable pageable);
+
+    List<Badge> findByBadgeTypeAndLanguageCodeAndIsDeletedFalse(BadgeType registration, String lang);
 }
 

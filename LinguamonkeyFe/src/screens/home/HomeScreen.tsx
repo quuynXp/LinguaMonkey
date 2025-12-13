@@ -243,7 +243,7 @@ const HomeScreen = ({ navigation }: any) => {
   );
 
   return (
-    <ScreenLayout backgroundColor="#F8FAFC" swipeToTab="Chat">
+    <ScreenLayout backgroundColor="#F8FAFC" swipeToTab="Learn">
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}

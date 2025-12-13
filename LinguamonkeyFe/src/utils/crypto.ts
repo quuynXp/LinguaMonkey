@@ -1,5 +1,10 @@
 import { encode, decode } from 'base64-arraybuffer';
 
+// KHẮC PHỤC LỖI: Lấy đối tượng crypto một cách an toàn
+// Giả định môi trường React Native cần polyfill (ví dụ: gán vào global.crypto)
+// Nếu không có, các hàm sẽ ném ra lỗi rõ ràng.
+const webCrypto = global.crypto;
+
 /**
  * Chuyển đổi ArrayBuffer sang Base64 String
  */
@@ -20,12 +25,13 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
  * @returns Khóa CryptoKey 256-bit
  */
 export async function getSessionKey(identifier: string): Promise<CryptoKey> {
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
     const keyBytes = new Uint8Array(32);
     for (let i = 0; i < keyBytes.length; i++) {
         keyBytes[i] = (identifier.charCodeAt(i % identifier.length) + i) % 256;
     }
 
-    return crypto.subtle.importKey(
+    return webCrypto.subtle.importKey(
         "raw",
         keyBytes,
         { name: "AES-GCM" },
@@ -41,10 +47,11 @@ export async function getSessionKey(identifier: string): Promise<CryptoKey> {
  * @returns Tuple [IV (Base64), Ciphertext (Base64)].
  */
 export async function encryptAES(content: string, key: CryptoKey): Promise<[string, string]> {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
+    const iv = webCrypto.getRandomValues(new Uint8Array(12));
     const encodedContent = new TextEncoder().encode(content);
 
-    const encryptedContent = await crypto.subtle.encrypt(
+    const encryptedContent = await webCrypto.subtle.encrypt(
         { name: "AES-GCM", iv: iv },
         key,
         encodedContent
@@ -64,10 +71,11 @@ export async function encryptAES(content: string, key: CryptoKey): Promise<[stri
  * @returns Chuỗi nội dung đã giải mã.
  */
 export async function decryptAES(ciphertextBase64: string, ivBase64: string, key: CryptoKey): Promise<string> {
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
     const ivBuffer = base64ToArrayBuffer(ivBase64);
     const cipherBuffer = base64ToArrayBuffer(ciphertextBase64);
 
-    const decryptedContent = await crypto.subtle.decrypt(
+    const decryptedContent = await webCrypto.subtle.decrypt(
         { name: "AES-GCM", iv: new Uint8Array(ivBuffer) },
         key,
         cipherBuffer
@@ -83,7 +91,8 @@ export async function decryptAES(ciphertextBase64: string, ivBase64: string, key
  * @returns Cặp khóa công khai và bí mật (CryptoKey).
  */
 export async function generateKeyPair(): Promise<CryptoKeyPair> {
-    return crypto.subtle.generateKey(
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
+    return webCrypto.subtle.generateKey(
         { name: "ECDH", namedCurve: "P-256" },
         true,
         ["deriveKey"]
@@ -91,12 +100,25 @@ export async function generateKeyPair(): Promise<CryptoKeyPair> {
 }
 
 /**
- * Xuất khóa công khai từ cặp khóa thành Base64 string.
+ * Xuất khóa công khai từ cặp khóa thành Base64 string (Format RAW hoặc SPKI).
  * @param key Khóa công khai CryptoKey.
  * @returns Khóa công khai Base64.
  */
 export async function exportPublicKey(key: CryptoKey): Promise<string> {
-    const exportedKey = await crypto.subtle.exportKey("raw", key);
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
+    const exportedKey = await webCrypto.subtle.exportKey("raw", key);
+    return arrayBufferToBase64(exportedKey);
+}
+
+/**
+ * --- NEW: Xuất khóa bí mật thành Base64 string (Format PKCS8) ---
+ * Bắt buộc dùng pkcs8 cho Private Key để lưu trữ/transfer an toàn.
+ * @param key Khóa bí mật CryptoKey.
+ * @returns Khóa bí mật Base64.
+ */
+export async function exportPrivateKey(key: CryptoKey): Promise<string> {
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
+    const exportedKey = await webCrypto.subtle.exportKey("pkcs8", key);
     return arrayBufferToBase64(exportedKey);
 }
 
@@ -105,7 +127,8 @@ export async function exportPublicKey(key: CryptoKey): Promise<string> {
  * @returns Cặp khóa ký.
  */
 export async function generateSigningKeyPair(): Promise<CryptoKeyPair> {
-    return crypto.subtle.generateKey(
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
+    return webCrypto.subtle.generateKey(
         { name: "ECDSA", namedCurve: "P-256" },
         true,
         ["sign", "verify"]
@@ -119,7 +142,8 @@ export async function generateSigningKeyPair(): Promise<CryptoKeyPair> {
  * @returns Chữ ký Base64.
  */
 export async function signData(privateKey: CryptoKey, data: ArrayBuffer): Promise<string> {
-    const signature = await crypto.subtle.sign(
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
+    const signature = await webCrypto.subtle.sign(
         { name: "ECDSA", hash: { name: "SHA-256" } },
         privateKey,
         data
@@ -133,14 +157,75 @@ export async function signData(privateKey: CryptoKey, data: ArrayBuffer): Promis
  * @returns Khóa CryptoKey.
  */
 export async function importPublicKey(publicKeyBase64: string): Promise<CryptoKey> {
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
     const buffer = base64ToArrayBuffer(publicKeyBase64);
-    return crypto.subtle.importKey(
+    return webCrypto.subtle.importKey(
         "raw",
         buffer,
         { name: "ECDH", namedCurve: "P-256" },
         true,
         []
     );
+}
+
+/**
+ * --- NEW: Import lại KeyPair (ECDH) từ JSON đã lưu ---
+ * Dùng để khôi phục Identity Key khi mở lại app.
+ * @param keyPairJson Object chứa public và private key Base64.
+ * @returns Cặp khóa CryptoKeyPair.
+ */
+export async function importKeyPair(keyPairJson: { publicKey: string; privateKey: string }): Promise<CryptoKeyPair> {
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
+    const pubBuffer = base64ToArrayBuffer(keyPairJson.publicKey);
+    const privBuffer = base64ToArrayBuffer(keyPairJson.privateKey);
+
+    const publicKey = await webCrypto.subtle.importKey(
+        "raw",
+        pubBuffer,
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
+        []
+    );
+
+    const privateKey = await webCrypto.subtle.importKey(
+        "pkcs8",
+        privBuffer,
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
+        ["deriveKey"]
+    );
+
+    return { publicKey, privateKey };
+}
+
+/**
+ * --- NEW: Import lại Signing KeyPair (ECDSA) từ JSON đã lưu ---
+ * Dùng để khôi phục Signing Key khi mở lại app.
+ * @param keyPairJson Object chứa public và private key Base64.
+ * @returns Cặp khóa CryptoKeyPair.
+ */
+export async function importSigningKeyPair(keyPairJson: { publicKey: string; privateKey: string }): Promise<CryptoKeyPair> {
+    if (!webCrypto || !webCrypto.subtle) throw new Error("Web Crypto subtle is missing.");
+    const pubBuffer = base64ToArrayBuffer(keyPairJson.publicKey);
+    const privBuffer = base64ToArrayBuffer(keyPairJson.privateKey);
+
+    const publicKey = await webCrypto.subtle.importKey(
+        "raw",
+        pubBuffer,
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["verify"]
+    );
+
+    const privateKey = await webCrypto.subtle.importKey(
+        "pkcs8",
+        privBuffer,
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign"]
+    );
+
+    return { publicKey, privateKey };
 }
 
 /**

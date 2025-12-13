@@ -28,6 +28,7 @@ import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -40,13 +41,35 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     private final NotificationService notificationService;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<UserDailyChallenge> getTodayChallenges(UUID userId) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime startOfDay = now.truncatedTo(ChronoUnit.DAYS);
+        OffsetDateTime endOfDay = startOfDay.plusDays(1).minusNanos(1);
         OffsetDateTime startOfWeek = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).truncatedTo(ChronoUnit.DAYS);
-        OffsetDateTime endOfDay = now.truncatedTo(ChronoUnit.DAYS).plusDays(1).minusNanos(1);
+        OffsetDateTime endOfWeek = startOfWeek.plusDays(7).minusNanos(1);
 
-        return userDailyChallengeRepository.findChallengesForToday(userId, startOfWeek, endOfDay).stream()
+        boolean hasDailyForToday = userDailyChallengeRepository.existsByUserIdAndPeriodAndDateRange(
+                userId, ChallengePeriod.DAILY, startOfDay, endOfDay
+        );
+
+        boolean hasWeeklyForWeek = userDailyChallengeRepository.existsByUserIdAndPeriodAndDateRange(
+                userId, ChallengePeriod.WEEKLY, startOfWeek, endOfWeek
+        );
+
+        if (!hasDailyForToday || !hasWeeklyForWeek) {
+            assignMissingChallenges(userId, !hasDailyForToday, !hasWeeklyForWeek);
+        }
+
+        List<UserDailyChallenge> dailies = userDailyChallengeRepository.findChallengesByPeriodAndDateRange(
+                userId, ChallengePeriod.DAILY, startOfDay, endOfDay
+        );
+
+        List<UserDailyChallenge> weeklies = userDailyChallengeRepository.findChallengesByPeriodAndDateRange(
+                userId, ChallengePeriod.WEEKLY, startOfWeek, endOfWeek
+        );
+
+        return Stream.concat(dailies.stream(), weeklies.stream())
                 .sorted(Comparator.comparingInt((UserDailyChallenge c) -> {
                     if (c.getStatus() == ChallengeStatus.CAN_CLAIM) return 1;
                     if (c.getStatus() == ChallengeStatus.IN_PROGRESS) return 2;
@@ -56,23 +79,85 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .collect(Collectors.toList());
     }
 
+    private void assignMissingChallenges(UUID userId, boolean assignDaily, boolean assignWeekly) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
+        String userLang = user.getNativeLanguageCode();
+        if (userLang == null || userLang.isEmpty()) {
+            userLang = "en"; 
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        List<UserDailyChallenge> newAssignments = new ArrayList<>();
+
+        if (assignDaily) {
+            List<DailyChallenge> randomDailies = dailyChallengeRepository.findRandomChallengesByLangAndPeriod(
+                    userLang, "DAILY", 5
+            );
+            if (randomDailies.isEmpty() && !userLang.equals("en")) {
+                 randomDailies = dailyChallengeRepository.findRandomChallengesByLangAndPeriod("en", "DAILY", 5);
+            }
+
+            for (DailyChallenge dc : randomDailies) {
+                newAssignments.add(createTransferObject(user, dc, now));
+            }
+        }
+
+        if (assignWeekly) {
+            // CHANGED: Limit from 1 to 5
+            List<DailyChallenge> randomWeekly = dailyChallengeRepository.findRandomChallengesByLangAndPeriod(
+                    userLang, "WEEKLY", 5 
+            );
+             if (randomWeekly.isEmpty() && !userLang.equals("en")) {
+                 randomWeekly = dailyChallengeRepository.findRandomChallengesByLangAndPeriod("en", "WEEKLY", 5);
+            }
+
+            for (DailyChallenge dc : randomWeekly) {
+                newAssignments.add(createTransferObject(user, dc, now));
+            }
+        }
+
+        if (!newAssignments.isEmpty()) {
+            userDailyChallengeRepository.saveAll(newAssignments);
+        }
+    }
+
+    private UserDailyChallenge createTransferObject(User user, DailyChallenge dc, OffsetDateTime now) {
+        return UserDailyChallenge.builder()
+                .id(UserDailyChallengeId.builder()
+                        .userId(user.getUserId())
+                        .challengeId(dc.getId())
+                        .assignedDate(now)
+                        .build())
+                .user(user)
+                .challenge(dc)
+                .progress(0)
+                .targetAmount(dc.getTargetAmount())
+                .isCompleted(false)
+                .status(ChallengeStatus.IN_PROGRESS)
+                .expReward(dc.getBaseExp())
+                .rewardCoins(dc.getRewardCoins())
+                .assignedAt(now)
+                .build();
+    }
+
     @Override
     @Transactional
     public DailyChallengeUpdateResponse updateChallengeProgress(UUID userId, ChallengeType challengeType, int increment) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime startOfDay = now.truncatedTo(ChronoUnit.DAYS);
         OffsetDateTime startOfWeek = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).truncatedTo(ChronoUnit.DAYS);
-        OffsetDateTime endOfDay = startOfDay.plusDays(1).minusNanos(1);
+        
+        List<UserDailyChallenge> dailies = userDailyChallengeRepository.findActiveByPeriod(userId, ChallengePeriod.DAILY, startOfDay);
+        List<UserDailyChallenge> weeklies = userDailyChallengeRepository.findActiveByPeriod(userId, ChallengePeriod.WEEKLY, startOfWeek);
 
-        List<UserDailyChallenge> activeChallenges = userDailyChallengeRepository.findChallengesForToday(userId, startOfWeek, endOfDay);
+        List<UserDailyChallenge> allActive = new ArrayList<>();
+        allActive.addAll(dailies);
+        allActive.addAll(weeklies);
 
-        List<UserDailyChallenge> matchingChallenges = activeChallenges.stream()
+        List<UserDailyChallenge> matchingChallenges = allActive.stream()
                 .filter(udc -> udc.getChallenge().getChallengeType() == challengeType)
                 .filter(udc -> !udc.getCompleted())
-                .filter(udc -> {
-                    if (udc.getChallenge().getPeriod() == ChallengePeriod.WEEKLY) return true;
-                    return udc.getAssignedAt().isAfter(startOfDay.minusNanos(1));
-                })
                 .collect(Collectors.toList());
 
         if (matchingChallenges.isEmpty()) {
@@ -87,13 +172,11 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
             target.setProgress(newProgress);
             
             int requiredTarget = target.getTargetAmount();
-            boolean justCompleted = false;
 
             if (newProgress >= requiredTarget && target.getStatus() == ChallengeStatus.IN_PROGRESS) {
                 target.setCompleted(true);
                 target.setCompletedAt(now);
                 target.setStatus(ChallengeStatus.CAN_CLAIM);
-                justCompleted = true;
                 anyCompleted = true;
 
                 sendChallengeCompletedNotification(userId, target);
@@ -143,11 +226,13 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     @Transactional
     public void claimReward(UUID userId, UUID challengeId) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        OffsetDateTime startOfWeek = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).truncatedTo(ChronoUnit.DAYS);
-        OffsetDateTime endOfDay = now.truncatedTo(ChronoUnit.DAYS).plusDays(1).minusNanos(1);
+        
+        UserDailyChallenge challenge = userDailyChallengeRepository.findById_UserIdAndId_ChallengeId(userId, challengeId)
+                .orElseThrow(() -> new AppException(ErrorCode.CHALLENGE_NOT_FOUND));
 
-        UserDailyChallenge challenge = userDailyChallengeRepository.findClaimableChallenge(userId, challengeId, startOfWeek, endOfDay)
-                .orElseThrow(() -> new AppException(ErrorCode.CHALLENGE_NOT_COMPLETED));
+        if (!challenge.getCompleted()) {
+             throw new AppException(ErrorCode.CHALLENGE_NOT_COMPLETED);
+        }
 
         if (challenge.getStatus() == ChallengeStatus.CLAIMED) {
              throw new AppException(ErrorCode.CHALLENGE_ALREADY_CLAIMED);
@@ -165,7 +250,8 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
 
     @Override
     public UserDailyChallenge assignChallenge(UUID userId) {
-        throw new UnsupportedOperationException("Disabled.");
+        getTodayChallenges(userId);
+        return null;
     }
 
     @Override
@@ -192,41 +278,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     @Override
     @Transactional
     public void assignAllChallengesToNewUser(UUID userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        String userLang = (user.getNativeLanguageCode() != null && !user.getNativeLanguageCode().isEmpty())
-                ? user.getNativeLanguageCode()
-                : "vi";
-
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        
-        List<DailyChallenge> allSystemChallenges = dailyChallengeRepository
-                .findByLanguageCodeAndIsDeletedFalse(userLang);
-
-        List<UserDailyChallenge> newChallenges = new ArrayList<>();
-
-        for (DailyChallenge dc : allSystemChallenges) {
-            UserDailyChallenge udc = UserDailyChallenge.builder()
-                    .id(UserDailyChallengeId.builder()
-                            .userId(userId)
-                            .challengeId(dc.getId())
-                            .assignedDate(now)
-                            .build())
-                    .user(user)
-                    .challenge(dc)
-                    .progress(0)
-                    .targetAmount(dc.getTargetAmount())
-                    .isCompleted(false)
-                    .status(ChallengeStatus.IN_PROGRESS)
-                    .expReward(dc.getBaseExp())
-                    .rewardCoins(dc.getRewardCoins())
-                    .assignedAt(now)
-                    .build();
-            newChallenges.add(udc);
-        }
-
-        if (!newChallenges.isEmpty()) {
-            userDailyChallengeRepository.saveAll(newChallenges);
-        }
+        assignMissingChallenges(userId, true, true);
     }
 }

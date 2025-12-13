@@ -248,7 +248,7 @@ const ProgressScreen = () => {
 
     // Main Render
     return (
-        <ScreenLayout>
+        <ScreenLayout swipeToTab="Chat">
             <View style={styles.container}>
                 <View style={styles.header}>
                     <Text style={styles.headerTitle}>{t("history.title")}</Text>

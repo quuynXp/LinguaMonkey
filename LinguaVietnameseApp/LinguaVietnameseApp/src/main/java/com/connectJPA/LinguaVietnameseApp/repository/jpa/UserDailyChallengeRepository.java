@@ -19,8 +19,39 @@ import java.util.UUID;
 public interface UserDailyChallengeRepository extends JpaRepository<UserDailyChallenge, UserDailyChallengeId> {
     List<UserDailyChallenge> findByIdUserIdAndIdAssignedDate(UUID userId, OffsetDateTime assignedDate);
 
+
+    @Query("SELECT CASE WHEN COUNT(udc) > 0 THEN true ELSE false END " +
+           "FROM UserDailyChallenge udc " +
+           "WHERE udc.id.userId = :userId " +
+           "AND udc.challenge.period = :period " +
+           "AND udc.assignedAt BETWEEN :start AND :end")
+    boolean existsByUserIdAndPeriodAndDateRange(@Param("userId") UUID userId,
+                                                @Param("period") ChallengePeriod period,
+                                                @Param("start") OffsetDateTime start,
+                                                @Param("end") OffsetDateTime end);
+
+    @Query("SELECT udc FROM UserDailyChallenge udc " +
+           "WHERE udc.id.userId = :userId " +
+           "AND udc.challenge.period = :period " +
+           "AND udc.assignedAt BETWEEN :start AND :end")
+    List<UserDailyChallenge> findChallengesByPeriodAndDateRange(@Param("userId") UUID userId,
+                                                                @Param("period") ChallengePeriod period,
+                                                                @Param("start") OffsetDateTime start,
+                                                                @Param("end") OffsetDateTime end);
+
+    // Queries below for progress updates (Active items only)
+    @Query("SELECT udc FROM UserDailyChallenge udc " +
+           "WHERE udc.id.userId = :userId " +
+           "AND udc.challenge.period = :period " +
+           "AND udc.status = 'IN_PROGRESS' " +
+           "AND udc.assignedAt >= :validAfter")
+    List<UserDailyChallenge> findActiveByPeriod(@Param("userId") UUID userId,
+                                                @Param("period") ChallengePeriod period,
+                                                @Param("validAfter") OffsetDateTime validAfter);
+
     List<UserDailyChallenge> findByUser_UserIdAndCreatedAtBetween(UUID userId, OffsetDateTime start, OffsetDateTime end);
 
+    Optional<UserDailyChallenge> findById_UserIdAndId_ChallengeId(UUID userId, UUID challengeId);
     @Query("SELECT udc FROM UserDailyChallenge udc " +
            "WHERE udc.id.userId = :userId " +
            "AND udc.challenge.period = :period " +

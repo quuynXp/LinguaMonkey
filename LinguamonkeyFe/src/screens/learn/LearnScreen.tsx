@@ -417,7 +417,7 @@ const LearnScreen = ({ navigation }: any) => {
   const isRefreshing = enrolledLoading || recLoading || creatorLoading || topSellingLoading;
 
   return (
-    <ScreenLayout>
+    <ScreenLayout swipeToTab="Progress">
       <VipUpgradeModal
         visible={showVipModal}
         onClose={() => setShowVipModal(false)}

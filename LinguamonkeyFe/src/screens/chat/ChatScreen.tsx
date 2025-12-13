@@ -226,7 +226,7 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   )
 
   return (
-    <ScreenLayout style={styles.container}>
+    <ScreenLayout style={styles.container} swipeToTab="Profile">
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t("chat.title")}</Text>
         <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate("ChatSettingsScreen")}>
@@ -248,7 +248,7 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
             <Text style={styles.welcomeText}>{t("chat.welcomeDescription")}</Text>
           </View>
 
-          {/* STATS SECTION */}
+          {/* STATS SECTION
           {isLoadingStats ? <ActivityIndicator /> : stats && (
             <View style={styles.statsSection}>
               <Text style={styles.sectionTitle}>{t("chat.yourStats")}</Text>
@@ -265,7 +265,7 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
                 </View>
               </View>
             </View>
-          )}
+          )} */}
 
           {/* CHAT TYPE SELECTION */}
           <View style={styles.section}>

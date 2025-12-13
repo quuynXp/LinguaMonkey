@@ -45,6 +45,7 @@ public enum ErrorCode {
         CURRENT_PASSWORD_INVALID(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
         BADGE_CRITERIA_NOT_MET(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
         BADGE_ALREADY_CLAIMED(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
+        CHALLENGE_NOT_FOUND(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
 
     // Đã chuẩn hoá lại code và key cho các enum cũ
     INCORRECT_PASSWORD(1109, "error.incorrect_password", HttpStatus.BAD_REQUEST, true),
