@@ -90,7 +90,7 @@ jobs:
 
 
 
-      - name: 🚀 Configure Gradle Memory (Fix Daemon Start)
+      - name: 🚀 Configure Gradle Memory
 
         run: |
 

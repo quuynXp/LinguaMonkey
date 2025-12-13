@@ -163,7 +163,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
                 try {
                     Map<String, String> dataPayload = Map.of(
-                        "screen", "TabApp", "stackScreen", "GroupChatScreen",
+                        "screen", "TabApp", "ChatStack", "GroupChatScreen",
                         "roomId", roomId.toString(), "initialFocusMessageId", response.getChatMessageId().toString()
                     );
                     String contentForNotification = (response.getContent() != null && !response.getContent().isEmpty()) ? "Encrypted Message" : "You sent an attachment";

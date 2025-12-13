@@ -18,6 +18,7 @@ import { privateClient } from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
 import IncomingCallModal from "../../components/modals/IncomingCallModal";
 import { stompService } from "../../services/stompService";
+import { gotoTab } from "../../utils/navigationRef";
 
 type ChatRoomParams = {
     ChatRoom: {
@@ -188,7 +189,7 @@ const GroupChatScreen = () => {
             videoCallType: 'GROUP' as unknown as VideoCallType
         }, {
             onSuccess: (res) => {
-                navigation.navigate('JitsiCallScreen', {
+                gotoTab("ChatStack", 'WebRTCCallScreen', {
                     roomId: res.roomId,
                     videoCallId: res.videoCallId,
                     isCaller: true,

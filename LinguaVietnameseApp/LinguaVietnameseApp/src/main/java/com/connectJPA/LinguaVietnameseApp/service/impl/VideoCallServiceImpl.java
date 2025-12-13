@@ -48,7 +48,7 @@ public class VideoCallServiceImpl implements VideoCallService {
     private final VideoCallParticipantRepository videoCallParticipantRepository;
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
-    private final RoomMemberRepository roomMemberRepository; // Injected RoomMemberRepository
+    private final RoomMemberRepository roomMemberRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
     @Lazy
@@ -66,7 +66,7 @@ public class VideoCallServiceImpl implements VideoCallService {
             Page<VideoCall> videoCalls = videoCallRepository.findByCallerIdAndStatusAndIsDeletedFalse(callerUuid, status, pageable);
             return videoCalls.map(videoCallMapper::toResponse);
         } catch (Exception e) {
-            log.error("Error while fetching all video calls: {}", e.getMessage());
+            log.error("Error while fetching all video calls", e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -74,12 +74,10 @@ public class VideoCallServiceImpl implements VideoCallService {
     @Override
     @Transactional
     public VideoCallResponse initiateCallForMatchedRoom(UUID roomId, UUID callerId, UUID receiverId) {
-        // 1. Validate Room
         if (!roomRepository.existsById(roomId)) {
             throw new AppException(ErrorCode.ROOM_NOT_FOUND);
         }
 
-        // 2. Tạo bản ghi VideoCall trạng thái INITIATED
         VideoCall videoCall = VideoCall.builder()
                 .roomId(roomId)
                 .callerId(callerId)
@@ -91,7 +89,6 @@ public class VideoCallServiceImpl implements VideoCallService {
 
         videoCall = videoCallRepository.save(videoCall);
 
-        // 3. Tạo Participants (Optional: Nếu bạn muốn track từng user join/leave kỹ hơn)
         List<VideoCallParticipant> participants = new ArrayList<>();
         
         participants.add(VideoCallParticipant.builder()
@@ -127,7 +124,7 @@ public class VideoCallServiceImpl implements VideoCallService {
                     .orElseThrow(() -> new AppException(ErrorCode.VIDEO_CALL_NOT_FOUND));
             return videoCallMapper.toResponse(videoCall);
         } catch (Exception e) {
-            log.error("Error while fetching video call by ID {}: {}", id, e.getMessage());
+            log.error("Error while fetching video call by ID {}", id, e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -152,93 +149,101 @@ public class VideoCallServiceImpl implements VideoCallService {
     @Override
     @Transactional
     public VideoCallResponse createGroupVideoCall(CreateGroupCallRequest request) {
-        UUID callerId = request.getCallerId();
-        
-        // Logic mới: Lấy danh sách participants từ Room ID nếu participantIds null hoặc empty
-        List<UUID> participantIds = request.getParticipantIds();
-        if ((participantIds == null || participantIds.isEmpty()) && request.getRoomId() != null) {
-            List<RoomMember> roomMembers = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(request.getRoomId());
-            participantIds = roomMembers.stream()
-                    .map(m -> m.getId().getUserId())
-                    .filter(uid -> !uid.equals(callerId)) // Loại bỏ caller
-                    .collect(Collectors.toList());
-        }
-
-        if (participantIds == null || participantIds.isEmpty()) {
-            throw new AppException(ErrorCode.INVALID_REQUEST); // Hoặc mã lỗi phù hợp: NO_PARTICIPANTS
-        }
-
-        // Tạo Room riêng cho cuộc gọi (Call Room), khác với Chat Room gốc
-        Room callRoom = Room.builder()
-                .creatorId(callerId)
-                .topic(RoomTopic.WORLD)
-                .purpose(RoomPurpose.CALL)
-                .status(RoomStatus.ACTIVE)
-                .build();
-
-        var roomSaved = roomRepository.save(callRoom);
-
-        VideoCall videoCall = VideoCall.builder()
-                .callerId(callerId)
-                .roomId(roomSaved.getRoomId())
-                .videoCallType(request.getVideoCallType())
-                .status(VideoCallStatus.INITIATED)
-                .startTime(OffsetDateTime.now())
-                .build();
-        videoCall = videoCallRepository.save(videoCall);
-
-        List<VideoCallParticipant> participants = new ArrayList<>();
-        
-        VideoCallParticipant host = VideoCallParticipant.builder()
-                .id(new VideoCallParticipantId(videoCall.getVideoCallId(), callerId))
-                .videoCall(videoCall)
-                .user(userRepository.getReferenceById(callerId))
-                .joinedAt(OffsetDateTime.now())
-                .role(VideoCallRole.HOST)
-                .status(VideoCallParticipantStatus.CONNECTED)
-                .build();
-        participants.add(host);
-
-        for (UUID userId : participantIds) {
-            VideoCallParticipant participant = VideoCallParticipant.builder()
-                    .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
-                    .joinedAt(OffsetDateTime.now())
-                    .role(VideoCallRole.GUEST)
-                    .status(VideoCallParticipantStatus.WAITING)
-                    .build();
-            participants.add(participant);
-        }
-        videoCallParticipantRepository.saveAll(participants);
-
-        VideoCallResponse response = videoCallMapper.toResponse(videoCall);
-        
-        Map<String, Object> socketPayload = new HashMap<>();
-        socketPayload.put("type", "INCOMING_CALL");
-        socketPayload.put("roomId", roomSaved.getRoomId().toString());
-        socketPayload.put("videoCallId", videoCall.getVideoCallId());
-        socketPayload.put("callerId", callerId);
-        socketPayload.put("roomName", "Group Call");
-
-        // Gửi thông báo socket tới tất cả user được mời
-        // Nếu có roomId gốc (Chat Room), có thể gửi vào topic room đó
-        if (request.getRoomId() != null) {
-             messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
-        } else {
-             // Fallback: Gửi riêng từng người nếu không có roomId gốc (logic cũ)
-             for (UUID userId : participantIds) {
-                try {
-                    messagingTemplate.convertAndSendToUser(
-                        userId.toString(),
-                        "/queue/notifications",
-                        socketPayload
-                    );
-                } catch (Exception e) {
-                    log.warn("Failed to notify user {}", userId);
+        try {
+            UUID callerId = request.getCallerId();
+            
+            List<UUID> participantIds = request.getParticipantIds();
+            if ((participantIds == null || participantIds.isEmpty()) && request.getRoomId() != null) {
+                List<RoomMember> roomMembers = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(request.getRoomId());
+                if (roomMembers != null) {
+                    participantIds = roomMembers.stream()
+                            .map(m -> m.getId().getUserId())
+                            .filter(uid -> !uid.equals(callerId))
+                            .collect(Collectors.toList());
                 }
             }
-        }
 
-        return response;
+            if (participantIds == null || participantIds.isEmpty()) {
+                throw new AppException(ErrorCode.INVALID_REQUEST);
+            }
+
+            Room callRoom = Room.builder()
+                    .creatorId(callerId)
+                    .topic(RoomTopic.WORLD)
+                    .purpose(RoomPurpose.CALL)
+                    .status(RoomStatus.ACTIVE)
+                    .build();
+
+            var roomSaved = roomRepository.save(callRoom);
+
+            VideoCall videoCall = VideoCall.builder()
+                    .callerId(callerId)
+                    .roomId(roomSaved.getRoomId())
+                    .calleeId(null)
+                    .videoCallType(request.getVideoCallType())
+                    .status(VideoCallStatus.INITIATED)
+                    .startTime(OffsetDateTime.now())
+                    .build();
+            
+            videoCall = videoCallRepository.save(videoCall);
+
+            List<VideoCallParticipant> participants = new ArrayList<>();
+            
+            VideoCallParticipant host = VideoCallParticipant.builder()
+                    .id(new VideoCallParticipantId(videoCall.getVideoCallId(), callerId))
+                    .videoCall(videoCall)
+                    .user(userRepository.getReferenceById(callerId))
+                    .joinedAt(OffsetDateTime.now())
+                    .role(VideoCallRole.HOST)
+                    .status(VideoCallParticipantStatus.CONNECTED)
+                    .build();
+            participants.add(host);
+
+            for (UUID userId : participantIds) {
+                VideoCallParticipant participant = VideoCallParticipant.builder()
+                        .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
+                        .videoCall(videoCall)
+                        .user(userRepository.getReferenceById(userId))
+                        .joinedAt(OffsetDateTime.now())
+                        .role(VideoCallRole.GUEST)
+                        .status(VideoCallParticipantStatus.WAITING)
+                        .build();
+                participants.add(participant);
+            }
+            videoCallParticipantRepository.saveAll(participants);
+
+            VideoCallResponse response = videoCallMapper.toResponse(videoCall);
+            
+            Map<String, Object> socketPayload = new HashMap<>();
+            socketPayload.put("type", "INCOMING_CALL");
+            socketPayload.put("roomId", roomSaved.getRoomId().toString());
+            socketPayload.put("videoCallId", videoCall.getVideoCallId());
+            socketPayload.put("callerId", callerId);
+            socketPayload.put("roomName", "Group Call");
+
+            if (request.getRoomId() != null) {
+                 messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
+            } else {
+                 for (UUID userId : participantIds) {
+                    try {
+                        messagingTemplate.convertAndSendToUser(
+                            userId.toString(),
+                            "/queue/notifications",
+                            socketPayload
+                        );
+                    } catch (Exception e) {
+                        log.warn("Failed to notify user {}", userId);
+                    }
+                }
+            }
+
+            return response;
+        } catch (AppException ae) {
+            throw ae;
+        } catch (Exception e) {
+            log.error("Error creating group video call", e);
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
     }
 
     private java.util.Map<String, Object> wrapWithMessageType(VideoCallResponse response, String type) {
@@ -304,7 +309,7 @@ public class VideoCallServiceImpl implements VideoCallService {
 
             return responses;
         } catch (Exception e) {
-            log.error("Error fetching video call history for user {}: {}", userId, e.getMessage());
+            log.error("Error fetching video call history for user {}", userId, e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -364,7 +369,7 @@ public class VideoCallServiceImpl implements VideoCallService {
             videoCall = videoCallRepository.save(videoCall);
             return videoCallMapper.toResponse(videoCall);
         } catch (Exception e) {
-            log.error("Error while updating video call ID {}: {}", id, e.getMessage());
+            log.error("Error while updating video call ID {}", id, e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -380,7 +385,7 @@ public class VideoCallServiceImpl implements VideoCallService {
                     .orElseThrow(() -> new AppException(ErrorCode.VIDEO_CALL_NOT_FOUND));
             videoCallRepository.softDeleteById(id);
         } catch (Exception e) {
-            log.error("Error while deleting video call ID {}: {}", id, e.getMessage());
+            log.error("Error while deleting video call ID {}", id, e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

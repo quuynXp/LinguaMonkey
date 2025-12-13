@@ -286,7 +286,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const handleJoinRoom = () => {
     if (roomData?.roomId) {
-      gotoTab("chatstack", "groupchatscreen", {
+      gotoTab("Chat", "GroupChatScreen", {
         roomId: roomData.roomId,
         roomName: roomData.roomName || course?.title
       });

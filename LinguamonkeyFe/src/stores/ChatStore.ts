@@ -142,7 +142,7 @@ const normalizeMessage = (msg: any): Message => {
     senderEphemeralKey: msg.senderEphemeralKey,
     usedPreKeyId: msg.usedPreKeyId,
     initializationVector: msg.initializationVector,
-    decryptedContent: null, // LUÔN LUÔN KHỞI TẠO NULL VÀ GIẢI MÃ SAU
+    decryptedContent: null,
   };
 
   if (msg?.id?.chatMessageId) {
@@ -216,7 +216,6 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
     workingList = workingList.filter(m => {
       const isMyLocal = m.isLocal === true;
       const contentMatch = m.content?.trim() === msg.content?.trim();
-      // Lọc bỏ tin nhắn local sau khi nhận được tin nhắn server tương ứng
       return !(isMyLocal && contentMatch);
     });
   }
@@ -225,11 +224,9 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
 
   if (existsIndex > -1) {
     const existing = workingList[existsIndex];
-    // Giữ lại các bản dịch nếu đã có sẵn
     if (Object.keys(existing.translationsMap || {}).length > Object.keys(msg.translationsMap || {}).length) {
       msg.translationsMap = { ...msg.translationsMap, ...existing.translationsMap };
     }
-    // Giữ lại nội dung đã giải mã nếu đã có
     if (existing.decryptedContent) {
       msg.decryptedContent = existing.decryptedContent;
     }
@@ -258,8 +255,13 @@ const normalizeLexiconText = (text: string) => {
   return text.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ");
 };
 
+const normalizeLangCode = (lang: string) => {
+  if (!lang) return 'en';
+  return lang.split('-')[0].toLowerCase();
+};
+
 const getLexiconKey = (lang: string, text: string) => {
-  return `${lang}:${normalizeLexiconText(text)}`;
+  return `${normalizeLangCode(lang)}:${normalizeLexiconText(text)}`;
 };
 
 function extractRoomIdFromTopic(topic: string) {
@@ -314,7 +316,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     }));
   },
 
-  // --- E2EE ASYNC DECRYPTION HANDLERS ---
   updateDecryptedContent: (roomId, messageId, decryptedContent) => {
     set(state => ({
       messagesByRoom: {
@@ -333,7 +334,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     if (room?.purpose !== RoomPurpose.PRIVATE_CHAT) return;
 
-    // Thêm logic để đảm bảo e2eeService đã được khởi tạo với ID của người dùng hiện tại
     e2eeService.setUserId(currentUserId || '');
 
     const decryptionPromises = newMessages.map(async (msg) => {
@@ -345,47 +345,66 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       if (!partnerId) return;
 
       try {
-        // Thử thiết lập phiên và giải mã
         const decryptedContent = await e2eeService.decrypt(msg);
-
-        // Cập nhật store sau khi giải mã thành công
         get().updateDecryptedContent(roomId, msg.id.chatMessageId, decryptedContent);
-
       } catch (e: any) {
         console.warn(`Failed to decrypt message ${msg.id.chatMessageId}:`, e);
         get().updateDecryptedContent(roomId, msg.id.chatMessageId, `[DECRYPTION FAILED: ${e.message || 'Key Error'}]`);
-
-        // Nếu lỗi 404 là do người dùng hiện tại chưa có key,
-        // hàm establishSession sẽ tự động sinh và upload key.
-        // Nếu lỗi 404 là do người nhận chưa có key (trong fetch), ta sẽ bắt lỗi trong e2eeService
       }
     });
 
     await Promise.all(decryptionPromises);
   },
-  // --- END E2EE ASYNC DECRYPTION HANDLERS ---
 
   performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
     if (!text || !messageId) return;
 
+    // 1. CHẶN E2EE RÁC: Nếu text là JSON Ciphertext
+    if (text.trim().startsWith('{') && text.includes('ciphertext')) return;
+
     const { nativeLanguage, chatSettings } = useAppStore.getState();
     const targetLang = overrideTargetLang || chatSettings?.targetLanguage || nativeLanguage || 'vi';
 
+    // 2. CHECK STATE TẠM: Nếu đã dịch eager trong phiên này
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
+
+    // 3. [QUAN TRỌNG] CHECK DB: Tìm tin nhắn trong store, nếu đã có bản dịch -> STOP
+    const state = get();
+    let existingMessage: Message | undefined;
+
+    // Tìm message trong các room (ưu tiên room đang xem)
+    const currentRoomId = state.currentViewedRoomId;
+    if (currentRoomId && state.messagesByRoom[currentRoomId]) {
+      existingMessage = state.messagesByRoom[currentRoomId].find(m => m.id.chatMessageId === messageId);
+    }
+    // Nếu chưa tìm thấy, quét các room khác (fallback)
+    if (!existingMessage) {
+      for (const rId in state.messagesByRoom) {
+        if (rId === currentRoomId) continue;
+        existingMessage = state.messagesByRoom[rId]?.find(m => m.id.chatMessageId === messageId);
+        if (existingMessage) break;
+      }
+    }
+
+    if (existingMessage && existingMessage.translationsMap && existingMessage.translationsMap[targetLang]) {
+      // Đã có bản dịch trong DB, return luôn để khỏi gọi API
+      return;
+    }
 
     const lexicon = get().lexiconMaster;
     const words = text.split(/\s+/).filter(w => w);
     let translatedText = '';
-    let matched = false;
+    let matchedWordsCount = 0;
+
+    const sourceLangs = ['en', 'vi', 'zh', 'ja', 'ko', 'fr', 'es', 'de'];
 
     for (let i = 0; i < words.length; i++) {
       let bestMatch = '';
       let bestTranslation = '';
       let bestJ = 0;
 
-      for (let j = Math.min(words.length - i, 5); j >= 1; j--) {
+      for (let j = Math.min(words.length - i, 6); j >= 1; j--) {
         const phrase = words.slice(i, i + j).join(' ');
-        const sourceLangs = ['en', 'vi', 'zh-CN'];
 
         let foundTranslation = false;
         for (const srcLang of sourceLangs) {
@@ -393,12 +412,10 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           const entry = lexicon.get(key);
 
           if (entry && entry.translations[targetLang]) {
-            if (phrase.length > bestMatch.length) {
-              bestMatch = phrase;
-              bestTranslation = entry.translations[targetLang];
-              bestJ = j;
-              foundTranslation = true;
-            }
+            bestMatch = phrase;
+            bestTranslation = entry.translations[targetLang];
+            bestJ = j;
+            foundTranslation = true;
           }
         }
         if (foundTranslation) break;
@@ -407,25 +424,31 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       if (bestJ > 0) {
         translatedText += bestTranslation + ' ';
         i += bestJ - 1;
-        matched = true;
+        matchedWordsCount += bestJ;
       } else {
         translatedText += words[i] + ' ';
       }
     }
 
     const finalLocalTranslation = translatedText.trim();
+    const totalWords = words.length;
 
-    if (matched && finalLocalTranslation.length > 0) {
+    // Logic: Nếu match > 70% hoặc câu ngắn (<5 từ) match được 1 cụm -> Dùng luôn
+    const matchRatio = totalWords > 0 ? (matchedWordsCount / totalWords) : 0;
+    const isClientGoodEnough = matchRatio >= 0.7 || (totalWords <= 5 && matchedWordsCount >= 1);
+
+    if (isClientGoodEnough && finalLocalTranslation.length > 0) {
       set(state => ({
         eagerTranslations: {
           ...state.eagerTranslations,
           [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: finalLocalTranslation }
         }
       }));
-      console.log(`⚡ LPM Client HIT: ${text} -> ${finalLocalTranslation}`);
+      console.log(`⚡ LPM Client HIT (${Math.round(matchRatio * 100)}%): '${text}' -> '${finalLocalTranslation}'`);
       return;
     }
 
+    // Fallback gọi API
     try {
       const res = await instance.post('/api/py/translate', {
         text,
@@ -445,7 +468,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         }));
       }
     } catch (e) {
-      console.warn("Fallback translation failed", e);
+      // console.warn("Fallback translation failed", e);
     }
   },
 
@@ -461,7 +484,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       });
 
       set({ lexiconMaster: newLexicon });
-      console.log(`✅ Fetched and cached ${newLexicon.size} lexicon entries.`);
+      console.log(`✅ Client Lexicon Loaded: ${newLexicon.size} entries.`);
     } catch (e) {
       console.error("Failed to fetch lexicon master:", e);
     }
@@ -476,7 +499,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       .slice(0, count);
 
     Promise.all(candidates.map(msg =>
-      get().performEagerTranslation(msg.id.chatMessageId, msg.content, targetLang)
+      // Chỉ dịch nếu chưa có translation trong DB map
+      (!msg.translationsMap || !msg.translationsMap[targetLang]) ?
+        get().performEagerTranslation(msg.id.chatMessageId, msg.decryptedContent || msg.content, targetLang) : Promise.resolve()
     ));
   },
 
@@ -484,7 +509,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const user = useUserStore.getState().user;
     const currentUserId = user?.userId;
     if (currentUserId) {
-      e2eeService.setUserId(currentUserId);
+      e2eeService.initAndCheckUpload(currentUserId).catch(err => console.warn("E2EE Init failed", err));
     }
 
     if (stompService.isConnected || get().stompConnected) { set({ stompConnected: true }); return; }
@@ -759,12 +784,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
       const newMessagesToDecrypt = newMessages.filter(m => !state.messagesByRoom[roomId]?.some(em => em.id.chatMessageId === m.id.chatMessageId));
 
-      // Trigger eager translation for loaded messages
-      const { chatSettings } = useAppStore.getState();
+      const { chatSettings, nativeLanguage } = useAppStore.getState();
+      const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
+
       if (chatSettings.autoTranslate && newMessages.length > 0) {
         newMessages.slice(0, 5).forEach((m: Message) => {
-          if (m.senderId !== useUserStore.getState().user?.userId) {
-            get().performEagerTranslation(m.id.chatMessageId, m.content);
+          // Chỉ dịch nếu chưa có trong DB
+          const hasDbTrans = m.translationsMap && m.translationsMap[targetLang];
+          if (m.senderId !== useUserStore.getState().user?.userId && !hasDbTrans) {
+            get().performEagerTranslation(m.id.chatMessageId, m.decryptedContent || m.content);
           }
         });
       }
@@ -776,7 +804,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         updatedList.forEach(item => { if (item?.id?.chatMessageId) uniqueMap.set(item.id.chatMessageId, item); });
         let uniqueList = Array.from(uniqueMap.values()) as Message[];
 
-        // Cập nhật lại list tin nhắn trong store
         uniqueList.sort((a, b) => {
           const timeA = parseDate(a.id.sentAt);
           const timeB = parseDate(b.id.sentAt);
@@ -792,7 +819,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         };
       });
 
-      // Bất đồng bộ: Giải mã các tin nhắn mới được thêm vào
       get().decryptNewMessages(roomId, newMessagesToDecrypt);
 
     } catch (e) { set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } })); }
@@ -823,7 +849,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const room = state.rooms[roomId];
 
     const receiverId = room?.members?.find(m => m.userId !== user?.userId)?.userId || null;
-
     const optimisticId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     let finalPayload: any;
@@ -832,9 +857,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     if (room?.purpose === RoomPurpose.PRIVATE_CHAT && receiverId && type === 'TEXT') {
       try {
-        // Đảm bảo e2eeService có ID của người dùng hiện tại
         e2eeService.setUserId(user?.userId || '');
-
         const encryptedData = await e2eeService.encrypt(receiverId, content);
 
         finalPayload = {
@@ -842,7 +865,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           messageType: type,
           purpose: room.purpose,
           mediaUrl: mediaUrl || null,
-          // Lưu ciphertext vào trường content
           content: JSON.stringify({
             ciphertext: encryptedData.ciphertext,
             initializationVector: encryptedData.initializationVector,
@@ -850,13 +872,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
             usedPreKeyId: encryptedData.usedPreKeyId,
           }),
           receiverId,
-
           senderEphemeralKey: encryptedData.senderEphemeralKey,
           usedPreKeyId: encryptedData.usedPreKeyId,
           initializationVector: encryptedData.initializationVector,
         };
 
-        // Dùng nội dung gốc cho optimistic update
         optimisticContent = content;
         optimisticMetadata = {
           senderEphemeralKey: finalPayload.senderEphemeralKey,
@@ -866,7 +886,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       } catch (error) {
         console.error("E2EE Encryption Failed:", error);
         showToast({ message: "Encryption failed, sending plain text.", type: "error" });
-
         finalPayload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null, receiverId };
       }
     } else {
@@ -877,9 +896,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const optimisticMsg = {
       id: { chatMessageId: optimisticId, sentAt: new Date().toISOString() },
       senderId: user?.userId,
-      // Với E2EE: lưu ciphertext vào content và nội dung đã giải mã vào decryptedContent
       content: finalPayload.content || optimisticContent,
-      decryptedContent: finalPayload.decryptedContent || optimisticContent, // Đây là nội dung người dùng thấy
+      decryptedContent: finalPayload.decryptedContent || optimisticContent,
       messageType: type,
       mediaUrl: mediaUrl || null,
       isLocal: true,

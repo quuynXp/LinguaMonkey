@@ -11,7 +11,7 @@ from google.generativeai import GenerativeModel
 from google.api_core.exceptions import ResourceExhausted, NotFound, PermissionDenied
 from redis.asyncio import Redis
 from sqlalchemy import select
-from sqlalchemy.orm.attributes import flag_modified  # <--- QUAN TRỌNG ĐỂ FIX LỖI DB JSON
+from sqlalchemy.orm.attributes import flag_modified
 from src.core.models import TranslationLexicon
 from src.core.session import AsyncSessionLocal
 
@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
-else:
-    logger.error("Missing GOOGLE_API_KEY. Translation fallback will fail.")
 
 TRANSLATION_MODEL_TIERS = [
     {"name": "gemini-2.5-flash", "purpose": "Flash - Balanced"},
@@ -35,12 +33,19 @@ class HybridTranslator:
         logger.info("HybridTranslator initialized.")
 
     def _normalize(self, text: str) -> str:
+        """
+        [LPM MATCHING LOGIC]
+        Phải đồng bộ chính xác với Frontend (ChatStore.ts -> normalizeLexiconText)
+        Logic: Bỏ hết toàn bộ dấu câu, trim, lower.
+        VD: "Hello, world?" -> "hello world"
+        """
         if not text: return ""
-        # Bỏ dấu câu và đưa về chữ thường
-        text = text.strip().lower()
-        if text and text[-1] in string.punctuation:
-            text = text[:-1]
-        return text
+        # Regex xóa tất cả ký tự không phải chữ/số và khoảng trắng
+        # Tương đương replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "") ở JS
+        text = re.sub(r'[^\w\s]', '', text)
+        # Thay thế nhiều khoảng trắng bằng 1 khoảng trắng
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip().lower()
 
     def _get_redis_key(self, lang: str, text: str) -> str:
         return f"lex:{lang}:{self._normalize(text)}"
@@ -66,15 +71,12 @@ class HybridTranslator:
         if lang in ['zh-CN', 'zh-TW', 'ja', 'ko', 'zh']:
             return [char for char in text if char.strip() and char not in string.punctuation]
         
-        # Tiếng Anh/Việt: Thay thế dấu câu bằng khoảng trắng rồi split
-        translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
-        clean_text = text.translate(translator)
+        # Tiếng Anh/Việt: Sử dụng bản normalize đã bỏ dấu câu để split
+        # Điều này đảm bảo việc tách từ khớp với key trong Redis
+        clean_text = self._normalize(text)
         return clean_text.split()
 
     async def _save_to_db(self, original_text: str, src_lang: str, target_lang: str, translated_text: str):
-        """
-        Lưu vào DB. FIX LỖI: Luôn tạo ra một dict mới (copy) để tránh lỗi reference của SQLAlchemy.
-        """
         async with AsyncSessionLocal() as db:
             try:
                 stmt = select(TranslationLexicon).where(
@@ -85,32 +87,19 @@ class HybridTranslator:
                 lexicon_entry = result.scalar_one_or_none()
 
                 if lexicon_entry:
-                    # --- BẮT ĐẦU FIX ---
                     raw_data = lexicon_entry.translations
-                    
-                    # 1. Luôn đưa về dict thuần của Python (tránh None hoặc String)
                     current_translations = {}
-                    
                     if raw_data:
                         if isinstance(raw_data, dict):
-                            current_translations = raw_data.copy()  # <--- QUAN TRỌNG: .copy() để tách khỏi session state
+                            current_translations = raw_data.copy()
                         elif isinstance(raw_data, str):
-                            try:
-                                current_translations = json.loads(raw_data)
-                            except json.JSONDecodeError:
-                                current_translations = {}
+                            try: current_translations = json.loads(raw_data)
+                            except: pass
                     
-                    # 2. Update vào dict mới
                     current_translations[target_lang] = translated_text
-                    
-                    # 3. Gán lại dict mới hoàn toàn vào model
                     lexicon_entry.translations = current_translations
-                    
-                    # 4. Báo hiệu thay đổi
                     flag_modified(lexicon_entry, "translations") 
-                    
                     lexicon_entry.usage_count += 1
-                    # --- KẾT THÚC FIX ---
                 else:
                     new_entry = TranslationLexicon(
                         original_text=original_text,
@@ -136,6 +125,7 @@ class HybridTranslator:
 
         while i < n:
             matched = False
+            # Thử match cụm từ dài nhất trước (Max 8 từ)
             max_window = min(n - i, 8)
             
             for j in range(max_window, 0, -1):
@@ -148,13 +138,10 @@ class HybridTranslator:
                 cached_val = await self.redis.hget(key, target_lang)
                 
                 if cached_val:
-                    # Parse Redis value
-                    if isinstance(cached_val, bytes):
-                        trans_text = cached_val.decode('utf-8')
-                    else:
-                        trans_text = str(cached_val)
-
+                    trans_text = cached_val.decode('utf-8') if isinstance(cached_val, bytes) else str(cached_val)
                     translated_chunks.append(trans_text)
+                    
+                    # Fire & Forget update usage stats
                     asyncio.create_task(self.redis.hincrby(key, "usage", 1))
                     
                     matched_words_count += j
@@ -163,12 +150,6 @@ class HybridTranslator:
                     break
             
             if not matched:
-                # Debug log: Tại sao không bắt được từ này?
-                if n < 5: # Chỉ log với câu ngắn để tránh spam
-                    phrase_debug = " ".join(words[i : i + 1])
-                    key_debug = self._get_redis_key(src_lang, phrase_debug)
-                    # logger.info(f"MISS CACHE: '{phrase_debug}' (Key: {key_debug})")
-                
                 translated_chunks.append(words[i])
                 i += 1
         
@@ -194,11 +175,10 @@ class HybridTranslator:
         # 1. LPM Translation
         lpm_result, coverage = await self.lpm_translate(text, detected_lang, target_lang)
         
-        # Nếu coverage 100% hoặc câu rất ngắn (dưới 5 từ) mà đã dịch được -> Return luôn
+        # Nếu coverage cao hoặc câu ngắn mà đã match, trả về luôn
         word_count = len(text.split())
-        threshold = 0.8 if word_count > 3 else 0.4 
+        threshold = 0.8 if word_count > 3 else 0.99 
         
-        # DEBUG: Nếu là từ "Hi", coverage phải là 1.0 (1/1 từ). Nếu không, nghĩa là Redis chưa có.
         if coverage >= threshold:
             logger.info(f"⚡ LPM HIT ({int(coverage*100)}%): '{text}' -> '{lpm_result}'")
             return lpm_result, detected_lang
@@ -210,7 +190,6 @@ class HybridTranslator:
         target_lang_name = target_lang
         if target_lang == 'zh-CN': target_lang_name = "Simplified Chinese"
         elif target_lang == 'vi': target_lang_name = "Vietnamese"
-        elif target_lang == 'en': target_lang_name = "English"
 
         prompt = (
             f"Translate '{text}' from {detected_lang} to {target_lang_name}.\n"
@@ -231,7 +210,7 @@ class HybridTranslator:
                 final_text = parsed.get("translated_text", "").strip()
                 
                 if final_text:
-                    # Cache kết quả Gemini vào Redis để lần sau không bị lỗi nữa
+                    # Cache kết quả Gemini vào Redis và DB
                     if word_count < 30: 
                         key = self._get_redis_key(detected_lang, text)
                         await self.redis.hset(key, mapping={target_lang: final_text})
@@ -239,14 +218,9 @@ class HybridTranslator:
                         asyncio.create_task(self._save_to_db(text, detected_lang, target_lang, final_text))
                     
                     return final_text, parsed.get("detected_source_lang", detected_lang)
-            except ResourceExhausted:
-                logger.warning(f"Rate limit hit for {tier['name']}. Trying next...")
-                continue
-            except Exception as e:
-                logger.error(f"Fallback error {tier['name']}: {e}")
+            except Exception:
                 continue 
 
-        logger.error(f"Translation Failed for '{text}': All tiers failed.")
         return lpm_result, detected_lang
 
 _translator = None

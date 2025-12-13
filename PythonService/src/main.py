@@ -810,7 +810,6 @@ async def get_top_lexicon(
     để sử dụng cho On-Device LPM Translation.
     """
     try:
-        # Lấy các entry được sử dụng nhiều nhất (usage_count DESC)
         stmt = select(TranslationLexicon).order_by(TranslationLexicon.usage_count.desc()).limit(limit)
         result = await db.execute(stmt)
         lexicon_entries = result.scalars().all()

@@ -149,7 +149,7 @@ const VideoCallManagerScreen = ({ route }: any) => {
     const onJoinJitsi = () => {
         const targetRoom = roomId || videoCallId || `call-${uuidv4().slice(0, 8)}`;
 
-        navigation.navigate("JitsiCallScreen", { roomId: targetRoom });
+        gotoTab("ChatStack", "WebRTCCallScreen", { roomId: targetRoom });
     };
 
     const getStatusLabel = (status: string) => {

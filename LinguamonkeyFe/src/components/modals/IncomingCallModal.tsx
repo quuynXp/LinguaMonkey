@@ -31,7 +31,7 @@ const IncomingCallModal = () => {
     const handleAccept = () => {
         const { roomId } = incomingCallRequest;
         acceptIncomingCall();
-        navigation.navigate('JitsiCallScreen', {
+        navigation.navigate('WebRTCCallScreen', {
             roomId: roomId,
         });
     };

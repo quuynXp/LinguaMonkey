@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.VideoCall;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -19,6 +20,7 @@ public interface VideoCallRepository extends JpaRepository<VideoCall, UUID> {
     @Query("SELECT vc FROM VideoCall vc WHERE vc.videoCallId = :id AND vc.isDeleted = false")
     Optional<VideoCall> findByVideoCallIdAndIsDeletedFalse(@Param("id") UUID id);
 
+    @Modifying
     @Query("UPDATE VideoCall vc SET vc.isDeleted = true, vc.deletedAt = CURRENT_TIMESTAMP WHERE vc.videoCallId = :id AND vc.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
 

@@ -242,7 +242,7 @@ const CallSetupScreen = ({ navigation }: any) => {
     disconnectSocket();
 
     setIsSearching(false);
-    gotoTab("ChatStack", "JitsiCallScreen", {
+    gotoTab("ChatStack", "WebRTCCallScreen", {
       roomId: room.roomId,
       isCaller: false,
       preferences: preferences
