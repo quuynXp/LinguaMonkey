@@ -1,6 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
-import com.connectJPA.LinguaVietnameseApp.converter.ProficiencyLevelConverter;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.*;
 import jakarta.persistence.*;
@@ -75,7 +74,7 @@ public class User extends BaseEntity {
     @Column(name = "day_of_birth")
     private LocalDate dayOfBirth;
 
-    @Convert(converter = ProficiencyLevelConverter.class)
+    @Enumerated(EnumType.STRING)
     @Column(name = "proficiency")
     private ProficiencyLevel proficiency;
 

@@ -1,6 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
-import com.connectJPA.LinguaVietnameseApp.converter.GoalTypeConverter;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.Certification;
 import com.connectJPA.LinguaVietnameseApp.enums.GoalType;
@@ -35,7 +34,7 @@ public class UserGoal extends BaseEntity {
     private String targetSkill;
     private String customDescription;
     
-    @Convert(converter = GoalTypeConverter.class)
+    @Enumerated(EnumType.STRING)
     private GoalType goalType;
     
     @Enumerated(EnumType.STRING)

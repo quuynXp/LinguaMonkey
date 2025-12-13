@@ -1,6 +1,7 @@
 import React from "react"
 import { View, Text, TouchableOpacity, Animated, ImageBackground, StyleSheet } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
+import { useTranslation } from "react-i18next"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { ITEM_WIDTH, ITEM_SPACING } from "../../constants/Dimensions"
 
@@ -24,7 +25,7 @@ interface CarouselItem {
     subtitle: string
     color: string
     icon: string
-    isClone?: boolean // Giữ lại interface, nhưng không dùng isClone trong logic
+    isClone?: boolean
 }
 
 interface HomeCarouselItemProps {
@@ -35,22 +36,17 @@ interface HomeCarouselItemProps {
 }
 
 const HomeCarouselItem = ({ item, index, scrollX, onPress }: HomeCarouselItemProps) => {
-    // Chiều rộng đầy đủ của item (bao gồm spacing/gap)
+    const { t } = useTranslation("motivation")
     const ITEM_FULL_WIDTH = ITEM_WIDTH + ITEM_SPACING
 
-    // INPUT_RANGE: Tính toán khoảng cuộn để item này được căn giữa hoàn hảo
-    // - ITEM_FULL_WIDTH: Item ở vị trí trước đó (bắt đầu mờ/nhỏ đi)
-    // 0: Item ở vị trí center-focus
-    // + ITEM_FULL_WIDTH: Item ở vị trí tiếp theo (kết thúc mờ/nhỏ đi)
     const INPUT_RANGE = [
         (index - 1) * ITEM_FULL_WIDTH,
         index * ITEM_FULL_WIDTH,
         (index + 1) * ITEM_FULL_WIDTH,
     ]
 
-    // OUTPUT_RANGE: Giá trị khi item ở mỗi vị trí trong INPUT_RANGE
     const OUTPUT_RANGE_OPACITY = [0.5, 1, 0.5]
-    const OUTPUT_RANGE_SCALE = [0.9, 1, 0.9] // Scale nhẹ khi không ở giữa
+    const OUTPUT_RANGE_SCALE = [0.9, 1, 0.9]
 
     const opacity = scrollX.interpolate({
         inputRange: INPUT_RANGE,
@@ -73,7 +69,6 @@ const HomeCarouselItem = ({ item, index, scrollX, onPress }: HomeCarouselItemPro
                 {
                     opacity,
                     transform: [{ scale }],
-                    // Margin Horizontal để tạo khoảng cách giữa các item
                     marginHorizontal: ITEM_SPACING / 2,
                 },
             ]}
@@ -82,7 +77,6 @@ const HomeCarouselItem = ({ item, index, scrollX, onPress }: HomeCarouselItemPro
                 style={styles.touchable}
                 activeOpacity={0.9}
                 onPress={() => onPress(item)}
-            // Bỏ disabled={item.isClone} vì không còn clone
             >
                 <ImageBackground
                     source={backgroundImage}
@@ -93,13 +87,12 @@ const HomeCarouselItem = ({ item, index, scrollX, onPress }: HomeCarouselItemPro
                     <View style={styles.overlay} />
                     <View style={styles.textContainer}>
                         <View style={styles.badge}>
-                            <Text style={styles.badgeText}>{"HOT"}</Text>
+                            <Text style={styles.badgeText}>{t("carousel.badge.hot")}</Text>
                         </View>
                         <Text style={styles.title}>{item.title}</Text>
                         <Text style={styles.subtitle}>{item.subtitle}</Text>
                     </View>
                     <Icon name={item.icon} size={60} color="rgba(255,255,255,0.3)" style={styles.icon} />
-                    {/* Đã loại bỏ View styles.arrowBtn */}
                 </ImageBackground>
             </TouchableOpacity>
         </Animated.View>
@@ -110,7 +103,6 @@ const styles = createScaledSheet({
     wrapper: {
         width: ITEM_WIDTH,
         height: 140,
-        // marginHorizontal đã chuyển lên Animated.View
     },
     touchable: {
         width: "100%",
@@ -170,6 +162,5 @@ const styles = createScaledSheet({
         zIndex: 1,
     },
 })
-
 
 export default HomeCarouselItem

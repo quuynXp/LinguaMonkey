@@ -1,9 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
-import com.connectJPA.LinguaVietnameseApp.converter.RoomPurposeConverter;
-import com.connectJPA.LinguaVietnameseApp.converter.RoomStatusConverter;
-import com.connectJPA.LinguaVietnameseApp.converter.RoomTopicConverter;
-import com.connectJPA.LinguaVietnameseApp.converter.RoomTypeConverter;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomStatus;
@@ -39,15 +35,15 @@ public class Room extends BaseEntity {
     @Column(name = "max_members", nullable = false)
     private int maxMembers;
 
-    @Convert(converter = RoomPurposeConverter.class)
+   @Enumerated(EnumType.STRING)
     @Column(name = "purpose")
     private RoomPurpose purpose;
 
-    @Convert(converter = RoomTopicConverter.class)
+   @Enumerated(EnumType.STRING)
     @Column(name = "topic")
     private RoomTopic topic;
 
-    @Convert(converter = RoomTypeConverter.class)
+    @Enumerated(EnumType.STRING)
     @Column(name = "room_type", nullable = false)
     private RoomType roomType;
 
@@ -59,7 +55,7 @@ public class Room extends BaseEntity {
 
     private String content;
 
-    @Convert(converter = RoomStatusConverter.class)
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     @Builder.Default
     private RoomStatus status = RoomStatus.ACTIVE;

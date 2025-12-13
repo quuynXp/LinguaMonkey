@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Animated, Image, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, RefreshControl } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
@@ -12,14 +12,14 @@ import { useNotifications } from "../../hooks/useNotifications";
 import { gotoTab } from "../../utils/navigationRef";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { getGreetingKey } from "../../utils/motivationHelper";
-import type { UserDailyChallengeResponse, RoadmapUserResponse } from "../../types/dto";
+import type { UserDailyChallengeResponse, RoadmapUserResponse, LeaderboardEntryResponse } from "../../types/dto";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import HomeSinglePromotion from "../../components/home/HomeSinglePromotion";
 import RoadmapTimeline from "../../components/roadmap/RoadmapTimeline";
 import RoadmapSkeleton from "../../components/common/RoadmapSkeleton";
 
 const HomeScreen = ({ navigation }: any) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation(["translation", "motivation"]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
 
@@ -29,18 +29,32 @@ const HomeScreen = ({ navigation }: any) => {
     user,
   } = useUserStore();
 
-  const { useTopThree } = useLeaderboards();
-  const { data: rawTopThreeData, isLoading: topThreeLoading } = useTopThree(null);
-  const rawTopThreeUsers = rawTopThreeData || [];
+  // --- LEADERBOARD LOGIC (MATCHING ENHANCED LEADERBOARD) ---
+  const { useLeaderboardList, useEntries } = useLeaderboards();
 
-  let topThreeUsers: any[] = [];
-  if (rawTopThreeUsers.length >= 3) {
-    topThreeUsers = [rawTopThreeUsers[1], rawTopThreeUsers[0], rawTopThreeUsers[2]];
-  } else {
-    topThreeUsers = rawTopThreeUsers.slice(0, 3);
-  }
+  // 1. Fetch Global Leaderboard Config
+  const { data: leaderboardsPage, isLoading: configLoading, refetch: refetchConfig } = useLeaderboardList({ tab: "global" });
+  const globalLeaderboardId = leaderboardsPage?.content?.[0]?.leaderboardId;
 
-  const { data: challengesData, isLoading: dailyLoading } = useDailyChallenges(user?.userId);
+  // 2. Fetch Top 3 Entries specifically from Global
+  const { data: entriesData, isLoading: entriesLoading, refetch: refetchEntries } = useEntries(
+    { leaderboardId: globalLeaderboardId, page: 0, size: 3 },
+    { enabled: !!globalLeaderboardId }
+  );
+
+  const topThreeUsers = useMemo(() => {
+    if (!entriesData?.data) return [];
+    const rawData = entriesData.data;
+    // Data comes as [Rank1, Rank2, Rank3]
+    // We render as Left(2), Center(1), Right(3)
+    // Return raw array here, mapping handled in render
+    return rawData;
+  }, [entriesData]);
+
+  const topThreeLoading = configLoading || entriesLoading;
+  // ---------------------------------------------------------
+
+  const { data: challengesData, isLoading: dailyLoading, refetch: refetchChallenges } = useDailyChallenges(user?.userId);
   const { claimReward } = useClaimChallengeReward();
   const activeChallenges = challengesData || [];
 
@@ -54,7 +68,7 @@ const HomeScreen = ({ navigation }: any) => {
   );
 
   const { useUnreadCount } = useNotifications();
-  const { data: unreadCount = 0 } = useUnreadCount(user?.userId, enableUnread);
+  const { data: unreadCount = 0, refetch: refetchNotifications } = useUnreadCount(user?.userId, enableUnread);
 
   const {
     useUserRoadmaps,
@@ -96,19 +110,25 @@ const HomeScreen = ({ navigation }: any) => {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  // Initial fetch on focus
   useFocusEffect(
     useCallback(() => {
       refetchRoadmaps();
+      refetchNotifications();
+      if (globalLeaderboardId) refetchEntries();
       if (roadmap?.roadmapId) {
         refetchSuggestions();
       }
-    }, [refetchRoadmaps, refetchSuggestions, roadmap?.roadmapId])
+    }, [refetchRoadmaps, refetchSuggestions, refetchNotifications, refetchEntries, globalLeaderboardId, roadmap?.roadmapId])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([
       refetchRoadmaps(),
+      refetchChallenges(),
+      refetchConfig(),
+      globalLeaderboardId ? refetchEntries() : Promise.resolve(),
       roadmap?.roadmapId ? refetchSuggestions() : Promise.resolve(),
     ]);
     setRefreshing(false);
@@ -172,16 +192,87 @@ const HomeScreen = ({ navigation }: any) => {
       handleClaim(item.challengeId);
     } else if (!isCompleted) {
       if (item.stack && item.screenRoute) {
-        // Đúng cấu trúc goToTab("stack", "màn hình")
         gotoTab(item.stack, item.screenRoute);
       } else if (item.screenRoute) {
-        // Dùng navigation.navigate nếu không có stack (Màn hình nằm trực tiếp trong Tab hoặc là một màn hình gốc)
         navigation.navigate(item.screenRoute);
       } else {
-        // Fallback mặc định
         navigation.navigate('LearnScreen');
       }
     }
+  };
+
+  const renderPodiumItem = (user: LeaderboardEntryResponse, rank: number) => {
+    if (!user) return <View style={styles.podiumItem} />;
+
+    // MATCHING ENHANCED LEADERBOARD STYLING LOGIC
+    // Rank 1: Height 90, Gold
+    // Rank 2: Height 65, Silver (Left)
+    // Rank 3: Height 40, Bronze (Right)
+
+    let podiumStyle = {};
+    let barStyle = {};
+    let medalColor = "";
+
+    if (rank === 1) {
+      podiumStyle = styles.firstPlacePodium;
+      barStyle = styles.podiumBarFirst;
+      medalColor = "#F59E0B";
+    } else if (rank === 2) {
+      podiumStyle = styles.secondPlacePodium;
+      barStyle = styles.podiumBarSecond;
+      medalColor = "#9CA3AF";
+    } else {
+      podiumStyle = styles.thirdPlacePodium;
+      barStyle = styles.podiumBarThird;
+      medalColor = "#CD7C2F";
+    }
+
+    return (
+      <View key={rank} style={[styles.podiumItem, podiumStyle]}>
+        <View style={[styles.medal, { backgroundColor: medalColor }]}>
+          <Text style={styles.medalText}>{rank}</Text>
+        </View>
+        <Image source={{ uri: user.avatarUrl || 'https://via.placeholder.com/50' }} style={styles.podiumAvatar} />
+        <Text style={styles.podiumName} numberOfLines={1}>{user.fullname || "User"}</Text>
+
+        <View style={styles.levelBadge}>
+          <Icon name="star" size={12} color="#FFFFFF" />
+          <Text style={styles.levelText}>{user.level || 1}</Text>
+        </View>
+
+        {/* CORRECT GLOBAL EXP DISPLAY */}
+        <Text style={styles.podiumScore}>{(user.exp || 0).toLocaleString()} XP</Text>
+
+        <View style={[styles.podiumBar, barStyle]} />
+      </View>
+    );
+  };
+
+  const renderLeaderboardSection = () => {
+    if (topThreeLoading) return <ActivityIndicator style={{ margin: 20 }} color="#3B82F6" />;
+    if (!topThreeUsers || topThreeUsers.length === 0) return null;
+
+    // Map API data (Rank 1, 2, 3) to Visual Order (Rank 2, 1, 3)
+    const rank1 = topThreeUsers[0];
+    const rank2 = topThreeUsers[1];
+    const rank3 = topThreeUsers[2];
+
+    return (
+      <TouchableOpacity style={styles.leaderboardSection} onPress={handleLeaderboardPress} activeOpacity={0.9}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("home.leaderboard.title")}</Text>
+          <Icon name="chevron-right" size={24} color="#9CA3AF" />
+        </View>
+        <View style={styles.podiumContainer}>
+          {/* Render Rank 2 (Left) */}
+          {renderPodiumItem(rank2, 2)}
+          {/* Render Rank 1 (Center) */}
+          {renderPodiumItem(rank1, 1)}
+          {/* Render Rank 3 (Right) */}
+          {renderPodiumItem(rank3, 3)}
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   const renderChallengeSection = () => (
@@ -206,7 +297,7 @@ const HomeScreen = ({ navigation }: any) => {
               <TouchableOpacity
                 key={item.challengeId}
                 style={[styles.challengeCardHome, isCompleted && styles.challengeCardCompleted]}
-                onPress={() => handleChallengePress(item)} // SỬA ĐỔI: Chuyển logic điều hướng vào hàm riêng
+                onPress={() => handleChallengePress(item)}
                 activeOpacity={0.8}
               >
                 <View style={styles.challengeCardHeader}>
@@ -253,7 +344,7 @@ const HomeScreen = ({ navigation }: any) => {
 
           <View style={styles.header}>
             <View style={styles.headerContent}>
-              <Text style={styles.greeting}>{t(greetingKey)} 👋</Text>
+              <Text style={styles.greeting}>{t(`motivation:${greetingKey}`)} 👋</Text>
               <Text style={styles.fullname}>{name || t("home.student")}</Text>
             </View>
 
@@ -274,50 +365,7 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
           </View>
 
-          {topThreeLoading ? (
-            <ActivityIndicator style={{ margin: 20 }} color="#3B82F6" />
-          ) : Array.isArray(topThreeUsers) && topThreeUsers.length > 0 ? (
-            <TouchableOpacity style={styles.leaderboardSection} onPress={handleLeaderboardPress} activeOpacity={0.9}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>{t("home.leaderboard.title")}</Text>
-                <Icon name="chevron-right" size={24} color="#9CA3AF" />
-              </View>
-              <View style={styles.podiumContainer}>
-                {topThreeUsers.map((u: any, idx: number) => {
-                  let rank = 0;
-                  let podiumStyle = {};
-                  let bụcStyle = {};
-
-                  if (idx === 1) {
-                    rank = 1; podiumStyle = styles.firstPlacePodium; bụcStyle = styles.podiumBarFirst;
-                  } else if (idx === 0) {
-                    rank = 2; podiumStyle = styles.secondPlacePodium; bụcStyle = styles.podiumBarSecond;
-                  } else if (idx === 2) {
-                    rank = 3; podiumStyle = styles.thirdPlacePodium; bụcStyle = styles.podiumBarThird;
-                  }
-
-                  const isFirst = rank === 1;
-                  const isSecond = rank === 2;
-
-                  return (
-                    <View key={rank} style={[styles.podiumItem, podiumStyle]}>
-                      <View style={[styles.medal, isFirst ? styles.goldMedal : isSecond ? styles.silverMedal : styles.bronzeMedal]}>
-                        <Text style={styles.medalText}>{rank}</Text>
-                      </View>
-                      <Image source={{ uri: u.avatarUrl || 'https://via.placeholder.com/50' }} style={styles.podiumAvatar} />
-                      <Text style={styles.podiumName} numberOfLines={1}>{u.fullname || u.fullname || "User"}</Text>
-                      <View style={styles.levelBadge}>
-                        <Icon name="star" size={12} color="#FFFFFF" />
-                        <Text style={styles.levelText}>{u.level || 1}</Text>
-                      </View>
-                      <Text style={styles.podiumScore}>{u.score || u.totalExp || 0} XP</Text>
-                      <View style={[styles.podiumBar, bụcStyle]} />
-                    </View>
-                  );
-                })}
-              </View>
-            </TouchableOpacity>
-          ) : null}
+          {renderLeaderboardSection()}
 
           <HomeSinglePromotion navigation={navigation} />
 
@@ -480,22 +528,24 @@ const styles = createScaledSheet({
   podiumContainer: { flexDirection: "row", justifyContent: "center", alignItems: "flex-end", height: 200, paddingBottom: 0 },
   podiumItem: { alignItems: "center", width: 90, position: 'relative' },
   podiumBar: { position: 'absolute', bottom: 0, width: 80, backgroundColor: '#E5E7EB', borderRadius: 8 },
+
+  // Updated Styles to match EnhancedLeaderboard
   podiumBarThird: { height: 40, backgroundColor: '#CD7C2F', zIndex: 0, opacity: 0.8 },
   podiumBarSecond: { height: 65, backgroundColor: '#9CA3AF', zIndex: 0, opacity: 0.8 },
   podiumBarFirst: { height: 90, backgroundColor: '#F59E0B', zIndex: 1, opacity: 0.9 },
+
   thirdPlacePodium: { marginLeft: 8, paddingBottom: 40 },
   secondPlacePodium: { marginRight: 8, paddingBottom: 65 },
   firstPlacePodium: { zIndex: 2, marginHorizontal: 4, paddingBottom: 90 },
+
   medal: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: -10, zIndex: 3, borderWidth: 2, borderColor: "#fff" },
-  goldMedal: { backgroundColor: "#F59E0B" },
-  silverMedal: { backgroundColor: "#9CA3AF" },
-  bronzeMedal: { backgroundColor: "#CD7C2F" },
   medalText: { fontSize: 10, fontWeight: "bold", color: "#fff" },
   podiumAvatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 3, borderColor: "#fff", marginBottom: 8 },
   podiumName: { fontSize: 12, fontWeight: "600", color: "#374151", marginBottom: 2, zIndex: 4 },
-  podiumScore: { fontSize: 10, color: "#6B7280", zIndex: 4 },
+  podiumScore: { fontSize: 10, color: "#2563EB", fontWeight: "bold", zIndex: 4 },
   levelBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#4F46E5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginBottom: 4, zIndex: 4 },
   levelText: { color: "#fff", fontSize: 10, fontWeight: "bold", marginLeft: 2 },
+
   characterSection: { paddingHorizontal: 24, marginBottom: 24 },
   characterContainer: { flexDirection: "row", alignItems: "center" },
   characterCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#4ECDC4", alignItems: "center", justifyContent: "center", marginRight: 16, borderWidth: 4, borderColor: "#E0F2FE" },

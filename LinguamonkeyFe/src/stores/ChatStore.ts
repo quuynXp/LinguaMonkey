@@ -615,7 +615,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       set({ pendingPublishes: [] });
     }, (err) => { console.error('STOMP connect error', err); set({ stompConnected: false }); });
 
-    get().fetchLexiconMaster();
+    // REMOVED: get().fetchLexiconMaster(); to avoid calling it before health check in RootNavigation
   },
 
   disconnectStompClient: () => {

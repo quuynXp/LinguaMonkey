@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Alert,
   ScrollView,
@@ -40,7 +40,7 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
   const { data: historyData, isLoading } = useGetStudyHistory(userId, 'year');
   const { t } = useTranslation();
   const { showToast } = useToast();
-
+  
   const [viewDate, setViewDate] = useState(new Date());
 
   const getLevelColor = (count: number) => {
@@ -66,7 +66,7 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
   const handleNextMonth = () => {
     const today = new Date();
     if (viewDate.getMonth() === today.getMonth() && viewDate.getFullYear() === today.getFullYear()) return;
-
+    
     setViewDate(prev => {
       const newDate = new Date(prev);
       newDate.setMonth(newDate.getMonth() + 1);
@@ -80,11 +80,11 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-
+    
     const days = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
+      
       let count = 0;
       if (historyData.dailyActivity && typeof historyData.dailyActivity === 'object') {
         count = historyData.dailyActivity[dateStr] || 0;
@@ -115,7 +115,7 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
     <View style={styles.heatmapContainer}>
       <View style={styles.heatmapHeader}>
         <Text style={styles.sectionTitle}>{t('profile.activity')}</Text>
-
+        
         <View style={styles.monthNav}>
           <TouchableOpacity onPress={handlePrevMonth} style={styles.navBtn}>
             <Icon name="chevron-left" size={24} color="#6B7280" />
@@ -123,8 +123,8 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
           <Text style={styles.monthLabel}>
             {viewDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
           </Text>
-          <TouchableOpacity
-            onPress={handleNextMonth}
+          <TouchableOpacity 
+            onPress={handleNextMonth} 
             style={[styles.navBtn, isCurrentMonth && styles.navBtnDisabled]}
             disabled={isCurrentMonth}
           >
@@ -598,8 +598,9 @@ const styles = createScaledSheet({
   navBtn: { padding: 4 },
   navBtnDisabled: { opacity: 0.3 },
   monthLabel: { fontSize: 13, fontWeight: '600', color: '#374151', marginHorizontal: 8, minWidth: 80, textAlign: 'center' },
-  heatmapGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-start', paddingVertical: 8 },
-  heatmapCellMonth: { width: (width - 64 - 42) / 7, height: (width - 64 - 42) / 7, borderRadius: 4, aspectRatio: 1 },
+  // Cập nhật lại styles cho ô vuông nhỏ và bố cục lưới
+  heatmapGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-start', paddingVertical: 8 },
+  heatmapCellMonth: { width: 12, height: 12, borderRadius: 2 }, 
   heatmapCellLegend: { width: 12, height: 12, borderRadius: 2 },
   heatmapLegend: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 4, justifyContent: 'flex-end' },
   legendText: { fontSize: 10, color: '#666', marginHorizontal: 4 },

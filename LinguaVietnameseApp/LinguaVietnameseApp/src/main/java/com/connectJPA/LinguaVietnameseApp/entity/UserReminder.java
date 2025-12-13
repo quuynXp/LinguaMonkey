@@ -1,7 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
-import com.connectJPA.LinguaVietnameseApp.converter.RepeatTypeConverter;
-import com.connectJPA.LinguaVietnameseApp.converter.TargetTypeConverter;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.RepeatType;
 import com.connectJPA.LinguaVietnameseApp.enums.TargetType;
@@ -28,7 +26,7 @@ public class UserReminder extends BaseEntity {
     private UUID userId;
 
     @Column(name = "target_type", nullable = false)
-    @Convert(converter = TargetTypeConverter.class)
+    @Enumerated(EnumType.STRING)
     private TargetType targetType;
 
     @Column(name = "target_id")
@@ -47,7 +45,7 @@ public class UserReminder extends BaseEntity {
     private OffsetDateTime reminderDate;
 
     @Column(name = "repeat_type")
-    @Convert(converter = RepeatTypeConverter.class)
+    @Enumerated(EnumType.STRING)
     private RepeatType repeatType;
 
     @Column(name = "enabled")

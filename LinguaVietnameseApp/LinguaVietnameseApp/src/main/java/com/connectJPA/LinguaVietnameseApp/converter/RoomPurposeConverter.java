@@ -1,29 +1,30 @@
-package com.connectJPA.LinguaVietnameseApp.converter;
+// package com.connectJPA.LinguaVietnameseApp.converter;
 
-import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
-import jakarta.persistence.AttributeConverter;
-import jakarta.persistence.Converter;
+// import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
+// import jakarta.persistence.AttributeConverter;
+// import jakarta.persistence.Converter;
 
-@Converter(autoApply = true)
-public class RoomPurposeConverter implements AttributeConverter<RoomPurpose, String> {
+// import java.util.stream.Stream;
 
-    @Override
-    public String convertToDatabaseColumn(RoomPurpose attribute) {
-        if (attribute == null) {
-            return null;
-        }
-        return attribute.name().toLowerCase();
-    }
+// @Converter(autoApply = true)
+// public class RoomPurposeConverter implements AttributeConverter<RoomPurpose, String> {
 
-    @Override
-    public RoomPurpose convertToEntityAttribute(String dbData) {
-        if (dbData == null) {
-            return null;
-        }
-        try {
-            return RoomPurpose.valueOf(dbData.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
-    }
-}
+//     @Override
+//     public String convertToDatabaseColumn(RoomPurpose purpose) {
+//         if (purpose == null) {
+//             return null;
+//         }
+//         return purpose.name();
+//     }
+
+//     @Override
+//     public RoomPurpose convertToEntityAttribute(String code) {
+//         if (code == null) {
+//             return null;
+//         }
+//         return Stream.of(RoomPurpose.values())
+//                 .filter(c -> c.name().equalsIgnoreCase(code))
+//                 .findFirst()
+//                 .orElseThrow(() -> new IllegalArgumentException("Unknown RoomPurpose: " + code));
+//     }
+// }

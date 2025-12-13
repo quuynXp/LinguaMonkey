@@ -28,6 +28,7 @@ const RootNavigation = () => {
   const initializeTokens = useTokenStore((state) => state.initializeTokens);
   const { setUser, setLocalNativeLanguage } = useUserStore();
   const { setAppIsActive, setCurrentAppScreen, initStompClient, disconnectStompClient } = useChatStore();
+  const fetchLexiconMaster = useChatStore((state) => state.fetchLexiconMaster);
 
   const [initialMainRoute, setInitialMainRoute] = useState<keyof MainStackParamList>("TabApp");
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
@@ -147,12 +148,14 @@ const RootNavigation = () => {
       return false;
     };
 
-    const boot = async () => { 
+    const boot = async () => {
       try {
         setIsLoading(true);
         await initializeTokens();
         const isHealthy = await waitForConnectivity();
         if (!mounted || !isHealthy) return;
+
+        fetchLexiconMaster();
 
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
@@ -196,7 +199,7 @@ const RootNavigation = () => {
     };
     boot();
     return () => { mounted = false; };
-  }, [initializeTokens, setUser, setLocalNativeLanguage]);
+  }, [initializeTokens, setUser, setLocalNativeLanguage, fetchLexiconMaster]);
 
   if (isLoading) return <SplashScreen serverError={serverErrorMsg} />;
 
@@ -204,7 +207,7 @@ const RootNavigation = () => {
     <View style={{ flex: 1 }}>
       <NavigationContainer
         ref={RootNavigationRef}
-        linking={linking} // Đã cập nhật linking
+        linking={linking}
         fallback={<SplashScreen serverError={serverErrorMsg} />}
         onReady={() => {
           flushPendingActions();

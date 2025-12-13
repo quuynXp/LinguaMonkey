@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Final Fix)
+name: LinguamonkeyFe - Signed APK Build (Final Resource Fix)
 
 
 
@@ -90,7 +90,7 @@ jobs:
 
 
 
-      # --- BƯỚC 1: Cài CMake 3.28.1 thủ công ---
+      # --- BƯỚC 1: Cài CMake 3.28.1 thủ công (ĐÃ CHẠY NGON) ---
 
       - name: 🔧 Install CMake 3.28.1
 
@@ -116,7 +116,7 @@ jobs:
 
 
 
-      # --- BƯỚC 2: Tạo Init Script để ép Version (Tránh lỗi Too Late) ---
+      # --- BƯỚC 2: Init Script ép Version (ĐÃ CHẠY NGON) ---
 
       - name: 💉 Create Gradle Init Script
 
@@ -154,15 +154,27 @@ jobs:
 
 
 
-      - name: 🚀 Configure Gradle Memory
+      # --- BƯỚC 3: FIX OOM (QUAN TRỌNG NHẤT LÚC NÀY) ---
+
+      - name: 🚀 Configure Gradle Memory & Workers
 
         run: |
 
-          # Đảm bảo xuống dòng (\n) để không lỗi KSP
+          # 1. Giảm Xmx xuống 3072m (3GB) để dành 4GB còn lại cho tiến trình C++ (Clang/Ninja)
 
-          echo -e "\norg.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dkotlin.daemon.jvm.options=\"-Xmx2g\"" >> ./android/gradle.properties
+          # 2. Quan trọng: org.gradle.workers.max=1 -> Chạy tuần tự để không nổ RAM
+
+          echo -e "\norg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Dkotlin.daemon.jvm.options=\"-Xmx1024m\"" >> ./android/gradle.properties
+
+          echo "org.gradle.workers.max=1" >> ./android/gradle.properties
 
           echo "android.enableR8=true" >> ./android/gradle.properties
+
+          
+
+          # Kiểm tra file đã ghi chưa
+
+          cat ./android/gradle.properties
 
 
 
@@ -202,11 +214,11 @@ jobs:
 
             ~/.gradle/wrapper
 
-          key: ${{ runner.os }}-gradle-fe-v8-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v9-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
 
           restore-keys: |
 
-            ${{ runner.os }}-gradle-fe-v8-
+            ${{ runner.os }}-gradle-fe-v9-
 
 
 
@@ -217,8 +229,6 @@ jobs:
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ./android/app/my-release-key.keystore
 
 
-
-      # --- BƯỚC 3: Chạy Build với Init Script ---
 
       - name: ⚙️ Build APK with Gradle
 
@@ -238,7 +248,15 @@ jobs:
 
           chmod +x gradlew
 
-          ./gradlew assembleRelease --init-script ../cmake_fix.gradle \
+          
+
+          echo "🔨 Starting Build with Limited Concurrency..."
+
+          
+
+          # Thêm --no-daemon để giảm memory footprint sau khi chạy xong task
+
+          ./gradlew assembleRelease --init-script ../cmake_fix.gradle --no-daemon \
 
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
 

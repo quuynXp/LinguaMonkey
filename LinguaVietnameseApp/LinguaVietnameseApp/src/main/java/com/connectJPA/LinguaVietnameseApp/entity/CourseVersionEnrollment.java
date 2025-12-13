@@ -1,6 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
-import com.connectJPA.LinguaVietnameseApp.converter.CourseVersionEnrollmentStatusConverter;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseVersionEnrollmentStatus;
 import jakarta.persistence.*;
@@ -33,7 +32,7 @@ public class CourseVersionEnrollment extends BaseEntity {
     @Builder.Default
     private Double progress = 0.0;
 
-    @Convert(converter = CourseVersionEnrollmentStatusConverter.class)
+    @Enumerated(EnumType.STRING)
     private CourseVersionEnrollmentStatus status;
 
     @Column(name = "user_id", nullable = false)

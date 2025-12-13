@@ -10,7 +10,6 @@ import {
   WithdrawRequest,
 } from "../types/dto";
 
-// --- Keys Factory ---
 export const transactionKeys = {
   all: ["transactions"] as const,
   lists: (params: any) => [...transactionKeys.all, "list", params] as const,
@@ -18,10 +17,6 @@ export const transactionKeys = {
   byUser: (userId: string, params: any) => [...transactionKeys.all, "user", userId, params] as const,
   pendingWithdrawals: (params: any) => [...transactionKeys.all, "pending-withdrawals", params] as const,
 };
-
-// ==========================================
-// === HELPER ===
-// ==========================================
 
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
   data: (result?.content as T[]) || [],
@@ -37,14 +32,9 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
   },
 });
 
-// ==========================================
-// === HOOK LIBRARY ===
-// ==========================================
-
 export const useTransactionsApi = () => {
   const queryClient = useQueryClient();
 
-  // GET /api/v1/transactions/{id}
   const useTransaction = (id?: string) =>
     useQuery({
       queryKey: transactionKeys.detail(id!),
@@ -59,15 +49,15 @@ export const useTransactionsApi = () => {
       staleTime: 60 * 1000,
     });
 
-  // GET /api/v1/transactions
   const useTransactions = (params?: { userId?: string; status?: string; page?: number; size?: number }) => {
     const { page = 0, size = 10 } = params || {};
+    const sortParam = "createdAt,desc";
     return useQuery({
-      queryKey: transactionKeys.lists(params),
+      queryKey: transactionKeys.lists({ ...params, sort: sortParam }),
       queryFn: async () => {
         const { data } = await instance.get<AppApiResponse<PageResponse<TransactionResponse>>>(
           `/api/v1/transactions`,
-          { params: { ...params, page, size } }
+          { params: { ...params, page, size, sort: sortParam } }
         );
         return mapPageResponse(data.result, page, size);
       },
@@ -75,9 +65,13 @@ export const useTransactionsApi = () => {
     });
   };
 
-  // GET /api/v1/transactions/user/{userId}
   const useTransactionsByUser = (userId?: string, page?: number, size?: number) => {
-    const p = { page: page || 0, size: size || 10 };
+    const p = {
+      page: page || 0,
+      size: size || 20,
+      sort: "createdAt,desc"
+    };
+
     return useQuery({
       queryKey: transactionKeys.byUser(userId!, p),
       queryFn: async () => {
@@ -93,7 +87,6 @@ export const useTransactionsApi = () => {
     });
   };
 
-  // POST /api/v1/transactions/withdraw
   const useWithdraw = () => {
     return useMutation({
       mutationFn: async (payload: WithdrawRequest) => {
@@ -109,9 +102,8 @@ export const useTransactionsApi = () => {
     });
   }
 
-  // GET /api/v1/transactions/withdrawals/pending
   const usePendingWithdrawals = (page?: number, size?: number) => {
-    const p = { page: page || 0, size: size || 10 };
+    const p = { page: page || 0, size: size || 10, sort: "createdAt,desc" };
     return useQuery({
       queryKey: transactionKeys.pendingWithdrawals(p),
       queryFn: async () => {
@@ -125,7 +117,6 @@ export const useTransactionsApi = () => {
     });
   };
 
-  // POST /api/v1/transactions/withdrawals/{id}/approve
   const useApproveWithdrawal = () => {
     return useMutation({
       mutationFn: async (id: string) => {
@@ -140,7 +131,6 @@ export const useTransactionsApi = () => {
     });
   };
 
-  // POST /api/v1/transactions/withdrawals/{id}/reject
   const useRejectWithdrawal = () => {
     return useMutation({
       mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
@@ -157,7 +147,6 @@ export const useTransactionsApi = () => {
     });
   };
 
-  // POST /api/v1/transactions
   const useCreateTransaction = () => {
     return useMutation({
       mutationFn: async (payload: TransactionRequest) => {
@@ -173,7 +162,6 @@ export const useTransactionsApi = () => {
     });
   };
 
-  // PUT /api/v1/transactions/{id}
   const useUpdateTransaction = () => {
     return useMutation({
       mutationFn: async ({ id, data: req }: { id: string; data: TransactionRequest }) => {
@@ -190,7 +178,6 @@ export const useTransactionsApi = () => {
     });
   };
 
-  // DELETE /api/v1/transactions/{id}
   const useDeleteTransaction = () => {
     return useMutation({
       mutationFn: async (id: string) => {
@@ -202,7 +189,6 @@ export const useTransactionsApi = () => {
     });
   };
 
-  // POST /api/v1/transactions/create-payment (Returns URL string)
   const useCreatePayment = () =>
     useMutation({
       mutationFn: async (payload: PaymentRequest) => {
@@ -217,7 +203,6 @@ export const useTransactionsApi = () => {
       },
     });
 
-  // POST /api/v1/transactions/webhook
   const useHandleWebhook = () =>
     useMutation({
       mutationFn: async (payload: WebhookRequest) => {

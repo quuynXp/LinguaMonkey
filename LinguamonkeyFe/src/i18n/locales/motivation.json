@@ -1,29 +1,73 @@
 {
     "en": {
-        "quotes": [
-            "The best way to predict the future is to create it.",
-            "Success is not final, failure is not fatal: it is the courage to continue that counts.",
-            "Believe you can and you’re halfway there.",
-            "The only way to do great work is to love what you do.",
-            "Your time is limited, don't waste it living someone else's life.",
-            "Strive not to be a success, but rather to be of value.",
-            "I find that the harder I work, the more luck I seem to have.",
-            "The mind is everything. What you think you become.",
-            "Eighty percent of success is showing up.",
-            "The journey of a thousand miles begins with a single step.",
-            "What you get by achieving your goals is not as important as what you become by achieving your goals.",
-            "Start where you are. Use what you have. Do what you can.",
-            "The future belongs to those who believe in the beauty of their dreams.",
-            "Don't count the days, make the days count.",
-            "The only limit to our realization of tomorrow will be our doubts of today.",
-            "Setting goals is the first step in turning the invisible into the visible.",
-            "You miss 100% of the shots you don't take.",
-            "Optimism is the faith that leads to achievement.",
-            "Hardships often prepare ordinary people for an extraordinary destiny.",
-            "It does not matter how slowly you go as long as you do not stop."
-        ]
+        "greeting": {
+            "morning": "Good morning",
+            "afternoon": "Good afternoon",
+            "evening": "Good evening"
+        },
+        "carousel": {
+            "badge": {
+                "hot": "HOT"
+            },
+            "flashSale": {
+                "title": "Flash Sale 50%",
+                "subtitle": "Get top rated courses now"
+            },
+            "deposit": {
+                "title": "Deposit Bonus",
+                "subtitle": "Get +20% extra coins"
+            },
+            "new": {
+                "title": "New Courses",
+                "subtitle": "Explore Japanese N3"
+            },
+            "quotes": [
+                "The best way to predict the future is to create it.",
+                "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+                "Believe you can and you’re halfway there.",
+                "The only way to do great work is to love what you do.",
+                "Your time is limited, don't waste it living someone else's life.",
+                "Strive not to be a success, but rather to be of value.",
+                "I find that the harder I work, the more luck I seem to have.",
+                "The mind is everything. What you think you become.",
+                "Eighty percent of success is showing up.",
+                "The journey of a thousand miles begins with a single step.",
+                "What you get by achieving your goals is not as important as what you become by achieving your goals.",
+                "Start where you are. Use what you have. Do what you can.",
+                "The future belongs to those who believe in the beauty of their dreams.",
+                "Don't count the days, make the days count.",
+                "The only limit to our realization of tomorrow will be our doubts of today.",
+                "Setting goals is the first step in turning the invisible into the visible.",
+                "You miss 100% of the shots you don't take.",
+                "Optimism is the faith that leads to achievement.",
+                "Hardships often prepare ordinary people for an extraordinary destiny.",
+                "It does not matter how slowly you go as long as you do not stop."
+            ]
+        }
     },
     "vi": {
+        "greeting": {
+            "morning": "Chào buổi sáng",
+            "afternoon": "Chào buổi chiều",
+            "evening": "Chào buổi tối"
+        },
+        "carousel": {
+            "badge": {
+                "hot": "HOT"
+            },
+            "flashSale": {
+                "title": "Giảm giá 50%",
+                "subtitle": "Sở hữu khóa học hot ngay"
+            },
+            "deposit": {
+                "title": "Thưởng nạp xu",
+                "subtitle": "Nhận thêm +20% xu thưởng"
+            },
+            "new": {
+                "title": "Khóa học mới",
+                "subtitle": "Khám phá tiếng Nhật N3"
+            }
+        },
         "quotes": [
             "Cách tốt nhất để dự đoán tương lai là tự mình tạo ra nó.",
             "Thành công không phải là cuối cùng, thất bại không phải là chí mạng: lòng can đảm để tiếp tục mới là điều đáng giá.",
@@ -48,6 +92,28 @@
         ]
     },
     "zh": {
+        "greeting": {
+            "morning": "早上好",
+            "afternoon": "下午好",
+            "evening": "晚上好"
+        },
+        "carousel": {
+            "badge": {
+                "hot": "热门"
+            },
+            "flashSale": {
+                "title": "限时五折",
+                "subtitle": "立即获取热门课程"
+            },
+            "deposit": {
+                "title": "充值奖励",
+                "subtitle": "获得 +20% 额外金币"
+            },
+            "new": {
+                "title": "新课程",
+                "subtitle": "探索日语 N3"
+            }
+        },
         "quotes": [
             "预测未来的最好方法就是创造它。",
             "成功不是终点，失败也并非致命：最重要的是继续前进的勇气。",

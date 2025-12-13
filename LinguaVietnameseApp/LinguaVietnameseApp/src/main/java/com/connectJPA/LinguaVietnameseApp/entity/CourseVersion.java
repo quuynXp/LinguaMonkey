@@ -1,6 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
-import com.connectJPA.LinguaVietnameseApp.converter.VersionStatusConverter;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
@@ -68,7 +67,7 @@ public class CourseVersion {
     @Column(name = "language_code")
     private String languageCode;
 
-    @Convert(converter = VersionStatusConverter.class)
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private VersionStatus status;
 
