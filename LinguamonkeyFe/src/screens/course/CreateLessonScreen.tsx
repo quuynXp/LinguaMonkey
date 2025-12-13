@@ -567,9 +567,9 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
-    Alert, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Image
+    Alert, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Image, FlatList
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
@@ -580,30 +580,32 @@ import { useLessons } from '../../hooks/useLessons';
 import { useCourses } from '../../hooks/useCourses';
 import { useUserStore } from '../../stores/UserStore';
 import { LessonQuestionResponse } from '../../types/dto';
+import { Country } from '../../types/enums';
 import FileUploader from '../../components/common/FileUploader';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { VersionStatus } from '../../types/enums';
+import { getCountryFlag } from '../../utils/flagUtils';
 
-// --- DEFINITIONS BASED ON REQUIREMENTS ---
+// --- DEFINITIONS ---
 
-// Enum QuestionType giới hạn
 enum QuestionType {
-    MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',       // Trắc nghiệm 4 đáp án
-    FILL_IN_THE_BLANK = 'FILL_IN_THE_BLANK',   // Điền từ
-    TRUE_FALSE = 'TRUE_FALSE',                 // Đúng/Sai
-    MATCHING = 'MATCHING',                     // Nối từ
-    ESSAY = 'ESSAY',                           // Bài luận (Viết/Nói tự luận)
-    ORDERING = 'ORDERING'                      // Sắp xếp câu
+    MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',
+    FILL_IN_THE_BLANK = 'FILL_IN_THE_BLANK',
+    TRUE_FALSE = 'TRUE_FALSE',
+    MATCHING = 'MATCHING',
+    ESSAY = 'ESSAY',
+    ORDERING = 'ORDERING'
 }
 
-// LessonType giới hạn
 const ALLOWED_LESSON_TYPES = [
-    "QUIZ",
-    "SPEAKING",
-    "READING",
-    "WRITING",
-    "VOCABULARY",
-    "GRAMMAR_PRACTICE"
+    "QUIZ", "SPEAKING", "READING", "WRITING", "VOCABULARY", "GRAMMAR_PRACTICE"
+];
+
+// Supported langs for dropdown with Flags mapping
+const SUPPORTED_INSTRUCTION_LANGUAGES = [
+    { code: 'vi', label: 'Vietnamese', countryEnum: Country.VIETNAM },
+    { code: 'en', label: 'English', countryEnum: Country.UNITED_STATES },
+    { code: 'zh', label: 'Chinese', countryEnum: Country.CHINA },
 ];
 
 const sanitizeId = (id: string | undefined | null) => (!id || id.trim() === "") ? null : id;
@@ -618,7 +620,6 @@ const getBackendSkillType = (lessonType: string): string => {
     }
 };
 
-// Interface cho state cục bộ
 interface LocalQuestionState {
     id: string;
     question: string;
@@ -669,12 +670,13 @@ const MediaPreviewItem = ({ url, onDelete }: any) => {
         </View>
     );
 };
+
 // --- MAIN SCREEN ---
 
 const CreateLessonScreen = () => {
     const navigation = useNavigation();
     const route = useRoute<any>();
-    const { courseId, lessonId, versionId } = route.params || {};
+    const { courseId, lessonId, versionId, instructionLanguage: parentInstructionLang } = route.params || {};
 
     const [targetVersionId, setTargetVersionId] = useState<string | undefined>(versionId);
     const user = useUserStore(state => state.user);
@@ -694,10 +696,12 @@ const CreateLessonScreen = () => {
     const [lessonName, setLessonName] = useState('');
     const [lessonType, setLessonType] = useState<string>("VOCABULARY");
     const [thumbnailUrl, setThumbnailUrl] = useState('');
+    const [instructionLanguage, setInstructionLanguage] = useState<string>("vi");
     const [questions, setQuestions] = useState<LocalQuestionState[]>([]);
 
-    // Question Modal State
+    // Modal States
     const [modalVisible, setModalVisible] = useState(false);
+    const [langModalVisible, setLangModalVisible] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [currentQ, setCurrentQ] = useState<LocalQuestionState>(defaultQ);
@@ -710,12 +714,32 @@ const CreateLessonScreen = () => {
         }
     }, [targetVersionId, versionsData]);
 
+    // Initial instruction language logic
+    useEffect(() => {
+        if (!isEditMode) {
+            // 1. Ưu tiên kế thừa từ Course cha (nếu có)
+            if (parentInstructionLang) {
+                setInstructionLanguage(parentInstructionLang);
+            } else if (user) {
+                // 2. Nếu không, lấy theo Native Language của User
+                const userNative = (user as any).nativeLanguage;
+                const isSupported = SUPPORTED_INSTRUCTION_LANGUAGES.some(l => l.code === userNative);
+                setInstructionLanguage(isSupported ? userNative : 'vi');
+            }
+        }
+    }, [isEditMode, parentInstructionLang, user]);
+
     // Load Data for Edit
     useEffect(() => {
         if (isEditMode && lessonData) {
             setLessonName(lessonData.title);
             setLessonType(ALLOWED_LESSON_TYPES.includes(lessonData.lessonType) ? lessonData.lessonType : "VOCABULARY");
             setThumbnailUrl(lessonData.thumbnailUrl || '');
+
+            // Load saved instruction lang
+            if ((lessonData as any).instructionLanguage) {
+                setInstructionLanguage((lessonData as any).instructionLanguage);
+            }
 
             if (lessonData.questions) {
                 const mapped = lessonData.questions.map((q: LessonQuestionResponse) => {
@@ -741,7 +765,6 @@ const CreateLessonScreen = () => {
                         mediaUrl: q.mediaUrl || ''
                     };
                 });
-                // Sort by backend index if needed, otherwise just mapped
                 setQuestions(mapped);
             }
         }
@@ -797,8 +820,10 @@ const CreateLessonScreen = () => {
                     lessonId: (lessonId && lessonId.length > 5) ? lessonId : null,
                     question: q.question,
                     questionType: q.questionType,
-                    skillType: getBackendSkillType(lessonType), // Map skill broadly based on lesson
-                    languageCode: 'vi',
+                    skillType: getBackendSkillType(lessonType),
+                    languageCode: 'vi', // Legacy
+                    targetLanguage: 'en', // New
+                    instructionLanguage: instructionLanguage, // New
                     optionsJson,
                     correctOption: finalCorrect,
                     transcript: q.transcript,
@@ -820,8 +845,11 @@ const CreateLessonScreen = () => {
                 courseId: sanitizeId(courseId),
                 versionId: sanitizeId(targetVersionId),
                 questions: questionsPayload,
-                // Default Values
-                languageCode: 'vi',
+
+                // Languages
+                languageCode: 'vi', // Legacy target
+                instructionLanguage: instructionLanguage, // New field
+
                 expReward: 10 + questions.length,
                 isFree: true,
                 difficultyLevel: "BEGINNER",
@@ -842,8 +870,72 @@ const CreateLessonScreen = () => {
         }
     };
 
-    // --- RENDER HELPERS ---
+    const getFlag = (code: string) => {
+        const found = SUPPORTED_INSTRUCTION_LANGUAGES.find(l => l.code === code);
+        return found ? getCountryFlag(found.countryEnum) : "🏳️";
+    }
 
+    const renderHeader = () => (
+        <View style={styles.section}>
+            <View style={styles.rowCenter}>
+                {thumbnailUrl ? <Image source={{ uri: thumbnailUrl }} style={{ width: 60, height: 60, borderRadius: 5, marginRight: 10 }} /> : null}
+                <FileUploader mediaType="image" onUploadSuccess={id => setThumbnailUrl(formatDriveUrl(id))}>
+                    <Text style={{ color: '#4ECDC4', fontWeight: 'bold' }}>+ Thumbnail</Text>
+                </FileUploader>
+            </View>
+
+            <Text style={styles.label}>Lesson Name</Text>
+            <TextInput style={styles.input} value={lessonName} onChangeText={setLessonName} placeholder="Lesson Title" />
+
+            {/* Instruction Lang Selector */}
+            <Text style={styles.label}>Instruction Language (Target: English)</Text>
+            <TouchableOpacity style={styles.langSelector} onPress={() => setLangModalVisible(true)}>
+                <Text style={{ fontSize: 20, marginRight: 8 }}>{getFlag(instructionLanguage)}</Text>
+                <Text>{SUPPORTED_INSTRUCTION_LANGUAGES.find(l => l.code === instructionLanguage)?.label || instructionLanguage}</Text>
+                <Ionicons name="caret-down" size={16} style={{ marginLeft: 'auto' }} color="#999" />
+            </TouchableOpacity>
+
+            <Text style={styles.label}>Lesson Type</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {ALLOWED_LESSON_TYPES.map(t => (
+                    <TouchableOpacity key={t} style={[styles.pill, lessonType === t && styles.pillActive]} onPress={() => setLessonType(t)}>
+                        <Text style={[styles.pillText, lessonType === t && styles.textActive]}>{t}</Text>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+
+            <View style={styles.rowBetween}>
+                <Text style={styles.sectionHeader}>Questions ({questions.length})</Text>
+                <TouchableOpacity onPress={() => { setCurrentQ(defaultQ); setModalVisible(true); setEditingIndex(null); }} style={styles.addIconBtn}>
+                    <Ionicons name="add" size={24} color="#FFF" />
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+
+    const renderQuestionItem = ({ item, drag, isActive, getIndex }: RenderItemParams<LocalQuestionState>) => (
+        <ScaleDecorator>
+            <TouchableOpacity
+                onLongPress={drag} disabled={isActive}
+                style={[styles.questionCard, isActive && { backgroundColor: '#E8F6F3' }]}
+            >
+                <View style={styles.rowBetween}>
+                    <Text style={{ fontWeight: 'bold', color: 'gray' }}>{item.questionType}</Text>
+                    <View style={{ flexDirection: 'row' }}>
+                        <TouchableOpacity onPress={() => { setCurrentQ(item); setModalVisible(true); setEditingIndex(getIndex() || 0); }} style={{ marginRight: 10 }}>
+                            <Ionicons name="create" size={20} color="blue" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleDeleteQuestion(getIndex() || 0)}>
+                            <Ionicons name="trash" size={20} color="red" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+                <Text numberOfLines={2}>{item.question}</Text>
+            </TouchableOpacity>
+        </ScaleDecorator>
+    );
+
+    // Helpers for Question Modal Input rendering (omitted large blocks for brevity, keeping same structure)
     const renderDynamicInputs = () => {
         switch (currentQ.questionType) {
             case QuestionType.MULTIPLE_CHOICE:
@@ -923,59 +1015,7 @@ const CreateLessonScreen = () => {
                 )
             default: return null;
         }
-    };
-
-    const renderHeader = () => (
-        <View style={styles.section}>
-            <View style={styles.rowCenter}>
-                {thumbnailUrl ? <Image source={{ uri: thumbnailUrl }} style={{ width: 60, height: 60, borderRadius: 5, marginRight: 10 }} /> : null}
-                <FileUploader mediaType="image" onUploadSuccess={id => setThumbnailUrl(formatDriveUrl(id))}>
-                    <Text style={{ color: '#4ECDC4', fontWeight: 'bold' }}>+ Thumbnail</Text>
-                </FileUploader>
-            </View>
-
-            <Text style={styles.label}>Lesson Name</Text>
-            <TextInput style={styles.input} value={lessonName} onChangeText={setLessonName} placeholder="Lesson Title" />
-
-            <Text style={styles.label}>Lesson Type</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {ALLOWED_LESSON_TYPES.map(t => (
-                    <TouchableOpacity key={t} style={[styles.pill, lessonType === t && styles.pillActive]} onPress={() => setLessonType(t)}>
-                        <Text style={[styles.pillText, lessonType === t && styles.textActive]}>{t}</Text>
-                    </TouchableOpacity>
-                ))}
-            </ScrollView>
-
-            <View style={styles.rowBetween}>
-                <Text style={styles.sectionHeader}>Questions ({questions.length})</Text>
-                <TouchableOpacity onPress={() => { setCurrentQ(defaultQ); setModalVisible(true); setEditingIndex(null); }} style={styles.addIconBtn}>
-                    <Ionicons name="add" size={24} color="#FFF" />
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-
-    const renderQuestionItem = ({ item, drag, isActive, getIndex }: RenderItemParams<LocalQuestionState>) => (
-        <ScaleDecorator>
-            <TouchableOpacity
-                onLongPress={drag} disabled={isActive}
-                style={[styles.questionCard, isActive && { backgroundColor: '#E8F6F3' }]}
-            >
-                <View style={styles.rowBetween}>
-                    <Text style={{ fontWeight: 'bold', color: 'gray' }}>{item.questionType}</Text>
-                    <View style={{ flexDirection: 'row' }}>
-                        <TouchableOpacity onPress={() => { setCurrentQ(item); setModalVisible(true); setEditingIndex(getIndex() || 0); }} style={{ marginRight: 10 }}>
-                            <Ionicons name="create" size={20} color="blue" />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleDeleteQuestion(getIndex() || 0)}>
-                            <Ionicons name="trash" size={20} color="red" />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-                <Text numberOfLines={2}>{item.question}</Text>
-            </TouchableOpacity>
-        </ScaleDecorator>
-    );
+    }
 
     return (
         <ScreenLayout style={styles.container}>
@@ -1035,6 +1075,29 @@ const CreateLessonScreen = () => {
                     </ScrollView>
                 </KeyboardAvoidingView>
             </Modal>
+
+            {/* Language Selection Modal */}
+            <Modal visible={langModalVisible} transparent animationType="slide">
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+                    <View style={{ backgroundColor: '#FFF', padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 15 }}>Select Instruction Language</Text>
+                        {SUPPORTED_INSTRUCTION_LANGUAGES.map(lang => (
+                            <TouchableOpacity
+                                key={lang.code}
+                                style={{ flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#EEE', alignItems: 'center' }}
+                                onPress={() => { setInstructionLanguage(lang.code); setLangModalVisible(false); }}
+                            >
+                                <Text style={{ fontSize: 24, marginRight: 10 }}>{getCountryFlag(lang.countryEnum)}</Text>
+                                <Text style={{ fontSize: 16 }}>{lang.label}</Text>
+                                {instructionLanguage === lang.code && <Ionicons name="checkmark" size={20} color="green" style={{ marginLeft: 'auto' }} />}
+                            </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity onPress={() => setLangModalVisible(false)} style={{ marginTop: 20, alignItems: 'center' }}>
+                            <Text style={{ color: 'red' }}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </ScreenLayout>
     );
 };
@@ -1066,7 +1129,8 @@ const styles = StyleSheet.create({
     radioBtnActive: { backgroundColor: '#20C997', borderColor: '#20C997' },
     radioText: { fontSize: 12, fontWeight: 'bold' },
     choiceCard: { padding: 10, backgroundColor: '#EEE', borderRadius: 8, flex: 1, alignItems: 'center' },
-    choiceCardActive: { backgroundColor: '#20C997' }
+    choiceCardActive: { backgroundColor: '#20C997' },
+    langSelector: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 12 }
 });
 
 export default CreateLessonScreen;

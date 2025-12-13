@@ -44,6 +44,9 @@ public class LessonQuestion extends BaseEntity {
     @Column(name = "question_type")
     private QuestionType questionType;
 
+    @Column(name = "instruction_language")
+    private String instructionLanguage;
+
     @Column(name = "language_code")
     private String languageCode;
 

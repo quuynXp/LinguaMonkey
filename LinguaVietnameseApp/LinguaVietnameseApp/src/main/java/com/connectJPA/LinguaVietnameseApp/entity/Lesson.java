@@ -58,6 +58,9 @@ public class Lesson extends BaseEntity {
 
     private String description;
 
+    @Column(name = "instruction_language")
+    private String instructionLanguage;
+
     @Column(name = "is_free", nullable = false)
     private boolean isFree = true;
 

@@ -63,6 +63,8 @@ public class LessonRequest {
 
     private UUID lessonSubCategoryId;
 
+    private String instructionLanguage;
+
     @Valid
     private List<LessonQuestionRequest> questions;
 }

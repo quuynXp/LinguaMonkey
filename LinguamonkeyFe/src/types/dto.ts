@@ -1872,6 +1872,7 @@ export interface RoomResponse {
     lastMessageTime: string;
     partnerIsOnline: boolean;
     partnerLastActiveText: string;
+    members?: UserProfileResponse[];
     lastMessage: string;
     roomType: Enums.RoomType;
     status: Enums.RoomStatus;

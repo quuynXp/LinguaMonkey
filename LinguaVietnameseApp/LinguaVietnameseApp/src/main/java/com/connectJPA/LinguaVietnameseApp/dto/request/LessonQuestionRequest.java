@@ -36,6 +36,8 @@ public class LessonQuestionRequest {
     private String optionD;
 
     private String correctOption;
+
+    private String instructionLanguage;
     
     private String transcript;
     private String mediaUrl;        

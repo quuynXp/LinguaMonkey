@@ -1,287 +1,120 @@
-name: LinguamonkeyFe - Signed APK Build (Final Resource Fix)
-
-
+name: LinguamonkeyFe - Signed APK Build (Hermes & Fix OOM)
 
 on:
-
   push:
-
     paths:
-
       - "LinguamonkeyFe/**"
-
     branches:
-
       - master
-
   workflow_dispatch:
 
-
-
 jobs:
-
   build-android:
-
     runs-on: ubuntu-latest
-
     defaults:
-
       run:
-
         working-directory: ./LinguamonkeyFe
 
-
-
     steps:
-
       - name: 🧱 Checkout repository
-
         uses: actions/checkout@v4
 
-
-
       - name: 🗑️ AGGRESSIVE DISK CLEANUP
-
         run: |
-
           sudo rm -rf /usr/share/dotnet
-
           sudo rm -rf /opt/hostedtoolcache/CodeQL
-
           sudo docker image prune --all --force
-
           sudo apt-get clean
-
           sudo rm -rf /tmp/*
-
           sudo rm -rf /usr/local/lib/android/sdk/system-images
 
-
-
       - name: 🧩 Setup Node.js
-
         uses: actions/setup-node@v4
-
         with:
-
           node-version: 22
-
           cache: 'yarn'
-
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
-
-
       - name: 📦 Install dependencies
-
         run: yarn install --frozen-lockfile
 
-
-
       - name: 💣 Delete existing Android folder
-
         run: rm -rf android
 
-
-
       - name: 🛠️ Generate Android directory (Prebuild)
-
         run: npx expo prebuild --platform android --no-install
 
-
-
-      # --- BƯỚC 1: Cài CMake 3.28.1 thủ công (ĐÃ CHẠY NGON) ---
-
-      - name: 🔧 Install CMake 3.28.1
-
+      # --- BƯỚC PATCH QUAN TRỌNG: Sửa lỗi CMake Worklets ---
+      - name: 🩹 Patch react-native-worklets (Remove jsctooling)
         run: |
-
-          echo "⬇️ Downloading CMake 3.28.1..."
-
-          wget -q https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-linux-x86_64.tar.gz -O cmake.tar.gz
-
-          
-
-          # Cài đặt vào đúng chỗ Android SDK mong đợi
-
-          sudo mkdir -p $ANDROID_HOME/cmake/3.28.1
-
-          sudo tar -xf cmake.tar.gz -C $ANDROID_HOME/cmake/3.28.1 --strip-components=1
-
-          rm cmake.tar.gz
-
-          
-
-          echo "✅ CMake 3.28.1 installed at $ANDROID_HOME/cmake/3.28.1"
-
-
-
-      # --- BƯỚC 2: Init Script ép Version (ĐÃ CHẠY NGON) ---
-
-      - name: 💉 Create Gradle Init Script
-
-        run: |
-
-          cat <<EOF > cmake_fix.gradle
-
-          allprojects {
-
-              afterEvaluate { project ->
-
-                  if (project.hasProperty("android")) {
-
-                      android {
-
-                          externalNativeBuild {
-
-                              cmake {
-
-                                  version "3.28.1"
-
-                              }
-
-                          }
-
-                      }
-
-                  }
-
-              }
-
-          }
-
-          EOF
-
-
-
-      # --- BƯỚC 3: FIX OOM (QUAN TRỌNG NHẤT LÚC NÀY) ---
-
-      - name: 🚀 Configure Gradle Memory & Workers
-
-        run: |
-
-          # 1. Giảm Xmx xuống 3072m (3GB) để dành 4GB còn lại cho tiến trình C++ (Clang/Ninja)
-
-          # 2. Quan trọng: org.gradle.workers.max=1 -> Chạy tuần tự để không nổ RAM
-
-          echo -e "\norg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Dkotlin.daemon.jvm.options=\"-Xmx1024m\"" >> ./android/gradle.properties
-
-          echo "org.gradle.workers.max=1" >> ./android/gradle.properties
-
-          echo "android.enableR8=true" >> ./android/gradle.properties
-
-          
-
-          # Kiểm tra file đã ghi chưa
-
-          cat ./android/gradle.properties
-
-
-
-      - name: 🧹 Clean up duplicate icon files
-
-        run: |
-
-          if [ -d "./android/app/src/main/res" ]; then
-
-            find ./android/app/src/main/res -name "*.webp" -delete
-
+          echo "🔧 Patching react-native-worklets CMakeLists.txt..."
+          # Tìm và xóa ReactAndroid::jsctooling khỏi file CMake vì nó gây lỗi
+          if [ -f "node_modules/react-native-worklets/android/CMakeLists.txt" ]; then
+            sed -i 's/ReactAndroid::jsctooling//g' node_modules/react-native-worklets/android/CMakeLists.txt
+            echo "✅ Patched: Removed jsctooling dependency."
+          else
+            echo "⚠️ Warning: CMakeLists.txt not found, skipping patch."
           fi
 
+      # --- CẤU HÌNH BỘ NHỚ & WORKERS (GIỮ NGUYÊN VÌ NÓ HIỆU QUẢ) ---
+      - name: 🚀 Configure Gradle Memory & Workers
+        run: |
+          # 1. Giảm Xmx xuống 3GB để dành RAM cho C++ compiler
+          # 2. org.gradle.workers.max=1 -> BẮT BUỘC để tránh sập nguồn
+          echo -e "\norg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Dkotlin.daemon.jvm.options=\"-Xmx1024m\"" >> ./android/gradle.properties
+          echo "org.gradle.workers.max=1" >> ./android/gradle.properties
+          echo "android.enableR8=true" >> ./android/gradle.properties
 
+      - name: 🧹 Clean up duplicate icon files
+        run: |
+          if [ -d "./android/app/src/main/res" ]; then
+            find ./android/app/src/main/res -name "*.webp" -delete
+          fi
 
       - name: ☕ Setup Java (JDK)
-
         uses: actions/setup-java@v4
-
         with:
-
           distribution: 'temurin'
-
           java-version: '17'
-
           
-
       - name: 🐘 Cache Gradle dependencies
-
         uses: actions/cache@v4
-
         with:
-
           path: |
-
             ~/.gradle/caches
-
             ~/.gradle/wrapper
-
-          key: ${{ runner.os }}-gradle-fe-v9-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
-
+          key: ${{ runner.os }}-gradle-fe-v10-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-
-            ${{ runner.os }}-gradle-fe-v9-
-
-
+            ${{ runner.os }}-gradle-fe-v10-
 
       - name: 🔐 Setup Keystore
-
         run: |
-
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ./android/app/my-release-key.keystore
 
-
-
       - name: ⚙️ Build APK with Gradle
-
         env:
-
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_FILE: my-release-key.keystore
-
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-
           ORG_GRADLE_PROJECT_MYAPP_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-
         run: |
-
           cd android
-
           chmod +x gradlew
-
           
-
-          echo "🔨 Starting Build with Limited Concurrency..."
-
+          echo "🔨 Starting Build (Hermes + OOM Fix + Patched)..."
           
-
-          # Thêm --no-daemon để giảm memory footprint sau khi chạy xong task
-
-          ./gradlew assembleRelease --init-script ../cmake_fix.gradle --no-daemon \
-
+          ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \
-
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
-
             -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
-
             -Pandroid.injected.signing.key.password=${{ secrets.ANDROID_KEY_PASSWORD }}
 
-
-
       - name: 📤 Upload signed APK
-
         uses: actions/upload-artifact@v4
-
         with:
-
           name: android-signed-apk
-
           path: LinguamonkeyFe/android/app/build/outputs/apk/release/app-release.apk
 
-
-
       - name: 🧹 Final Clean Up
-
         if: always()
-
         run: rm -f ./android/app/my-release-key.keystore

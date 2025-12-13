@@ -25,17 +25,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCourses } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { DifficultyLevel, VersionStatus } from "../../types/enums";
+import { DifficultyLevel, VersionStatus, Country } from "../../types/enums";
 import { getLessonImage } from "../../utils/courseUtils";
 import { getDirectMediaUrl } from "../../utils/mediaUtils";
+import { getCountryFlag } from "../../utils/flagUtils";
 import {
   LessonResponse,
   CourseVersionDiscountResponse,
   CourseVersionDiscountRequest,
-  CourseResponse
 } from "../../types/dto";
 import FileUploader from "../../components/common/FileUploader";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+
+// --- Language Options & Utils ---
+// Map language code to Country Enum for Flag display only
+const SUPPORTED_INSTRUCTION_LANGUAGES = [
+  { code: 'vi', label: 'Vietnamese', countryEnum: Country.VIETNAM },
+  { code: 'en', label: 'English', countryEnum: Country.UNITED_STATES },
+  { code: 'zh', label: 'Chinese', countryEnum: Country.CHINA },
+];
 
 interface DiscountModalProps {
   visible: boolean;
@@ -228,6 +236,42 @@ const PublishReasonModal = ({ visible, onClose, onConfirm }: { visible: boolean;
   );
 };
 
+const LanguageSelectionModal = ({ visible, onClose, onSelect, selectedCode }: any) => {
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.langModalWrap}>
+        <View style={styles.langModalCard}>
+          <Text style={styles.modalTitle}>Select Instruction Language</Text>
+          <FlatList
+            data={SUPPORTED_INSTRUCTION_LANGUAGES}
+            keyExtractor={(item) => item.code}
+            renderItem={({ item }) => {
+              const isSelected = selectedCode === item.code;
+              return (
+                <TouchableOpacity
+                  style={[styles.langOptionRow, isSelected && { backgroundColor: '#EEF2FF' }]}
+                  onPress={() => onSelect(item.code)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 24, marginRight: 12 }}>{getCountryFlag(item.countryEnum)}</Text>
+                    <Text style={[styles.langOptionText, isSelected && { color: '#4F46E5', fontWeight: '700' }]}>
+                      {item.label}
+                    </Text>
+                  </View>
+                  {isSelected && <Icon name="check" size={20} color="#4F46E5" />}
+                </TouchableOpacity>
+              );
+            }}
+          />
+          <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
+            <Text style={styles.modalCloseText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const EditCourseScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -244,9 +288,11 @@ const EditCourseScreen = () => {
   const [description, setDescription] = useState("");
   const [localThumbnailUrl, setLocalThumbnailUrl] = useState("");
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DifficultyLevel.A1);
+  const [instructionLanguage, setInstructionLanguage] = useState<string>("vi");
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
 
   const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [showLangModal, setShowLangModal] = useState(false);
   const [selectedDiscount, setSelectedDiscount] = useState<CourseVersionDiscountResponse | undefined>(undefined);
   const [publishModalVisible, setPublishModalVisible] = useState(false);
 
@@ -287,7 +333,7 @@ const EditCourseScreen = () => {
     isFetchingNextPage
   } = useInfiniteLessonsByVersion({
     versionId: workingVersion?.versionId,
-    size: 50 // Load more to support better drag and drop
+    size: 50
   });
 
   const [localLessons, setLocalLessons] = useState<LessonResponse[]>([]);
@@ -319,6 +365,22 @@ const EditCourseScreen = () => {
     refetchDiscounts();
   }
 
+  // LOGIC CHÍNH: Set Instruction Language mặc định từ Native Language của User
+  useEffect(() => {
+    if (isNew && user) {
+      // Kiểm tra xem nativeLanguage của user có được hỗ trợ hay không (vi, en, zh)
+      // Lưu ý: user.nativeLanguage có thể là undefined, check an toàn
+      const userNative = (user as any).nativeLanguage;
+      const isSupported = SUPPORTED_INSTRUCTION_LANGUAGES.some(l => l.code === userNative);
+      if (isSupported) {
+        setInstructionLanguage(userNative);
+      } else {
+        // Fallback mặc định là 'vi' hoặc ngôn ngữ phổ biến
+        setInstructionLanguage('vi');
+      }
+    }
+  }, [isNew, user]);
+
   useEffect(() => {
     if (courseData) {
       setTitle(courseData.title);
@@ -332,8 +394,18 @@ const EditCourseScreen = () => {
         setPrice(workingVersion.price.toString());
       }
       if (workingVersion.difficultyLevel) setDifficulty(workingVersion.difficultyLevel);
+
+      // Load instructionLanguage từ version nếu có (Edit mode)
+      if ((workingVersion as any).instructionLanguage) {
+        setInstructionLanguage((workingVersion as any).instructionLanguage);
+      } else if (user) {
+        // Nếu đang edit draft cũ chưa có field này, init lại từ user.nativeLanguage
+        const userNative = (user as any).nativeLanguage;
+        const isSupported = SUPPORTED_INSTRUCTION_LANGUAGES.some(l => l.code === userNative);
+        setInstructionLanguage(isSupported ? userNative : 'vi');
+      }
     }
-  }, [workingVersion]);
+  }, [workingVersion, user]);
 
   const { mutateAsync: createCourseMutateAsync, isPending: isCreatingCourse } = useCreateCourse();
   const { mutateAsync: updateDetailsMutateAsync, isPending: isUpdatingDetails } = useUpdateCourseDetails();
@@ -372,7 +444,6 @@ const EditCourseScreen = () => {
     if (finalUrl) {
       setLocalThumbnailUrl(finalUrl);
     } else {
-      console.log('Upload Result Debug:', result);
       Alert.alert(t("error"), "Could not retrieve file URL.");
     }
   };
@@ -408,6 +479,16 @@ const EditCourseScreen = () => {
         </TouchableOpacity>
       </ScaleDecorator>
     );
+  };
+
+  const getFlagForCurrentInstructionLang = () => {
+    const lang = SUPPORTED_INSTRUCTION_LANGUAGES.find(l => l.code === instructionLanguage);
+    return lang ? getCountryFlag(lang.countryEnum) : "🏳️";
+  };
+
+  const getLabelForCurrentInstructionLang = () => {
+    const lang = SUPPORTED_INSTRUCTION_LANGUAGES.find(l => l.code === instructionLanguage);
+    return lang ? lang.label : instructionLanguage;
   };
 
   const headerElement = useMemo(() => (
@@ -461,6 +542,14 @@ const EditCourseScreen = () => {
           onChangeText={setTitle}
           placeholder="Course Title (Required)"
         />
+
+        {/* Instruction Language Selector */}
+        <Text style={styles.label}>Instruction Language</Text>
+        <TouchableOpacity style={styles.langSelector} onPress={() => setShowLangModal(true)}>
+          <Text style={{ fontSize: 22, marginRight: 10 }}>{getFlagForCurrentInstructionLang()}</Text>
+          <Text style={styles.langSelectorText}>{getLabelForCurrentInstructionLang()}</Text>
+          <Icon name="arrow-drop-down" size={24} color="#6B7280" style={{ marginLeft: 'auto' }} />
+        </TouchableOpacity>
 
         <View style={styles.row}>
           <View style={[styles.column, { marginRight: 8 }]}>
@@ -551,6 +640,7 @@ const EditCourseScreen = () => {
     price,
     description,
     difficulty,
+    instructionLanguage,
     discountsData,
     isDraft,
     localLessons.length,
@@ -596,8 +686,9 @@ const EditCourseScreen = () => {
         thumbnailUrl: localThumbnailUrl || workingVersion?.thumbnailUrl || "",
         price: parseFloat(price) || 0,
         difficultyLevel: difficulty,
-        languageCode: "en",
-        lessonIds: localLessons.map((l: LessonResponse) => l.lessonId) // USE LOCAL LESSONS FOR ORDER
+        languageCode: "en", // Target Language mặc định, có thể sửa sau
+        instructionLanguage: instructionLanguage, // Field mới
+        lessonIds: localLessons.map((l: LessonResponse) => l.lessonId)
       };
 
       if (isDraft && targetVersion) {
@@ -723,7 +814,9 @@ const EditCourseScreen = () => {
     navigation.navigate("CreateLessonScreen", {
       courseId: activeCourseId,
       versionId: workingVersion.versionId,
-      lessonId: lessonId
+      lessonId: lessonId,
+      // Pass the instruction language to lesson so it can default correctly
+      instructionLanguage: instructionLanguage
     });
   };
 
@@ -811,6 +904,13 @@ const EditCourseScreen = () => {
         />
       )}
 
+      <LanguageSelectionModal
+        visible={showLangModal}
+        onClose={() => setShowLangModal(false)}
+        onSelect={(code: string) => { setInstructionLanguage(code); setShowLangModal(false); }}
+        selectedCode={instructionLanguage}
+      />
+
       <PublishReasonModal
         visible={publishModalVisible}
         onClose={() => setPublishModalVisible(false)}
@@ -889,6 +989,16 @@ const styles = createScaledSheet({
   confirmBtn: { flex: 1, padding: 12, borderRadius: 8, backgroundColor: '#4F46E5', alignItems: 'center' },
   cancelText: { fontWeight: '600', color: '#4B5563' },
   confirmText: { fontWeight: '600', color: '#FFF' },
+
+  // Language Modal specific
+  langSelector: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12 },
+  langSelectorText: { fontSize: 15, color: '#1F2937' },
+  langModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  langModalCard: { backgroundColor: '#FFF', padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '50%' },
+  langOptionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  langOptionText: { fontSize: 16, color: '#1F2937' },
+  modalCloseBtn: { marginTop: 12, paddingVertical: 10, alignItems: 'center' },
+  modalCloseText: { color: '#4F46E5', fontWeight: '600', fontSize: 16 },
 });
 
 export default EditCourseScreen;

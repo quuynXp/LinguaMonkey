@@ -33,6 +33,26 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             @Param("currentUserId") UUID currentUserId,
             Pageable pageable);
 
+            @Query("SELECT r FROM Room r " +
+            "LEFT JOIN RoomMember rm ON r.roomId = rm.id.roomId AND rm.id.userId = :currentUserId AND rm.isDeleted = false " +
+            "WHERE " +
+            "(:roomName IS NULL OR LOWER(r.roomName) LIKE LOWER(CONCAT('%', :roomName, '%'))) AND " +
+            "(:creatorId IS NULL OR r.creatorId = :creatorId) AND " +
+            "(:purpose IS NULL OR r.purpose = :purpose) AND " +
+            "(:roomType IS NULL OR r.roomType = :roomType) AND " +
+            "r.purpose != 'AI_CHAT' AND " +
+            "r.isDeleted = false " +
+            "ORDER BY " +
+            "   CASE WHEN rm.id.userId IS NOT NULL THEN 1 ELSE 0 END DESC, " + // Đã tham gia lên đầu
+            "   (SELECT COALESCE(MAX(cm.id.sentAt), r.updatedAt) FROM ChatMessage cm WHERE cm.roomId = r.roomId) DESC") // Sort theo tin nhắn mới nhất
+    Page<Room> findAllPublicRoomsWithPriority(
+            @Param("roomName") String roomName,
+            @Param("creatorId") UUID creatorId,
+            @Param("purpose") RoomPurpose purpose,
+            @Param("roomType") RoomType roomType,
+            @Param("currentUserId") UUID currentUserId,
+            Pageable pageable);
+
     @Query("SELECT r FROM Room r WHERE " +
             "(:roomName IS NULL OR r.roomName LIKE %:roomName%) AND " +
             "(:creatorId IS NULL OR r.creatorId = :creatorId) AND " +

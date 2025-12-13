@@ -75,7 +75,7 @@ interface UseChatState {
 
   fetchLexiconMaster: () => Promise<void>;
   disconnectStompClient: () => void;
-
+  upsertRoom: (room: Room) => void;
   initStompClient: () => void;
   subscribeToRoom: (roomId: string) => void;
   unsubscribeFromRoom: (roomId: string) => void;
@@ -341,6 +341,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     }));
   },
 
+  upsertRoom: (room: Room) => {
+    set((state) => ({
+      rooms: {
+        ...state.rooms,
+        [room.roomId]: room
+      }
+    }));
+  },
+
   decryptNewMessages: async (roomId, newMessages) => {
     const user = useUserStore.getState().user;
     const currentUserId = user?.userId;
@@ -365,7 +374,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         // --- TRIGGER TRANSLATION AFTER SUCCESSFUL DECRYPTION ---
         const { chatSettings } = useAppStore.getState();
         if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
-          // Use decrypted content instead of msg.content (which is ciphertext)
           await get().performEagerTranslation(msg.id.chatMessageId, decryptedContent);
         }
 
@@ -381,9 +389,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
     if (!text || !messageId) return;
 
-    // E2EE Guard: If text looks like ciphertext and we don't have decrypted content, STOP.
     if (text.trim().startsWith('{') && text.includes('ciphertext')) {
-      // Try to find the message in store to see if decryptedContent exists
       const state = get();
       let foundMsg: Message | undefined;
       for (const rId in state.messagesByRoom) {
@@ -391,9 +397,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         if (foundMsg) break;
       }
       if (foundMsg && foundMsg.decryptedContent) {
-        text = foundMsg.decryptedContent; // Use the plaintext
+        text = foundMsg.decryptedContent;
       } else {
-        return; // Abort, do not send ciphertext to translator
+        return;
       }
     }
 
@@ -553,8 +559,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
           const triggerEager = (m: Message) => {
             const { chatSettings } = useAppStore.getState();
-            // IMPORTANT: If E2EE, m.content is ciphertext. We CANNOT translate here.
-            // We wait for decryptNewMessages to trigger translation.
             if (!m.senderEphemeralKey && (chatSettings.autoTranslate || chatSettings.targetLanguage)) {
               get().performEagerTranslation(m.id.chatMessageId, m.content);
             }
@@ -588,7 +592,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
             const triggerEager = (m: Message) => {
               const { chatSettings } = useAppStore.getState();
-              // IMPORTANT: If E2EE, wait for decryption.
               if (!m.senderEphemeralKey && (chatSettings.autoTranslate || chatSettings.targetLanguage)) {
                 get().performEagerTranslation(m.id.chatMessageId, m.content);
               }
@@ -615,7 +618,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       set({ pendingPublishes: [] });
     }, (err) => { console.error('STOMP connect error', err); set({ stompConnected: false }); });
 
-    // REMOVED: get().fetchLexiconMaster(); to avoid calling it before health check in RootNavigation
   },
 
   disconnectStompClient: () => {
@@ -634,7 +636,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
         const triggerEager = (m: Message) => {
           const { chatSettings } = useAppStore.getState();
-          // If NOT E2EE, we can eagerly translate.
           if (!m.senderEphemeralKey && (chatSettings.autoTranslate || chatSettings.targetLanguage)) {
             get().performEagerTranslation(m.id.chatMessageId, m.content);
           }
@@ -814,7 +815,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       if (chatSettings.autoTranslate && newMessages.length > 0) {
         newMessages.slice(0, 5).forEach((m: Message) => {
           const hasDbTrans = m.translationsMap && m.translationsMap[targetLang];
-          // If message is NOT E2EE (no key), we can eagerly translate content.
           if (m.senderId !== useUserStore.getState().user?.userId && !hasDbTrans && !m.senderEphemeralKey) {
             get().performEagerTranslation(m.id.chatMessageId, m.decryptedContent || m.content);
           }
@@ -881,8 +881,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     const isPrivateChat = room?.purpose === RoomPurpose.PRIVATE_CHAT;
 
+    console.log(`[E2EE_DEBUG] Preparing to send message. RoomId: ${roomId}, Purpose: ${room?.purpose}, Type: ${type}, HasReceiver: ${!!receiverId}`);
+
     if (isPrivateChat && receiverId && type === 'TEXT') {
       try {
+        console.log(`[E2EE_DEBUG] Starting E2EE encryption flow...`);
         e2eeService.setUserId(user?.userId || '');
         const encryptedData = await e2eeService.encrypt(receiverId, content);
 
@@ -904,12 +907,14 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           usedPreKeyId: finalPayload.usedPreKeyId,
           initializationVector: finalPayload.initializationVector,
         };
+        console.log(`[E2EE_DEBUG] Encryption success. Payload ready.`);
       } catch (error) {
         console.error("❌ E2EE Encryption Failed:", error);
         showToast({ message: "Lỗi mã hóa! Không thể gửi tin nhắn an toàn.", type: "error" });
         return;
       }
     } else {
+      console.log(`[E2EE_DEBUG] Skipping encryption. Reason: ${!isPrivateChat ? 'Not Private Chat' : !receiverId ? 'No Receiver ID' : 'Not TEXT type'}`);
       finalPayload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null, receiverId };
     }
 

@@ -46,7 +46,7 @@ type E2EEMetadata = {
 const STORAGE_KEYS = {
     IDENTITY_KEY: 'e2ee_identity_key_pair',
     SIGNING_KEY: 'e2ee_signing_key_pair',
-    SIGNED_PRE_KEY: 'e2ee_signed_pre_key_pair', // Cần lưu cái này!
+    SIGNED_PRE_KEY: 'e2ee_signed_pre_key_pair',
     KEYS_UPLOADED: 'e2ee_keys_uploaded_status_'
 };
 
@@ -56,7 +56,7 @@ class E2EEService {
 
     private identityKeyPair?: QuickCryptoKeyPair;
     private signingKeyPair?: QuickCryptoKeyPair;
-    private signedPreKeyPair?: QuickCryptoKeyPair; // Cặp khoá SignedPreKey của chính mình
+    private signedPreKeyPair?: QuickCryptoKeyPair;
     private userId?: string;
 
     async initAndCheckUpload(userId: string) {
@@ -66,8 +66,10 @@ class E2EEService {
         const uploadedStatus = await AsyncStorage.getItem(STORAGE_KEYS.KEYS_UPLOADED + userId);
         if (uploadedStatus !== 'true') {
             try {
+                console.log(`[E2EE_DEBUG] Generating and uploading initial keys for user: ${userId}`);
                 await this.generateKeyBundleAndUpload(userId);
                 await AsyncStorage.setItem(STORAGE_KEYS.KEYS_UPLOADED + userId, 'true');
+                console.log(`[E2EE_DEBUG] Upload successful`);
             } catch (e) {
                 console.warn('[E2EE] Initial key upload failed', e);
             }
@@ -87,10 +89,8 @@ class E2EEService {
                     this.signedPreKeyPair = await importKeyPair(JSON.parse(storedSignedPreKey));
                 }
             } else {
-                // Tạo mới nếu chưa có
                 this.identityKeyPair = await generateKeyPair();
                 this.signingKeyPair = await generateSigningKeyPair();
-                // SignedPreKey sẽ được tạo ở bước upload
                 await this.saveKeysToStorage();
             }
         } catch (e) {
@@ -128,15 +128,13 @@ class E2EEService {
 
         const identityPublicKeyBase64 = await exportPublicKey(this.identityKeyPair!.publicKey as QuickCryptoKey);
 
-        // Tạo và lưu Signed PreKey
         this.signedPreKeyPair = await generateKeyPair();
-        await this.saveKeysToStorage(); // QUAN TRỌNG: Lưu Private Key của SignedPreKey
+        await this.saveKeysToStorage();
 
         const signedPreKeyId = generatePreKeyId();
         const signedPreKeyPublicKeyBase64 = await exportPublicKey(this.signedPreKeyPair.publicKey as QuickCryptoKey);
 
         const identityPublicKeyBuffer = base64ToArrayBuffer(identityPublicKeyBase64);
-        // Ký vào Identity Key (hoặc chính SignedPreKey Public Key tuỳ protocol, ở đây ký Identity theo code cũ)
         const signedPreKeySignatureBase64 = await signData(this.signingKeyPair!.privateKey as QuickCryptoKey, identityPublicKeyBuffer);
 
         const oneTimePreKeys: Record<number, string> = {};
@@ -159,18 +157,18 @@ class E2EEService {
 
     /**
      * MÃ HOÁ (SENDER SIDE)
-     * 1. Lấy Bundle của Receiver.
-     * 2. Tạo Ephemeral Key.
-     * 3. Tính Secret = ECDH(EphemeralPriv, ReceiverSignedPreKeyPub). (Simplified X3DH)
-     * 4. Encrypt.
      */
     async encrypt(receiverId: string, content: string): Promise<E2EEMetadata> {
+        console.log(`[E2EE_DEBUG] Encrypting for Receiver: ${receiverId}`);
+
         // 1. Fetch Bundle
         let bundle: PreKeyBundleResponse;
         try {
             const res = await instance.get<PreKeyBundleResponse>(`/api/v1/keys/fetch/${receiverId}`);
             bundle = res.data;
+            console.log(`[E2EE_DEBUG] Fetched bundle. SignedPreKeyId: ${bundle.signedPreKeyId}, OneTimeKeyId: ${bundle.oneTimePreKeyId}`);
         } catch (e: any) {
+            console.error(`[E2EE_DEBUG] Failed to fetch bundle for ${receiverId}`, e);
             throw new Error(`Cannot fetch keys for ${receiverId}`);
         }
 
@@ -188,13 +186,15 @@ class E2EEService {
             ephemeralKeyPair.privateKey as QuickCryptoKey,
             receiverSignedPreKey
         );
+        console.log(`[E2EE_DEBUG] Session Key derived successfully`);
 
         // 5. Encrypt Content
         const [ivBase64, ciphertextBase64] = await encryptAES(content, sessionKey);
+        console.log(`[E2EE_DEBUG] AES Encryption complete. Ciphertext length: ${ciphertextBase64.length}`);
 
         // 6. Return Payload
         return {
-            senderEphemeralKey: senderEphemeralKeyPub, // Real Public Key used for derivation
+            senderEphemeralKey: senderEphemeralKeyPub,
             initializationVector: ivBase64,
             ciphertext: ciphertextBase64,
             usedPreKeyId: bundle.signedPreKeyId
@@ -203,35 +203,25 @@ class E2EEService {
 
     /**
      * GIẢI MÃ (RECEIVER SIDE)
-     * 1. Lấy Sender Ephemeral Public Key từ tin nhắn.
-     * 2. Lấy Signed PreKey Private Key của chính mình (từ storage).
-     * 3. Tính Secret = ECDH(MySignedPreKeyPriv, SenderEphemeralPub).
-     * 4. Decrypt.
      */
     async decrypt(msg: ChatMessage): Promise<string> {
         if (!this.signedPreKeyPair) await this.loadKeys();
 
-        // Kiểm tra dữ liệu cần thiết
         if (!msg.senderEphemeralKey || !msg.initializationVector || !msg.content) {
-            return msg.content || ""; // Fallback plaintext
+            console.log(`[E2EE_DEBUG] Message is missing E2EE fields. Returning content as is.`);
+            return msg.content || "";
         }
 
         try {
-            // 1. Import Sender's Ephemeral Public Key
             const senderEphemeralPub = await importPublicKey(msg.senderEphemeralKey);
 
-            // 2. Derive Shared Session Key using MY private key
-            // Note: In Simplified X3DH, we use SignedPreKey. 
-            // In full implementation, we check `usedPreKeyId` to know which key to use.
-            // Assuming simplified flow where we use current SignedPreKey.
             const sessionKey = await deriveSessionKey(
                 this.signedPreKeyPair!.privateKey as QuickCryptoKey,
                 senderEphemeralPub
             );
 
-            // 3. Decrypt
             const decryptedContent = await decryptAES(
-                msg.content, // Content should be ONLY ciphertext
+                msg.content,
                 msg.initializationVector,
                 sessionKey
             );
@@ -239,7 +229,7 @@ class E2EEService {
             return decryptedContent;
 
         } catch (e) {
-            console.error("[E2EE] Decryption error", e);
+            console.error("[E2EE_DEBUG] Decryption error", e);
             return "!! Decryption Failed !!";
         }
     }

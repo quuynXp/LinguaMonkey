@@ -81,6 +81,9 @@ public class CourseVersion {
     @Column(name = "published_at")
     private OffsetDateTime publishedAt;
 
+    @Column(name = "instruction_language")
+    private String instructionLanguage;
+
     @Column(name = "is_deleted", nullable = false)
     private boolean isDeleted = false;
 

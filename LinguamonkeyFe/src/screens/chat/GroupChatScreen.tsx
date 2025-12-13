@@ -20,6 +20,10 @@ import IncomingCallModal from "../../components/modals/IncomingCallModal";
 import { stompService } from "../../services/stompService";
 import { gotoTab } from "../../utils/navigationRef";
 
+// --- 1. THÊM IMPORT TYPE ROOM ---
+import type { Room } from "../../types/entity";
+// --------------------------------
+
 type ChatRoomParams = {
     ChatRoom: {
         roomId: string;
@@ -57,18 +61,39 @@ const GroupChatScreen = () => {
         stompConnected,
         subscribeToRoom, unsubscribeFromRoom,
         userStatuses,
+        upsertRoom,
     } = useChatStore();
 
     const { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom } = useRooms();
     const { useCreateGroupCall } = useVideoCalls();
 
     const { data: members } = useRoomMembers(roomId);
+
+    // Lấy thông tin phòng từ API
     const { data: roomInfo } = useRoom(roomId);
+
     const { mutate: kickMember } = useRemoveRoomMembers();
     const { mutate: leaveRoom } = useLeaveRoom();
     const { mutate: createGroupCall, isPending: isCalling } = useCreateGroupCall();
 
     const [showSettings, setShowSettings] = useState(false);
+
+    // --- 2. SỬA LỖI TYPE MISMATCH Ở ĐÂY ---
+    useEffect(() => {
+        if (roomInfo) {
+            // Chúng ta cần convert RoomResponse (DTO) -> Room (Entity)
+            const roomEntity: Room = {
+                ...roomInfo,
+                // Thêm field thiếu
+                isDeleted: false,
+                // Ép kiểu members: Trong ngữ cảnh E2EE, chúng ta chỉ cần userId trong members để tìm partner
+                // Dữ liệu từ API (UserProfileResponse) có userId nên ép kiểu là an toàn
+                members: (roomInfo.members || []) as any
+            };
+            upsertRoom(roomEntity);
+        }
+    }, [roomInfo, upsertRoom]);
+    // --------------------------------------
 
     const syncSettingToBackend = async (
         updateChat: Partial<typeof chatSettings> = {},
@@ -181,17 +206,14 @@ const GroupChatScreen = () => {
             return;
         }
 
-        // Backend is expecting CreateGroupCallRequest: { callerId, roomId, videoCallType }
-        // The service will automatically fetch members from roomId if participantIds is null
         createGroupCall({
             callerId: user.userId,
             roomId: roomId,
             videoCallType: 'GROUP' as unknown as VideoCallType
         }, {
             onSuccess: (res) => {
-                // Navigate CALLER to WebRTC screen immediately
                 gotoTab("ChatStack", 'WebRTCCallScreen', {
-                    roomId: res.roomId, // Note: This is the new CALL Room ID, not Chat Room ID
+                    roomId: res.roomId,
                     videoCallId: res.videoCallId,
                     isCaller: true,
                     mode: 'GROUP'

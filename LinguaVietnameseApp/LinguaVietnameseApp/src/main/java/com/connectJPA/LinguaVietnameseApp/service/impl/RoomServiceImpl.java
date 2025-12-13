@@ -167,7 +167,15 @@ public class RoomServiceImpl implements RoomService {
     @Transactional(readOnly = true)
     public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
         UUID currentUserId = getCurrentUserUUID();
-        Page<Room> rooms = roomRepository.findPublicRoomsExcludingJoined(roomName, creatorId, purpose, roomType, currentUserId, pageable);
+        
+        Page<Room> rooms = roomRepository.findAllPublicRoomsWithPriority(
+                roomName, 
+                creatorId, 
+                purpose, 
+                roomType, 
+                currentUserId, // Truyền userId vào để check joined
+                pageable
+        );
 
         return rooms.map(room -> {
             RoomResponse response = roomMapper.toResponse(room);
@@ -179,6 +187,7 @@ public class RoomServiceImpl implements RoomService {
                         response.setCreatorName(StringUtils.hasText(user.getNickname()) ? user.getNickname() : user.getFullname());
                         response.setCreatorAvatarUrl(user.getAvatarUrl());
                     });
+            
             return response;
         });
     }
@@ -190,7 +199,6 @@ public class RoomServiceImpl implements RoomService {
         User creator = userRepository.findByUserIdAndIsDeletedFalse(creatorId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // 1. Create Room if it doesn't exist
         if (room == null) {
             room = Room.builder()
                     .roomName("Course: " + courseTitle)

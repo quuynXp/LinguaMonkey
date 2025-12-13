@@ -27,6 +27,7 @@ public class CourseVersionResponse {
     private String description;
     private String thumbnailUrl;
     private DifficultyLevel difficultyLevel;
+    private String instructionLanguage;
     private CourseType type;
     private String categoryCode;
     private BigDecimal price;
