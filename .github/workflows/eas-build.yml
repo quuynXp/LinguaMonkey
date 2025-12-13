@@ -90,41 +90,75 @@ jobs:
 
 
 
-      # --- BƯỚC MỚI: Cài CMake 3.28+ và cấu hình local.properties ---
+      # --- BƯỚC QUAN TRỌNG: Cài CMake 3.28.1 trực tiếp vào Android SDK ---
 
-      - name: 🔧 Setup CMake 3.28
-
-        uses: jwlawson/actions-setup-cmake@v2
-
-        with:
-
-          cmake-version: '3.28.3'
-
-
-
-      - name: 📝 Configure local.properties (Force CMake & SDK)
+      - name: 🔧 Install CMake 3.28.1 manually to SDK
 
         run: |
 
-          # Tìm đường dẫn CMake vừa cài
+          echo "⬇️ Downloading CMake 3.28.1..."
 
-          CMAKE_BIN=$(which cmake)
+          # Tải CMake 3.28.1 từ GitHub release
 
-          # Lấy thư mục gốc của CMake (loại bỏ /bin/cmake)
-
-          CMAKE_ROOT=$(dirname $(dirname $CMAKE_BIN))
+          wget -q https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-linux-x86_64.tar.gz -O cmake.tar.gz
 
           
 
-          echo "🔥 Detected Custom CMake at: $CMAKE_ROOT"
+          # Tạo thư mục trong Android SDK để Gradle tự tìm thấy
+
+          sudo mkdir -p $ANDROID_HOME/cmake/3.28.1
 
           
 
-          # Ghi vào local.properties để ép Gradle dùng bản này
+          # Giải nén vào thư mục đó
+
+          echo "📂 Extracting to $ANDROID_HOME/cmake/3.28.1..."
+
+          sudo tar -xf cmake.tar.gz -C $ANDROID_HOME/cmake/3.28.1 --strip-components=1
+
+          rm cmake.tar.gz
+
+          
+
+          # Tạo file local.properties chỉ định SDK (Dự phòng)
 
           echo "sdk.dir=$ANDROID_HOME" > ./android/local.properties
 
-          echo "cmake.dir=$CMAKE_ROOT" >> ./android/local.properties
+          
+
+          # Ép build.gradle dùng version 3.28.1 (sử dụng subprojects để tránh lỗi timing)
+
+          echo "💉 Injecting Gradle configuration..."
+
+          cat <<EOF >> android/build.gradle
+
+          
+
+          // FORCE CMAKE VERSION FOR ALL MODULES (NDK 27 FIX)
+
+          subprojects {
+
+              if (project.hasProperty("android")) {
+
+                  android {
+
+                      externalNativeBuild {
+
+                          cmake {
+
+                              version "3.28.1"
+
+                          }
+
+                      }
+
+                  }
+
+              }
+
+          }
+
+          EOF
 
 
 
@@ -132,7 +166,7 @@ jobs:
 
         run: |
 
-          # Xóa cấu hình enableR8 đã lỗi thời và thêm cấu hình bộ nhớ với newline
+          # Cấu hình bộ nhớ để tránh OOM
 
           echo -e "\norg.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dkotlin.daemon.jvm.options=\"-Xmx2g\"" >> ./android/gradle.properties
 
@@ -174,11 +208,11 @@ jobs:
 
             ~/.gradle/wrapper
 
-          key: ${{ runner.os }}-gradle-fe-v6-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v7-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
 
           restore-keys: |
 
-            ${{ runner.os }}-gradle-fe-v6-
+            ${{ runner.os }}-gradle-fe-v7-
 
 
 

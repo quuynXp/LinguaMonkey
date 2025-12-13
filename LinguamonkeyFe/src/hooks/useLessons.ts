@@ -16,7 +16,7 @@ import {
   LessonProgressWrongItemRequest,
   LessonHierarchicalResponse
 } from "../types/dto";
-
+import { courseKeys } from "./useCourses";
 import { SkillType } from "../types/enums";
 
 // --- Keys Factory ---
@@ -221,7 +221,13 @@ export const useLessons = () => {
         queryClient.invalidateQueries({ queryKey: lessonKeys.test.start(variables.lessonId, variables.userId) });
         queryClient.invalidateQueries({ queryKey: lessonKeys.progress.all });
         queryClient.invalidateQueries({ queryKey: lessonKeys.wrongItems.all });
-        queryClient.invalidateQueries({ queryKey: ['courses', 'enrollments'] });
+        queryClient.invalidateQueries({
+          queryKey: courseKeys.enrollments({})
+        });
+
+        queryClient.invalidateQueries({
+          queryKey: courseKeys.details()
+        });
       }
     });
   };

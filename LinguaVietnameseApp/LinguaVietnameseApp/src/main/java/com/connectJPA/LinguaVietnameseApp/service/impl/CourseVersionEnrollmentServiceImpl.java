@@ -57,64 +57,62 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
         }
     }
 
+    @Override
     @Transactional
-public void syncEnrollmentProgress(UUID userId, UUID courseVersionId) {
-    CourseVersionEnrollment enrollment = enrollmentRepository
-        .findByCourseVersion_VersionIdAndUserId(courseVersionId, userId)
-        .orElseThrow(() -> new AppException(ErrorCode.ENROLLMENT_NOT_FOUND));
+    public void syncEnrollmentProgress(UUID userId, UUID courseVersionId) {
+        CourseVersionEnrollment enrollment = enrollmentRepository
+            .findByCourseVersion_VersionIdAndUserId(courseVersionId, userId)
+            .orElseThrow(() -> new AppException(ErrorCode.ENROLLMENT_NOT_FOUND));
 
-    // 2. Lấy danh sách tất cả bài học trong Version này
-    List<CourseVersionLesson> versionLessons = cvlRepository
-        .findByCourseVersion_VersionIdOrderByOrderIndex(courseVersionId);
+        List<CourseVersionLesson> versionLessons = cvlRepository
+            .findByCourseVersion_VersionIdOrderByOrderIndex(courseVersionId);
 
-    if (versionLessons.isEmpty()) return;
+        if (versionLessons.isEmpty()) return;
 
-    int totalLessons = versionLessons.size();
-    int completedCount = 0;
+        int totalLessons = versionLessons.size();
+        int completedCount = 0;
 
-    // 3. Quét qua từng bài học để xem user đã học xong chưa (Dựa trên LessonId cũ)
-    for (CourseVersionLesson vl : versionLessons) {
-        Lesson lesson = vl.getLesson();
-        
-        // Tìm progress của bài học này
-        Optional<LessonProgress> progressOpt = lessonProgressRepository
-            .findById(new LessonProgressId(lesson.getLessonId(), userId));
-
-        if (progressOpt.isPresent()) {
-            LessonProgress p = progressOpt.get();
+        for (CourseVersionLesson vl : versionLessons) {
+            Lesson lesson = vl.getLesson();
             
-            // Logic quan trọng: 
-            // Bài học được tính là hoàn thành nếu:
-            // a. Score >= 50 (hoặc ngưỡng pass)
-            // b. VÀ bài học không bị update sau khi user hoàn thành
-            boolean isContentOutdated = p.getCompletedAt().isBefore(lesson.getUpdatedAt());
-            boolean isPassed = p.getScore() >= 50; // Giả sử 50 là điểm đậu
+            Optional<LessonProgress> progressOpt = lessonProgressRepository
+                .findById(new LessonProgressId(lesson.getLessonId(), userId));
 
-            if (isPassed && !isContentOutdated) {
-                completedCount++;
+            if (progressOpt.isPresent()) {
+                LessonProgress p = progressOpt.get();
+                
+                boolean isPassed = p.getScore() >= 50;
+                boolean isContentOutdated = false;
+                
+                if (lesson.getUpdatedAt() != null && p.getCompletedAt() != null) {
+                    isContentOutdated = p.getCompletedAt().isBefore(lesson.getUpdatedAt());
+                }
+
+                if (isPassed && !isContentOutdated) {
+                    completedCount++;
+                }
             }
         }
-    }
 
-    // 4. Tính lại % và lưu vào Enrollment
-    double newProgress = ((double) completedCount / totalLessons) * 100.0;
-    
-    // Làm tròn 2 chữ số thập phân
-    newProgress = Math.round(newProgress * 100.0) / 100.0;
+        double newProgress = ((double) completedCount / (double) totalLessons) * 100.0;
+        
+        newProgress = Math.round(newProgress * 100.0) / 100.0;
+        
+        if (newProgress > 100.0) newProgress = 100.0;
 
-    enrollment.setProgress(newProgress);
-    if (newProgress >= 100.0) {
-        enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
-        if (enrollment.getCompletedAt() == null) {
-            enrollment.setCompletedAt(OffsetDateTime.now());
+        enrollment.setProgress(newProgress);
+        
+        if (newProgress >= 100.0) {
+            enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
+            if (enrollment.getCompletedAt() == null) {
+                enrollment.setCompletedAt(OffsetDateTime.now());
+            }
+        } else {
+            enrollment.setStatus(CourseVersionEnrollmentStatus.IN_PROGRESS); 
         }
-    } else {
-        // Nếu trước đó COMPLETED nhưng giờ version mới thêm bài -> quay về IN_PROGRESS
-        enrollment.setStatus(CourseVersionEnrollmentStatus.IN_PROGRESS); 
+        
+        enrollmentRepository.save(enrollment);
     }
-    
-    enrollmentRepository.save(enrollment);
-}
 
     @Transactional
     @Override

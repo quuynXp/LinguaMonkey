@@ -21,6 +21,7 @@ import com.connectJPA.LinguaVietnameseApp.mapper.LessonMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.QuizQuestionMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
+import com.connectJPA.LinguaVietnameseApp.service.CourseVersionEnrollmentService;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
@@ -65,7 +66,8 @@ public class LessonServiceImpl implements LessonService {
     private final LessonProgressWrongItemRepository lessonProgressWrongItemRepository;
     private final GrpcClientService grpcClientService;
     private final QuizQuestionMapper quizQuestionMapper;
-    
+    private final CourseVersionEnrollmentService courseEnrollmentService;
+
     private final DailyChallengeService dailyChallengeService;
     private final BadgeService badgeService;
 
@@ -434,119 +436,81 @@ public class LessonServiceImpl implements LessonService {
         for (LessonQuestion q : questions) {
             String qid = q.getLessonQuestionId().toString();
             Object rawAns = answers.get(qid);
-            
-            String userAnswerText = null;
-            byte[] audioBytes = null;
-            byte[] imageBytes = null;
+            String userAnswerText = null; byte[] audioBytes = null; byte[] imageBytes = null;
             
             if (rawAns instanceof Map) {
                 Map<String, Object> ansMap = (Map<String, Object>) rawAns;
                 userAnswerText = (String) ansMap.get("text_answer");
                 String audioBase64 = (String) ansMap.get("audio_data");
                 String imageBase64 = (String) ansMap.get("image_data");
-                
                 if (audioBase64 != null) audioBytes = Base64.getDecoder().decode(audioBase64);
                 if (imageBase64 != null) imageBytes = Base64.getDecoder().decode(imageBase64);
-            } else if (rawAns != null) {
-                userAnswerText = rawAns.toString();
-            }
+            } else if (rawAns != null) { userAnswerText = rawAns.toString(); }
 
-            int scoreGiven = 0;
-            boolean correct = false;
+            int scoreGiven = 0; boolean correct = false;
             
-            if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || 
-                q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK || 
-                q.getQuestionType() == QuestionType.ORDERING ||
-                q.getQuestionType() == QuestionType.TRUE_FALSE ||
-                q.getQuestionType() == QuestionType.MATCHING) {
-                
+            if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK || q.getQuestionType() == QuestionType.ORDERING || q.getQuestionType() == QuestionType.TRUE_FALSE || q.getQuestionType() == QuestionType.MATCHING) {
                 correct = checkDeterministicAnswer(q, userAnswerText);
                 scoreGiven = correct ? (q.getWeight() == null ? 1 : q.getWeight()) : 0;
-            }
-            else if (q.getQuestionType() == QuestionType.SPEAKING) {
+            } else if (q.getQuestionType() == QuestionType.SPEAKING) {
                 scoreGiven = checkSpeakingAnswer(q, token, audioBytes);
                 correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70);
-            }
-            else if (q.getQuestionType() == QuestionType.WRITING || q.getQuestionType() == QuestionType.ESSAY) {
+            } else if (q.getQuestionType() == QuestionType.WRITING || q.getQuestionType() == QuestionType.ESSAY) {
                 scoreGiven = checkWritingAnswer(q, token, userAnswerText, imageBytes);
                 correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.5 : 50); 
             }
 
-            if (correct) {
-                totalScore += scoreGiven;
-            } else {
-                LessonProgressWrongItemsId wid = new LessonProgressWrongItemsId();
-                wid.setLessonId(lessonId);
-                wid.setUserId(userId);
-                wid.setLessonQuestionId(q.getLessonQuestionId());
-                wid.setAttemptNumber(attemptNumber);
-                LessonProgressWrongItem wi = LessonProgressWrongItem.builder()
-                        .id(wid)
-                        .wrongAnswer(userAnswerText)
-                        .build();
-                wrongItems.add(wi);
+            if (correct) { totalScore += scoreGiven; } 
+            else {
+                LessonProgressWrongItemsId wid = new LessonProgressWrongItemsId(); wid.setLessonId(lessonId); wid.setUserId(userId); wid.setLessonQuestionId(q.getLessonQuestionId()); wid.setAttemptNumber(attemptNumber);
+                wrongItems.add(LessonProgressWrongItem.builder().id(wid).wrongAnswer(userAnswerText).build());
             }
         }
 
-        if (!wrongItems.isEmpty()) {
-            lessonProgressWrongItemRepository.saveAll(wrongItems);
-        }
+        if (!wrongItems.isEmpty()) lessonProgressWrongItemRepository.saveAll(wrongItems);
 
         float percent = totalMax == 0 ? 0f : ((float)totalScore / totalMax) * 100f;
-
         LessonProgressId pid = new LessonProgressId(lessonId, userId);
-        LessonProgress lp = lessonProgressRepository.findById(pid)
-                .orElse(LessonProgress.builder().id(pid).build());
+        LessonProgress lp = lessonProgressRepository.findById(pid).orElse(LessonProgress.builder().id(pid).build());
         
         if (lp.getScore() < 0 || percent > lp.getScore()) {
-            lp.setScore(percent);
-            lp.setMaxScore(totalMax);
-            try {
-                lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers));
-            } catch (Exception ex) {
-                lp.setAnswersJson("{}");
-            }
+            lp.setScore(percent); lp.setMaxScore(totalMax);
+            try { lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers)); } catch (Exception ex) { lp.setAnswersJson("{}"); }
         }
-        
         lp.setAttemptNumber(attemptNumber);
         
-        // --- LOGIC FIX: Always update CompletedAt if passed ---
-        // This timestamp is crucial for version comparison.
-        if (percent >= 50) { 
-             lp.setCompletedAt(OffsetDateTime.now());
-        }
+        if (percent >= 50) { lp.setCompletedAt(OffsetDateTime.now()); }
         
-        boolean needsReview = questions.stream().anyMatch(q -> 
-            (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) 
-            && (percent < 100)
-        );
+        boolean needsReview = questions.stream().anyMatch(q -> (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) && (percent < 100));
         lp.setNeedsReview(needsReview);
         
         lessonProgressRepository.save(lp);
-        updateCourseProgressIfApplicable(userId, lessonId);
+
+        if (lesson.getCourseVersions() != null) {
+            for (CourseVersionLesson cvl : lesson.getCourseVersions()) {
+                try {
+                    courseEnrollmentService.syncEnrollmentProgress(userId, cvl.getCourseVersion().getVersionId());
+                } catch (AppException e) {
+                    if (!ErrorCode.ENROLLMENT_NOT_FOUND.equals(e.getErrorCode())) {
+                        log.warn("Failed to sync progress for version: " + cvl.getCourseVersion().getVersionId(), e);
+                    }
+                }
+            }
+        }
 
         if (percent >= 80) { 
             dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
             badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
-            
             ChallengeType skillChallenge = mapSkillToChallengeType(lesson.getSkillTypes());
-            if (skillChallenge != null) {
-                dailyChallengeService.updateChallengeProgress(userId, skillChallenge, 1);
-            }
+            if (skillChallenge != null) dailyChallengeService.updateChallengeProgress(userId, skillChallenge, 1);
         }
         dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LEARNING_TIME, lesson.getDurationSeconds() / 60);
 
         int progressPercent = computeProgressVsUserGoal(userId, lesson, percent);
         Map<String, Object> result = new HashMap<>();
-        result.put("lessonId", lessonId);
-        result.put("totalScore", totalScore);
-        result.put("maxScore", totalMax);
-        result.put("percent", percent);
-        result.put("needsReview", lp.getNeedsReview());
-        result.put("progressPercent", progressPercent);
+        result.put("lessonId", lessonId); result.put("totalScore", totalScore); result.put("maxScore", totalMax); result.put("percent", percent); result.put("needsReview", lp.getNeedsReview()); result.put("progressPercent", progressPercent);
         return result;
     }
-    
     private ChallengeType mapSkillToChallengeType(SkillType skill) {
         if (skill == null) return null;
         switch (skill) {

@@ -186,12 +186,13 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public void ensureCourseRoomExists(UUID courseId, String courseTitle, UUID creatorId) {
-        Optional<Room> existingRoom = roomRepository.findByCourseIdAndIsDeletedFalse(courseId);
-        if (existingRoom.isEmpty()) {
-            User creator = userRepository.findByUserIdAndIsDeletedFalse(creatorId)
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        Room room = roomRepository.findByCourseIdAndIsDeletedFalse(courseId).orElse(null);
+        User creator = userRepository.findByUserIdAndIsDeletedFalse(creatorId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            Room room = Room.builder()
+        // 1. Create Room if it doesn't exist
+        if (room == null) {
+            room = Room.builder()
                     .roomName("Course: " + courseTitle)
                     .creatorId(creatorId)
                     .courseId(courseId)
@@ -203,9 +204,14 @@ public class RoomServiceImpl implements RoomService {
                     .createdAt(OffsetDateTime.now())
                     .updatedAt(OffsetDateTime.now())
                     .build();
-
             room = roomRepository.save(room);
+            log.info("Created Course Room for Course ID: {}", courseId);
+        }
 
+        // 2. ALWAYS Check if Creator is in the room. If not, Add them.
+        boolean isCreatorInRoom = roomMemberRepository.existsById_RoomIdAndId_UserIdAndIsDeletedFalse(room.getRoomId(), creatorId);
+        
+        if (!isCreatorInRoom) {
             RoomMember member = RoomMember.builder()
                     .id(new RoomMemberId(room.getRoomId(), creatorId))
                     .room(room)
@@ -215,8 +221,7 @@ public class RoomServiceImpl implements RoomService {
                     .joinedAt(OffsetDateTime.now())
                     .build();
             roomMemberRepository.save(member);
-
-            log.info("Created Course Room for Course ID: {}", courseId);
+            log.info("Ensured Creator {} is added to Course Room {}", creatorId, room.getRoomId());
         }
     }
 
@@ -801,6 +806,6 @@ public class RoomServiceImpl implements RoomService {
             roomMemberRepository.save(member);
         }
 
-        return toRoomResponseWithMembers(roomToJoin); // <-- Cập nhật để trả về response đầy đủ
+        return toRoomResponseWithMembers(roomToJoin);
     }
 }

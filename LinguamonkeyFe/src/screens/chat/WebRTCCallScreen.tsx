@@ -10,7 +10,9 @@ import {
   Dimensions,
   Image,
   ScrollView,
-  Pressable
+  Pressable,
+  Animated,
+  Easing
 } from 'react-native';
 import {
   RTCView,
@@ -25,10 +27,9 @@ import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import LiveAudioStream from 'react-native-live-audio-stream';
 
-// Store & Hooks
 import { useAppStore } from '../../stores/appStore';
 import { useUserStore } from '../../stores/UserStore';
-import { useChatStore } from '../../stores/ChatStore'; // NEW: Import ChatStore for Lexicon
+import { useChatStore } from '../../stores/ChatStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useTokenStore } from '../../stores/tokenStore';
 import { API_BASE_URL } from '../../api/apiConfig';
@@ -39,7 +40,8 @@ import { useUsers } from '../../hooks/useUsers';
 import { useFriendships } from '../../hooks/useFriendships';
 import { getAvatarSource } from '../../utils/avatarUtils';
 
-// --- HELPER: CLIENT SIDE LPM TRANSLATION ---
+const PAGE_SIZE = 6;
+
 const normalizeLexiconText = (text: string) => {
   if (!text) return "";
   return text.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ");
@@ -82,7 +84,6 @@ const clientSideTranslate = (text: string, srcLang: string, targetLang: string):
   return hasMatch ? translatedText.trim() : null;
 };
 
-// --- COMPONENT: MINI USER PROFILE (GIỮ NGUYÊN) ---
 const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, currentUserId: string, onClose: () => void }) => {
   const { t } = useTranslation();
   const { useUserProfile, useAdmireUser } = useUsers();
@@ -170,23 +171,40 @@ const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, c
   );
 };
 
-// --- COMPONENT: REMOTE VIDEO (GIỮ NGUYÊN) ---
-const RemoteVideoItem = React.memo(({ stream, style }: { stream: MediaStream, style: any }) => {
+const SmoothVideoItem = React.memo(({ stream, style, label, isActiveSpeaker }: { stream: MediaStream, style: any, label: string, isActiveSpeaker: boolean }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.quad),
+    }).start();
+  }, []);
+
   return (
-    <View style={style}>
-      <RTCView streamURL={stream.toURL()} style={{ flex: 1 }} objectFit="cover" />
-    </View>
+    <Animated.View style={[style, { opacity: fadeAnim }]}>
+      <View style={[styles.videoWrapper, isActiveSpeaker && styles.activeSpeakerBorder]}>
+        <RTCView streamURL={stream.toURL()} style={{ flex: 1 }} objectFit="cover" zOrder={0} />
+        <View style={styles.nameTag}>
+          <Text style={styles.nameTagText}>{label}</Text>
+        </View>
+        {isActiveSpeaker && (
+          <View style={styles.activeIcon}>
+            <Icon name="graphic-eq" size={16} color="#22c55e" />
+          </View>
+        )}
+      </View>
+    </Animated.View>
   );
-}, (prev, next) => prev.stream.id === next.stream.id);
+}, (prev, next) => prev.stream.id === next.stream.id && prev.isActiveSpeaker === next.isActiveSpeaker);
 
-RemoteVideoItem.displayName = 'RemoteVideoItem';
+SmoothVideoItem.displayName = 'SmoothVideoItem';
 
-// --- COMPONENT: SUBTITLE OVERLAY (UPDATED: Handle Filler & LPM) ---
 const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
   if (!data || mode === 'off' || !data.originalFull?.trim()) return null;
 
-  // NEW: Xử lý hiển thị filler words (Ví dụ: "...", "à ờ")
-  // Nếu là filler và không phải là bản thân mình nói -> Hiện mờ hoặc icon
   if (data.isFiller && data.senderId !== currentUserId) {
     return (
       <View style={[styles.subtitleContainer, { opacity: 0.5, backgroundColor: 'rgba(0,0,0,0.4)' }]}>
@@ -209,7 +227,7 @@ const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
 
   const showOriginal = mode === 'dual' || mode === 'original';
   const showTranslated = mode === 'dual' || mode === 'native';
-  const effectiveShowOriginal = showOriginal || (mode === 'native' && !translated); // Fallback: hiện original nếu chưa dịch xong
+  const effectiveShowOriginal = showOriginal || (mode === 'native' && !translated);
 
   return (
     <View style={styles.subtitleContainer}>
@@ -240,8 +258,6 @@ const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
 
 SubtitleOverlay.displayName = 'SubtitleOverlay';
 
-// --- MAIN SCREEN ---
-// (Giữ nguyên toàn bộ logic cũ, chỉ sửa hàm connectAudioSocket để tích hợp LPM)
 type WebRTCParams = {
   WebRTCCall: { roomId: string; videoCallId: string; isCaller?: boolean; mode?: 'RANDOM' | 'GROUP'; };
 };
@@ -264,12 +280,11 @@ const WebRTCCallScreen = () => {
   const { user } = useUserStore();
   const accessToken = useTokenStore.getState().accessToken;
   const { nativeLanguage, callPreferences, setCallPreferences } = useAppStore();
-  const targetLang = callPreferences.nativeLanguage || nativeLanguage || 'vi'; // Lấy targetLang từ store
+  const targetLang = callPreferences.nativeLanguage || nativeLanguage || 'vi';
 
   const { useUpdateVideoCall } = useVideoCalls();
   const { mutate: updateCallStatus } = useUpdateVideoCall();
 
-  // Refs
   const wsSignal = useRef<WebSocket | null>(null);
   const wsAudio = useRef<WebSocket | null>(null);
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -277,18 +292,18 @@ const WebRTCCallScreen = () => {
   const isManuallyClosed = useRef(false);
   const subtitleTimeoutRef = useRef<any>(null);
 
-  // States
   const [isMicOn, setIsMicOn] = useState(callPreferences.micEnabled);
   const [isCameraOn, setIsCameraOn] = useState(callPreferences.cameraEnabled);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
+  const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
 
-  // UI States
   const [showSettings, setShowSettings] = useState(false);
   const [settingTab, setSettingTab] = useState<'subtitle' | 'participants'>('subtitle');
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [fullSubtitle, setFullSubtitle] = useState<SubtitleData | null>(null);
+  const [isViewAll, setIsViewAll] = useState(false);
 
   const sendAudioConfig = useCallback(() => {
     if (wsAudio.current?.readyState === WebSocket.OPEN) {
@@ -367,18 +382,13 @@ const WebRTCCallScreen = () => {
       try {
         const data = JSON.parse(e.data);
 
-        // --- NEW LOGIC: Client Side Translation ---
         if (data.type === 'subtitle') {
           if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
 
           let translated = data.translated || "";
-
-          // Thử dịch client side nếu backend chưa trả về bản dịch và đây không phải filler words
           if (!translated && data.originalFull && data.senderId !== user?.userId && !data.isFiller) {
             const localTrans = clientSideTranslate(data.originalFull, data.originalLang, targetLang);
-            if (localTrans) {
-              translated = localTrans;
-            }
+            if (localTrans) translated = localTrans;
           }
 
           setFullSubtitle({ ...data, translated });
@@ -386,7 +396,6 @@ const WebRTCCallScreen = () => {
             subtitleTimeoutRef.current = setTimeout(() => setFullSubtitle(null), 4000);
           }
         }
-        // Fallback update từ server (nếu LPM fail)
         else if (data.type === 'subtitle_translation') {
           if (data.targetLang && data.targetLang !== targetLang.split('-')[0]) return;
           setFullSubtitle(prev => {
@@ -401,9 +410,8 @@ const WebRTCCallScreen = () => {
     ws.onclose = () => {
       if (!isManuallyClosed.current) setTimeout(connectAudioSocket, 5000);
     };
-  }, [roomId, accessToken, targetLang, initSubtitleAudioStream, user?.userId]); // Changed defaultNativeLangCode to targetLang
+  }, [roomId, accessToken, targetLang, initSubtitleAudioStream, user?.userId]);
 
-  // --- WEBRTC LOGIC (Giữ nguyên) ---
   const getMediaStream = useCallback(async () => {
     try {
       const stream = await mediaDevices.getUserMedia({
@@ -477,6 +485,12 @@ const WebRTCCallScreen = () => {
     ws.onmessage = async (e) => {
       try {
         const data = JSON.parse(e.data);
+
+        if (data.type === 'active_speaker_update' && data.activeSpeakerId) {
+          setActiveSpeakerId(data.activeSpeakerId);
+          return;
+        }
+
         if (data.type === 'webrtc_signal' || data.type === 'JOIN_ROOM') {
           const senderId = String(data.senderId);
           if (senderId === String(user?.userId)) return;
@@ -556,21 +570,54 @@ const WebRTCCallScreen = () => {
 
   const remoteStreamsArr = Array.from(remoteStreams.entries());
 
+  const visibleStreams = useMemo(() => {
+    let sorted = [...remoteStreamsArr];
+    if (activeSpeakerId) {
+      const activeIdx = sorted.findIndex(([id]) => id === activeSpeakerId);
+      if (activeIdx > -1) {
+        const [active] = sorted.splice(activeIdx, 1);
+        sorted.unshift(active);
+      }
+    }
+    if (!isViewAll) {
+      return sorted.slice(0, PAGE_SIZE);
+    }
+    return sorted;
+  }, [remoteStreamsArr, activeSpeakerId, isViewAll]);
+
+  const remainingCount = Math.max(0, remoteStreamsArr.length - visibleStreams.length);
+
   return (
     <ScreenLayout>
       <View style={styles.container}>
-        {remoteStreamsArr.length > 0 ? (
-          <View style={styles.gridContainer}>
-            {remoteStreamsArr.map(([id, stream]) => (
-              <RemoteVideoItem key={id} stream={stream} style={{ width: '100%', height: '100%' }} />
+        <ScrollView contentContainerStyle={styles.scrollGrid}>
+          <View style={styles.gridWrapper}>
+            {visibleStreams.map(([id, stream]) => (
+              <SmoothVideoItem
+                key={id}
+                stream={stream}
+                label={`User ${id.slice(0, 4)}`}
+                isActiveSpeaker={id === activeSpeakerId}
+                style={{
+                  width: isViewAll ? '30%' : '45%',
+                  aspectRatio: 1,
+                  margin: 5
+                }}
+              />
             ))}
           </View>
-        ) : (
-          <View style={styles.remoteVideoPlaceholder}>
-            <ActivityIndicator size="large" color="#4f46e5" />
-            <Text style={styles.statusText}>{connectionStatus}</Text>
-          </View>
-        )}
+
+          {!isViewAll && remainingCount > 0 && (
+            <TouchableOpacity style={styles.viewMoreBtn} onPress={() => setIsViewAll(true)}>
+              <Text style={styles.viewMoreText}>+{remainingCount} others</Text>
+            </TouchableOpacity>
+          )}
+          {isViewAll && (
+            <TouchableOpacity style={styles.viewMoreBtn} onPress={() => setIsViewAll(false)}>
+              <Text style={styles.viewMoreText}>Collapse</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
 
         {localStream && (
           <View style={styles.localVideoContainer}>
@@ -638,6 +685,7 @@ const WebRTCCallScreen = () => {
                   <TouchableOpacity key={id} style={styles.participantRow} onPress={() => { setShowSettings(false); setSelectedProfileId(id); }}>
                     <View style={styles.participantAvatar}><Icon name="person" size={20} color="white" /></View>
                     <Text style={styles.participantName}>User {id.slice(0, 6)}...</Text>
+                    {id === activeSpeakerId && <Icon name="graphic-eq" size={20} color="#22c55e" style={{ marginRight: 10 }} />}
                     <Icon name="info-outline" size={24} color="#6366f1" />
                   </TouchableOpacity>
                 ))}
@@ -660,13 +708,18 @@ const WebRTCCallScreen = () => {
   );
 };
 
-// ... (Giữ nguyên Styles như cũ)
 const windowWidth = Dimensions.get('window').width;
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
-  gridContainer: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
-  remoteVideoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827', gap: 20 },
-  statusText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  scrollGrid: { paddingTop: 80, paddingBottom: 150, alignItems: 'center' },
+  gridWrapper: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: '100%' },
+  videoWrapper: { flex: 1, backgroundColor: '#1f2937', borderRadius: 8, overflow: 'hidden' },
+  activeSpeakerBorder: { borderWidth: 2, borderColor: '#22c55e' },
+  nameTag: { position: 'absolute', bottom: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  nameTagText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+  activeIcon: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 4, borderRadius: 12 },
+  viewMoreBtn: { marginTop: 20, backgroundColor: '#374151', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 20, borderWidth: 1, borderColor: '#6b7280' },
+  viewMoreText: { color: '#e5e7eb', fontWeight: '600' },
   localVideoContainer: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563', backgroundColor: '#374151' },
   localVideo: { flex: 1 },
   cameraOffPlaceholder: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#1f2937' },
@@ -679,7 +732,6 @@ const styles = createScaledSheet({
   iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContainer: { height: '35%', backgroundColor: '#1f2937', marginTop: 'auto', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
-  sectionTitle: { color: '#9ca3af', fontWeight: 'bold', marginBottom: 10 },
   modeButton: { padding: 10, backgroundColor: '#374151', borderRadius: 8, minWidth: '45%', alignItems: 'center', justifyContent: 'center' },
   modeButtonActive: { backgroundColor: '#4f46e5' },
   tabHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#374151' },

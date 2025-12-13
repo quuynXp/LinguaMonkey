@@ -238,9 +238,6 @@ const GroupChatScreen = () => {
             <IncomingCallModal />
 
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
-                    <Icon name="arrow-back" size={24} color="#374151" />
-                </TouchableOpacity>
                 <View style={styles.headerContent}>
                     {isPrivateRoom && targetMember && (
                         <View style={{ position: 'relative', marginRight: 10 }}>

@@ -168,17 +168,18 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 isDeleted: msg.isDeleted,
                 isEncrypted: isEncrypted,
             } as UIMessage;
-        }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+        }).sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
     }, [serverMessages, eagerTranslations, translationTargetLang, currentUserId, membersMap]);
 
     useEffect(() => { loadMessages(roomId); }, [roomId]);
 
     useEffect(() => {
-        if (!messages.length) return;
-        const timer = setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-        }, 200);
-        return () => clearTimeout(timer);
+        if (messages.length > 0) {
+            const latestMsg = messages[0];
+            if (latestMsg.isLocal || latestMsg.sender === 'user') {
+                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+            }
+        }
     }, [messages.length]);
 
     useEffect(() => {
@@ -192,6 +193,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         } else {
             sendMessage(roomId, inputText, 'TEXT');
             setInputText("");
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         }
     };
 
@@ -209,6 +211,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const finalUrl = result?.secure_url || result?.url || result?.fileUrl;
         if (finalUrl) {
             sendMessage(roomId, '', type, finalUrl);
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         } else {
             console.warn("Upload success but no URL found in result:", result);
         }
@@ -246,7 +249,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
 
                     {isMedia ? (
-                        // Media render without Bubble Wrapper
                         <View style={[styles.mediaContainer, isUser ? styles.mediaUser : styles.mediaOther]}>
                             {item.messageType === 'IMAGE' && (
                                 <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />
@@ -258,7 +260,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                             )}
                         </View>
                     ) : (
-                        // Text/Document render with Bubble Wrapper
                         <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
                             {item.messageType === 'DOCUMENT' && (
                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
@@ -311,9 +312,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 keyExtractor={item => item.id}
                 style={styles.list}
                 renderItem={renderMessageItem}
-                contentContainerStyle={{ paddingTop: 10, paddingBottom: 10 }}
-                onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-                onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                inverted
+                contentContainerStyle={{ paddingTop: 10, paddingBottom: 10, flexGrow: 1, justifyContent: 'flex-end' }}
                 removeClippedSubviews={false}
                 initialNumToRender={15}
             />

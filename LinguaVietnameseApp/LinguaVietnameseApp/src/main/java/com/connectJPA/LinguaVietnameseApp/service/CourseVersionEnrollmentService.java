@@ -22,4 +22,6 @@ public interface CourseVersionEnrollmentService {
     CourseVersionEnrollmentResponse updateCourseVersionEnrollment(UUID courseId, UUID userId, CourseVersionEnrollmentRequest request);
     void deleteCourseVersionEnrollment(UUID courseId, UUID userId);
     void deleteCourseVersionEnrollmentsByCourseId(UUID courseId);
+
+    void syncEnrollmentProgress(UUID userId, UUID courseVersionId);
 }
