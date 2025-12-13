@@ -181,16 +181,17 @@ const GroupChatScreen = () => {
             return;
         }
 
-        // Ensure roomId and callerId are strings.
-        // Explicitly send "GROUP" to avoid Enum serialization issues with Jackson
+        // Backend is expecting CreateGroupCallRequest: { callerId, roomId, videoCallType }
+        // The service will automatically fetch members from roomId if participantIds is null
         createGroupCall({
             callerId: user.userId,
             roomId: roomId,
             videoCallType: 'GROUP' as unknown as VideoCallType
         }, {
             onSuccess: (res) => {
+                // Navigate CALLER to WebRTC screen immediately
                 gotoTab("ChatStack", 'WebRTCCallScreen', {
-                    roomId: res.roomId,
+                    roomId: res.roomId, // Note: This is the new CALL Room ID, not Chat Room ID
                     videoCallId: res.videoCallId,
                     isCaller: true,
                     mode: 'GROUP'
@@ -235,6 +236,7 @@ const GroupChatScreen = () => {
     return (
         <ScreenLayout>
             <IncomingCallModal />
+
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
                     <Icon name="arrow-back" size={24} color="#374151" />

@@ -90,51 +90,51 @@ jobs:
 
 
 
-      - name: 💉 Force CMake 3.28.0 for Subprojects (Fix Timing)
+      # --- BƯỚC MỚI: Cài CMake 3.28+ và cấu hình local.properties ---
+
+      - name: 🔧 Setup CMake 3.28
+
+        uses: jwlawson/actions-setup-cmake@v2
+
+        with:
+
+          cmake-version: '3.28.3'
+
+
+
+      - name: 📝 Configure local.properties (Force CMake & SDK)
 
         run: |
 
-          echo "💉 Injecting CMake version enforcement into build.gradle..."
+          # Tìm đường dẫn CMake vừa cài
 
-          cat <<EOF >> android/build.gradle
+          CMAKE_BIN=$(which cmake)
+
+          # Lấy thư mục gốc của CMake (loại bỏ /bin/cmake)
+
+          CMAKE_ROOT=$(dirname $(dirname $CMAKE_BIN))
 
           
 
-          // FORCE CMAKE VERSION FOR ALL SUBPROJECTS (FIXES TIMING ISSUE)
+          echo "🔥 Detected Custom CMake at: $CMAKE_ROOT"
 
-          subprojects {
+          
 
-              if (project.hasProperty("android")) {
+          # Ghi vào local.properties để ép Gradle dùng bản này
 
-                  android {
+          echo "sdk.dir=$ANDROID_HOME" > ./android/local.properties
 
-                      externalNativeBuild {
-
-                          cmake {
-
-                              version "3.28.0"
-
-                          }
-
-                      }
-
-                  }
-
-              }
-
-          }
-
-          EOF
+          echo "cmake.dir=$CMAKE_ROOT" >> ./android/local.properties
 
 
 
-      - name: 🚀 Configure Gradle Memory (Fix KSP/JVM Args Newline)
+      - name: 🚀 Configure Gradle Memory
 
         run: |
 
-          echo -e "\norg.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dkotlin.daemon.jvm.options=\"-Xmx2g\"" >> ./android/gradle.properties
+          # Xóa cấu hình enableR8 đã lỗi thời và thêm cấu hình bộ nhớ với newline
 
-          echo "android.enableR8=true" >> ./android/gradle.properties
+          echo -e "\norg.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError -Dkotlin.daemon.jvm.options=\"-Xmx2g\"" >> ./android/gradle.properties
 
 
 
@@ -174,11 +174,11 @@ jobs:
 
             ~/.gradle/wrapper
 
-          key: ${{ runner.os }}-gradle-fe-v5-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v6-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
 
           restore-keys: |
 
-            ${{ runner.os }}-gradle-fe-v5-
+            ${{ runner.os }}-gradle-fe-v6-
 
 
 

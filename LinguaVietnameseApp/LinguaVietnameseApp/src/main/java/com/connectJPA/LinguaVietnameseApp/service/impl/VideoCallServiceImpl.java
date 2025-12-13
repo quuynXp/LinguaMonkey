@@ -4,7 +4,6 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.CreateGroupCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoCallResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
-import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCall;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCallParticipant;
 import com.connectJPA.LinguaVietnameseApp.entity.id.VideoCallParticipantId;
@@ -13,7 +12,6 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.VideoCallMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoCallParticipantRepository;
@@ -34,12 +32,9 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -50,7 +45,6 @@ public class VideoCallServiceImpl implements VideoCallService {
     private final VideoCallParticipantRepository videoCallParticipantRepository;
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
-    private final RoomMemberRepository roomMemberRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
     @Lazy
@@ -112,7 +106,6 @@ public class VideoCallServiceImpl implements VideoCallService {
                 .build());
 
         videoCallParticipantRepository.saveAll(participants);
-        
         videoCall.setParticipants(participants);
 
         return videoCallMapper.toResponse(videoCall);
@@ -154,46 +147,18 @@ public class VideoCallServiceImpl implements VideoCallService {
     @Transactional
     public VideoCallResponse createGroupVideoCall(CreateGroupCallRequest request) {
         try {
-            UUID callerId = request.getCallerId();
-
-            List<UUID> participantIds = request.getParticipantIds();
-            
-            if ((participantIds == null || participantIds.isEmpty()) && request.getRoomId() != null) {
-                List<RoomMember> roomMembers = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(request.getRoomId());
-                if (roomMembers != null && !roomMembers.isEmpty()) {
-                    participantIds = roomMembers.stream()
-                            .map(m -> m.getId().getUserId())
-                            .collect(Collectors.toList());
-                }
-            }
-
-            if (participantIds == null || participantIds.isEmpty()) {
+            if (request.getRoomId() == null) {
                 throw new AppException(ErrorCode.INVALID_REQUEST);
             }
 
-            // FIX: Sử dụng Set để lọc trùng và loại bỏ callerId khỏi danh sách Guests
-            // Nếu không loại bỏ callerId, sẽ xảy ra lỗi Duplicate Key vì caller đã được add làm HOST
-            Set<UUID> uniqueParticipantIds = new HashSet<>(participantIds);
-            uniqueParticipantIds.remove(callerId);
-
-            if (uniqueParticipantIds.isEmpty()) {
-                // Trường hợp room chỉ có 1 mình người gọi
-                // Tùy nghiệp vụ, có thể throw lỗi hoặc cho phép gọi 1 mình (test)
-                // Ở đây cho phép gọi nhưng không có guest nào
+            if (!roomRepository.existsById(request.getRoomId())) {
+                throw new AppException(ErrorCode.ROOM_NOT_FOUND);
             }
 
-            Room callRoom = Room.builder()
-                    .creatorId(callerId)
-                    .topic(RoomTopic.WORLD)
-                    .purpose(RoomPurpose.CALL)
-                    .status(RoomStatus.ACTIVE)
-                    .build();
-
-            var roomSaved = roomRepository.save(callRoom);
-
+            // 1. Create VideoCall directly linked to the existing Group Chat Room
             VideoCall videoCall = VideoCall.builder()
-                    .callerId(callerId)
-                    .roomId(roomSaved.getRoomId())
+                    .callerId(request.getCallerId())
+                    .roomId(request.getRoomId())
                     .calleeId(null)
                     .videoCallType(request.getVideoCallType())
                     .status(VideoCallStatus.INITIATED)
@@ -202,61 +167,34 @@ public class VideoCallServiceImpl implements VideoCallService {
 
             videoCall = videoCallRepository.save(videoCall);
 
+            // 2. Only add the Caller as the HOST/CONNECTED participant
             List<VideoCallParticipant> participants = new ArrayList<>();
-
-            // Add Host
             VideoCallParticipant host = VideoCallParticipant.builder()
-                    .id(new VideoCallParticipantId(videoCall.getVideoCallId(), callerId))
+                    .id(new VideoCallParticipantId(videoCall.getVideoCallId(), request.getCallerId()))
                     .videoCall(videoCall)
-                    .user(userRepository.getReferenceById(callerId))
+                    .user(userRepository.getReferenceById(request.getCallerId()))
                     .joinedAt(OffsetDateTime.now())
                     .role(VideoCallRole.HOST)
                     .status(VideoCallParticipantStatus.CONNECTED)
                     .build();
             participants.add(host);
-
-            // Add Guests (đã lọc)
-            for (UUID userId : uniqueParticipantIds) {
-                VideoCallParticipant participant = VideoCallParticipant.builder()
-                        .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
-                        .videoCall(videoCall)
-                        .user(userRepository.getReferenceById(userId))
-                        .joinedAt(OffsetDateTime.now())
-                        .role(VideoCallRole.GUEST)
-                        .status(VideoCallParticipantStatus.WAITING)
-                        .build();
-                participants.add(participant);
-            }
+            
             videoCallParticipantRepository.saveAll(participants);
-
             videoCall.setParticipants(participants);
 
-            VideoCallResponse response = videoCallMapper.toResponse(videoCall);
-
+            // 3. Notify the Room
             Map<String, Object> socketPayload = new HashMap<>();
             socketPayload.put("type", "INCOMING_CALL");
-            socketPayload.put("roomId", roomSaved.getRoomId().toString());
+            socketPayload.put("roomId", request.getRoomId().toString());
             socketPayload.put("videoCallId", videoCall.getVideoCallId());
-            socketPayload.put("callerId", callerId);
+            socketPayload.put("callerId", request.getCallerId());
             socketPayload.put("roomName", "Group Call");
 
-            if (request.getRoomId() != null) {
-                 messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
-            } else {
-                 for (UUID userId : uniqueParticipantIds) {
-                      try {
-                          messagingTemplate.convertAndSendToUser(
-                            userId.toString(),
-                            "/queue/notifications",
-                            socketPayload
-                          );
-                      } catch (Exception e) {
-                        log.warn("Failed to notify user {}", userId);
-                      }
-                 }
-            }
+            // Send to everyone subscribed to /topic/room/{roomId}
+            messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
 
-            return response;
+            return videoCallMapper.toResponse(videoCall);
+
         } catch (AppException ae) {
             throw ae;
         } catch (Exception e) {
@@ -265,22 +203,16 @@ public class VideoCallServiceImpl implements VideoCallService {
         }
     }
 
-    private java.util.Map<String, Object> wrapWithMessageType(VideoCallResponse response, String type) {
-        java.util.Map<String, Object> map = new java.util.HashMap<>();
-        map.put("type", type);
-        map.put("roomId", response.getRoomId());
-        map.put("videoCallId", response.getVideoCallId());
-        map.put("callerId", response.getCallerId());
-        map.put("videoCallType", response.getVideoCallType());
-        map.put("content", "Video call started");
-        return map;
-    }
-
     @Transactional
     @Override
     public void addParticipant(UUID videoCallId, UUID userId) {
         VideoCall videoCall = videoCallRepository.findByVideoCallIdAndIsDeletedFalse(videoCallId)
                 .orElseThrow(() -> new AppException(ErrorCode.VIDEO_CALL_NOT_FOUND));
+
+        if (videoCallParticipantRepository.existsById(new VideoCallParticipantId(videoCallId, userId))) {
+            return; // Already joined
+        }
+
         VideoCallParticipant participant = VideoCallParticipant.builder()
                 .id(new VideoCallParticipantId(videoCallId, userId))
                 .videoCall(videoCall)
@@ -352,17 +284,17 @@ public class VideoCallServiceImpl implements VideoCallService {
             }
             VideoCall videoCall = videoCallRepository.findByVideoCallIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.VIDEO_CALL_NOT_FOUND));
-            
+
             VideoCallStatus previousStatus = videoCall.getStatus();
             videoCallMapper.updateEntityFromRequest(request, videoCall);
-            
+
             if (request.getStatus() == VideoCallStatus.ONGOING && previousStatus == VideoCallStatus.INITIATED) {
                 videoCall.setStartTime(OffsetDateTime.now());
             }
 
             if (request.getStatus() == VideoCallStatus.ENDED && previousStatus != VideoCallStatus.ENDED) {
                 videoCall.setEndTime(OffsetDateTime.now());
-                
+
                 int durationMinutes = 0;
                 if (videoCall.getStartTime() != null) {
                     long seconds = Duration.between(videoCall.getStartTime(), videoCall.getEndTime()).getSeconds();
@@ -370,12 +302,10 @@ public class VideoCallServiceImpl implements VideoCallService {
                 }
 
                 List<VideoCallParticipant> participants = videoCallParticipantRepository.findByVideoCall_VideoCallId(id);
-                
                 videoCall.setParticipants(participants);
 
                 for (VideoCallParticipant p : participants) {
                     if (p.getStatus() == VideoCallParticipantStatus.CONNECTED || p.getRole() == VideoCallRole.HOST) {
-                        
                         if (dailyChallengeService != null) {
                             dailyChallengeService.updateChallengeProgress(p.getId().getUserId(), ChallengeType.SPEAKING_PRACTICE, Math.max(1, durationMinutes));
                             dailyChallengeService.updateChallengeProgress(p.getId().getUserId(), ChallengeType.LEARNING_TIME, durationMinutes);
