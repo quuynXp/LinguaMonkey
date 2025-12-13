@@ -136,7 +136,6 @@ const normalizeMessage = (msg: any): Message => {
     }
   }
 
-  // Ensure mediaUrl is preserved explicitly
   const safeMediaUrl = msg.mediaUrl || msg.media_url || null;
 
   const baseMsg = {
@@ -146,7 +145,7 @@ const normalizeMessage = (msg: any): Message => {
     usedPreKeyId: msg.usedPreKeyId,
     initializationVector: msg.initializationVector,
     decryptedContent: null,
-    mediaUrl: safeMediaUrl, // Explicitly set
+    mediaUrl: safeMediaUrl,
   };
 
   if (msg?.id?.chatMessageId) {
@@ -164,7 +163,7 @@ const normalizeMessage = (msg: any): Message => {
       usedPreKeyId: msg.usedPreKeyId,
       initializationVector: msg.initializationVector,
       decryptedContent: null,
-      mediaUrl: safeMediaUrl, // Explicitly set
+      mediaUrl: safeMediaUrl,
     };
     return rawMsg as Message;
   }
@@ -178,7 +177,7 @@ const normalizeMessage = (msg: any): Message => {
       usedPreKeyId: msg.usedPreKeyId,
       initializationVector: msg.initializationVector,
       decryptedContent: null,
-      mediaUrl: safeMediaUrl, // Explicitly set
+      mediaUrl: safeMediaUrl,
     };
     return rawMsg as Message;
   }
@@ -219,23 +218,17 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   let workingList = [...list];
   let isNew = false;
 
-  // FIX: Cải thiện logic lọc message local trùng lặp
   if (msg.senderId === currentUserId && !msg.isLocal) {
     workingList = workingList.filter(m => {
       const isMyLocal = m.isLocal === true;
       let isMatch = false;
 
-      // Nếu có mediaUrl, ưu tiên so sánh mediaUrl (vì content thường rỗng)
       if (msg.mediaUrl && m.mediaUrl) {
         isMatch = m.mediaUrl === msg.mediaUrl;
       }
-      // Nếu là text thường thì so sánh content
       else if (msg.messageType === 'TEXT') {
         isMatch = m.content?.trim() === msg.content?.trim();
       }
-
-      // Nếu là Media nhưng không có URL (đang upload?) hoặc cả 2 đều không có content -> KHÔNG được coi là match bừa bãi
-      // để tránh việc xóa nhầm các ảnh đang upload khác.
 
       return !(isMyLocal && isMatch);
     });
@@ -358,7 +351,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     e2eeService.setUserId(currentUserId || '');
 
     const decryptionPromises = newMessages.map(async (msg) => {
-      // FIX: Ensure we don't try to decrypt Media messages as Text, but we keep them
       if (msg.decryptedContent || msg.messageType !== 'TEXT') return;
 
       const partnerId = msg.senderId === currentUserId ?
@@ -369,6 +361,14 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       try {
         const decryptedContent = await e2eeService.decrypt(msg);
         get().updateDecryptedContent(roomId, msg.id.chatMessageId, decryptedContent);
+
+        // --- TRIGGER TRANSLATION AFTER SUCCESSFUL DECRYPTION ---
+        const { chatSettings } = useAppStore.getState();
+        if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
+          // Use decrypted content instead of msg.content (which is ciphertext)
+          await get().performEagerTranslation(msg.id.chatMessageId, decryptedContent);
+        }
+
       } catch (e: any) {
         console.warn(`Failed to decrypt message ${msg.id.chatMessageId}:`, e);
         get().updateDecryptedContent(roomId, msg.id.chatMessageId, `[DECRYPTION FAILED: ${e.message || 'Key Error'}]`);
@@ -381,25 +381,34 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
     if (!text || !messageId) return;
 
-    // 1. CHẶN E2EE RÁC: Nếu text là JSON Ciphertext
-    if (text.trim().startsWith('{') && text.includes('ciphertext')) return;
+    // E2EE Guard: If text looks like ciphertext and we don't have decrypted content, STOP.
+    if (text.trim().startsWith('{') && text.includes('ciphertext')) {
+      // Try to find the message in store to see if decryptedContent exists
+      const state = get();
+      let foundMsg: Message | undefined;
+      for (const rId in state.messagesByRoom) {
+        foundMsg = state.messagesByRoom[rId]?.find(m => m.id.chatMessageId === messageId);
+        if (foundMsg) break;
+      }
+      if (foundMsg && foundMsg.decryptedContent) {
+        text = foundMsg.decryptedContent; // Use the plaintext
+      } else {
+        return; // Abort, do not send ciphertext to translator
+      }
+    }
 
     const { nativeLanguage, chatSettings } = useAppStore.getState();
     const targetLang = overrideTargetLang || chatSettings?.targetLanguage || nativeLanguage || 'vi';
 
-    // 2. CHECK STATE TẠM: Nếu đã dịch eager trong phiên này
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
 
-    // 3. [QUAN TRỌNG] CHECK DB: Tìm tin nhắn trong store, nếu đã có bản dịch -> STOP
     const state = get();
     let existingMessage: Message | undefined;
 
-    // Tìm message trong các room (ưu tiên room đang xem)
     const currentRoomId = state.currentViewedRoomId;
     if (currentRoomId && state.messagesByRoom[currentRoomId]) {
       existingMessage = state.messagesByRoom[currentRoomId].find(m => m.id.chatMessageId === messageId);
     }
-    // Nếu chưa tìm thấy, quét các room khác (fallback)
     if (!existingMessage) {
       for (const rId in state.messagesByRoom) {
         if (rId === currentRoomId) continue;
@@ -409,7 +418,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     }
 
     if (existingMessage && existingMessage.translationsMap && existingMessage.translationsMap[targetLang]) {
-      // Đã có bản dịch trong DB, return luôn để khỏi gọi API
       return;
     }
 
@@ -427,7 +435,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
       for (let j = Math.min(words.length - i, 6); j >= 1; j--) {
         const phrase = words.slice(i, i + j).join(' ');
-
         let foundTranslation = false;
         for (const srcLang of sourceLangs) {
           const key = getLexiconKey(srcLang, phrase);
@@ -454,8 +461,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     const finalLocalTranslation = translatedText.trim();
     const totalWords = words.length;
-
-    // Logic: Nếu match > 70% hoặc câu ngắn (<5 từ) match được 1 cụm -> Dùng luôn
     const matchRatio = totalWords > 0 ? (matchedWordsCount / totalWords) : 0;
     const isClientGoodEnough = matchRatio >= 0.7 || (totalWords <= 5 && matchedWordsCount >= 1);
 
@@ -470,7 +475,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       return;
     }
 
-    // Fallback gọi API
     try {
       const res = await instance.post('/api/py/translate', {
         text,
@@ -489,24 +493,19 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           }
         }));
       }
-    } catch (e) {
-      // console.warn("Fallback translation failed", e);
-    }
+    } catch (e) { }
   },
 
   fetchLexiconMaster: async () => {
     try {
       const res = await instance.get<AppApiResponse<LexiconEntry[]>>('/api/py/lexicon/top', { params: { limit: 5000 } });
       const lexiconData = res.data.result || [];
-
       const newLexicon = new Map<string, LexiconEntry>();
       lexiconData.forEach(entry => {
         const key = getLexiconKey(entry.original_lang, entry.original_text);
         newLexicon.set(key, entry);
       });
-
       set({ lexiconMaster: newLexicon });
-      console.log(`✅ Client Lexicon Loaded: ${newLexicon.size} entries.`);
     } catch (e) {
       console.error("Failed to fetch lexicon master:", e);
     }
@@ -521,7 +520,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       .slice(0, count);
 
     Promise.all(candidates.map(msg =>
-      // Chỉ dịch nếu chưa có translation trong DB map
       (!msg.translationsMap || !msg.translationsMap[targetLang]) ?
         get().performEagerTranslation(msg.id.chatMessageId, msg.decryptedContent || msg.content, targetLang) : Promise.resolve()
     ));
@@ -555,7 +553,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
           const triggerEager = (m: Message) => {
             const { chatSettings } = useAppStore.getState();
-            if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
+            // IMPORTANT: If E2EE, m.content is ciphertext. We CANNOT translate here.
+            // We wait for decryptNewMessages to trigger translation.
+            if (!m.senderEphemeralKey && (chatSettings.autoTranslate || chatSettings.targetLanguage)) {
               get().performEagerTranslation(m.id.chatMessageId, m.content);
             }
           };
@@ -588,7 +588,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
             const triggerEager = (m: Message) => {
               const { chatSettings } = useAppStore.getState();
-              if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
+              // IMPORTANT: If E2EE, wait for decryption.
+              if (!m.senderEphemeralKey && (chatSettings.autoTranslate || chatSettings.targetLanguage)) {
                 get().performEagerTranslation(m.id.chatMessageId, m.content);
               }
             };
@@ -633,7 +634,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
         const triggerEager = (m: Message) => {
           const { chatSettings } = useAppStore.getState();
-          if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
+          // If NOT E2EE, we can eagerly translate.
+          if (!m.senderEphemeralKey && (chatSettings.autoTranslate || chatSettings.targetLanguage)) {
             get().performEagerTranslation(m.id.chatMessageId, m.content);
           }
         };
@@ -811,9 +813,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
       if (chatSettings.autoTranslate && newMessages.length > 0) {
         newMessages.slice(0, 5).forEach((m: Message) => {
-          // Chỉ dịch nếu chưa có trong DB
           const hasDbTrans = m.translationsMap && m.translationsMap[targetLang];
-          if (m.senderId !== useUserStore.getState().user?.userId && !hasDbTrans) {
+          // If message is NOT E2EE (no key), we can eagerly translate content.
+          if (m.senderId !== useUserStore.getState().user?.userId && !hasDbTrans && !m.senderEphemeralKey) {
             get().performEagerTranslation(m.id.chatMessageId, m.decryptedContent || m.content);
           }
         });
@@ -877,7 +879,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     let optimisticContent = content;
     let optimisticMetadata: any = {};
 
-    if (room?.purpose === RoomPurpose.PRIVATE_CHAT && receiverId && type === 'TEXT') {
+    const isPrivateChat = room?.purpose === RoomPurpose.PRIVATE_CHAT;
+
+    if (isPrivateChat && receiverId && type === 'TEXT') {
       try {
         e2eeService.setUserId(user?.userId || '');
         const encryptedData = await e2eeService.encrypt(receiverId, content);
@@ -887,12 +891,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           messageType: type,
           purpose: room.purpose,
           mediaUrl: mediaUrl || null,
-          content: JSON.stringify({
-            ciphertext: encryptedData.ciphertext,
-            initializationVector: encryptedData.initializationVector,
-            senderEphemeralKey: encryptedData.senderEphemeralKey,
-            usedPreKeyId: encryptedData.usedPreKeyId,
-          }),
+          content: encryptedData.ciphertext,
           receiverId,
           senderEphemeralKey: encryptedData.senderEphemeralKey,
           usedPreKeyId: encryptedData.usedPreKeyId,
@@ -906,20 +905,19 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           initializationVector: finalPayload.initializationVector,
         };
       } catch (error) {
-        console.error("E2EE Encryption Failed:", error);
-        showToast({ message: "Encryption failed, sending plain text.", type: "error" });
-        finalPayload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null, receiverId };
+        console.error("❌ E2EE Encryption Failed:", error);
+        showToast({ message: "Lỗi mã hóa! Không thể gửi tin nhắn an toàn.", type: "error" });
+        return;
       }
     } else {
       finalPayload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null, receiverId };
     }
 
-
     const optimisticMsg = {
       id: { chatMessageId: optimisticId, sentAt: new Date().toISOString() },
       senderId: user?.userId,
       content: finalPayload.content || optimisticContent,
-      decryptedContent: finalPayload.decryptedContent || optimisticContent,
+      decryptedContent: optimisticContent,
       messageType: type,
       mediaUrl: mediaUrl || null,
       isLocal: true,

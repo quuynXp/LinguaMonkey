@@ -33,17 +33,8 @@ class HybridTranslator:
         logger.info("HybridTranslator initialized.")
 
     def _normalize(self, text: str) -> str:
-        """
-        [LPM MATCHING LOGIC]
-        Phải đồng bộ chính xác với Frontend (ChatStore.ts -> normalizeLexiconText)
-        Logic: Bỏ hết toàn bộ dấu câu, trim, lower.
-        VD: "Hello, world?" -> "hello world"
-        """
         if not text: return ""
-        # Regex xóa tất cả ký tự không phải chữ/số và khoảng trắng
-        # Tương đương replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "") ở JS
         text = re.sub(r'[^\w\s]', '', text)
-        # Thay thế nhiều khoảng trắng bằng 1 khoảng trắng
         text = re.sub(r'\s+', ' ', text)
         return text.strip().lower()
 
@@ -67,12 +58,8 @@ class HybridTranslator:
 
     def _tokenize(self, text: str, lang: str) -> List[str]:
         if not text: return []
-        # Xử lý tiếng Trung/Nhật
         if lang in ['zh-CN', 'zh-TW', 'ja', 'ko', 'zh']:
             return [char for char in text if char.strip() and char not in string.punctuation]
-        
-        # Tiếng Anh/Việt: Sử dụng bản normalize đã bỏ dấu câu để split
-        # Điều này đảm bảo việc tách từ khớp với key trong Redis
         clean_text = self._normalize(text)
         return clean_text.split()
 
@@ -125,7 +112,6 @@ class HybridTranslator:
 
         while i < n:
             matched = False
-            # Thử match cụm từ dài nhất trước (Max 8 từ)
             max_window = min(n - i, 8)
             
             for j in range(max_window, 0, -1):
@@ -140,10 +126,7 @@ class HybridTranslator:
                 if cached_val:
                     trans_text = cached_val.decode('utf-8') if isinstance(cached_val, bytes) else str(cached_val)
                     translated_chunks.append(trans_text)
-                    
-                    # Fire & Forget update usage stats
                     asyncio.create_task(self.redis.hincrby(key, "usage", 1))
-                    
                     matched_words_count += j
                     i += j
                     matched = True
@@ -161,6 +144,12 @@ class HybridTranslator:
     async def translate(self, text: str, source_lang_hint: str, target_lang: str) -> Tuple[str, str]:
         if not text or not text.strip(): return "", source_lang_hint
 
+        # --- CIPHERTEXT GUARD ---
+        # If the input looks like a JSON blob containing ciphertext, do NOT translate it.
+        # This prevents the "translating garbage" issue when FE accidentally sends E2EE payload.
+        if text.strip().startswith('{') and '"ciphertext"' in text:
+            return "", source_lang_hint
+
         src_lang = self._map_language_code(source_lang_hint)
         target_lang = self._map_language_code(target_lang)
 
@@ -175,7 +164,6 @@ class HybridTranslator:
         # 1. LPM Translation
         lpm_result, coverage = await self.lpm_translate(text, detected_lang, target_lang)
         
-        # Nếu coverage cao hoặc câu ngắn mà đã match, trả về luôn
         word_count = len(text.split())
         threshold = 0.8 if word_count > 3 else 0.99 
         
@@ -210,7 +198,6 @@ class HybridTranslator:
                 final_text = parsed.get("translated_text", "").strip()
                 
                 if final_text:
-                    # Cache kết quả Gemini vào Redis và DB
                     if word_count < 30: 
                         key = self._get_redis_key(detected_lang, text)
                         await self.redis.hset(key, mapping={target_lang: final_text})

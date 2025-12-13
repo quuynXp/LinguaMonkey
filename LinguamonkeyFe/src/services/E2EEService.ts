@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import instance from "../api/axiosClient";
 import type { ChatMessage } from "../types/entity";
 import {
-    getSessionKey,
     encryptAES,
     decryptAES,
     generateKeyPair,
@@ -13,14 +12,13 @@ import {
     generateSigningKeyPair,
     signData,
     base64ToArrayBuffer,
-    generatePreKeyId
+    generatePreKeyId,
+    importPublicKey,
+    deriveSessionKey
 } from "../utils/crypto";
 
-// Import các kiểu cụ thể từ react-native-quick-crypto để đồng bộ
 import type { CryptoKey as QuickCryptoKey, CryptoKeyPair as QuickCryptoKeyPair } from "react-native-quick-crypto";
 
-
-// Giả định cấu trúc response từ server
 type PreKeyBundleResponse = {
     identityPublicKey: string;
     signedPreKeyId: number;
@@ -30,7 +28,6 @@ type PreKeyBundleResponse = {
     oneTimePreKeyPublicKey?: string;
 };
 
-// Cấu trúc request gửi lên server
 type PreKeyBundleRequest = {
     identityPublicKey: string;
     signedPreKeyId: number;
@@ -40,7 +37,7 @@ type PreKeyBundleRequest = {
 };
 
 type E2EEMetadata = {
-    senderEphemeralKey: string;
+    senderEphemeralKey: string; // Base64 Public Key
     usedPreKeyId?: number;
     initializationVector: string;
     ciphertext: string;
@@ -49,28 +46,23 @@ type E2EEMetadata = {
 const STORAGE_KEYS = {
     IDENTITY_KEY: 'e2ee_identity_key_pair',
     SIGNING_KEY: 'e2ee_signing_key_pair',
+    SIGNED_PRE_KEY: 'e2ee_signed_pre_key_pair', // Cần lưu cái này!
     KEYS_UPLOADED: 'e2ee_keys_uploaded_status_'
 };
 
 class E2EEService {
-    private sessionCache: Map<string, boolean> = new Map();
-    // Dùng QuickCryptoKey/CryptoKeyPair cho type của lớp
-    private keyCache: Map<string, QuickCryptoKey> = new Map();
+    private sessionCache: Map<string, QuickCryptoKey> = new Map();
+    private readonly MIN_PREKEYS_TO_UPLOAD = 50;
 
-    private readonly MIN_PREKEYS_TO_UPLOAD = 100;
     private identityKeyPair?: QuickCryptoKeyPair;
     private signingKeyPair?: QuickCryptoKeyPair;
+    private signedPreKeyPair?: QuickCryptoKeyPair; // Cặp khoá SignedPreKey của chính mình
     private userId?: string;
 
-    /**
-     * Khởi tạo Key (load từ storage hoặc sinh mới), sau đó kiểm tra và upload lên server nếu chưa có.
-     */
     async initAndCheckUpload(userId: string) {
         this.setUserId(userId);
-        // Bước 1: Đảm bảo có Private Key trong bộ nhớ máy (LƯU TRỮ VĨNH VIỄN TRÊN MÁY CLIENT)
         await this.loadKeys();
 
-        // Bước 2: Kiểm tra Server đã có Public Key tương ứng chưa
         const uploadedStatus = await AsyncStorage.getItem(STORAGE_KEYS.KEYS_UPLOADED + userId);
         if (uploadedStatus !== 'true') {
             try {
@@ -82,30 +74,27 @@ class E2EEService {
         }
     }
 
-    /**
-     * Tải Identity KeyPair và Signing KeyPair từ AsyncStorage.
-     */
     private async loadKeys(): Promise<void> {
         try {
             const storedIdentity = await AsyncStorage.getItem(STORAGE_KEYS.IDENTITY_KEY);
             const storedSigning = await AsyncStorage.getItem(STORAGE_KEYS.SIGNING_KEY);
+            const storedSignedPreKey = await AsyncStorage.getItem(STORAGE_KEYS.SIGNED_PRE_KEY);
 
             if (storedIdentity && storedSigning) {
-                const identityJson = JSON.parse(storedIdentity);
-                this.identityKeyPair = await importKeyPair(identityJson);
-
-                const signingJson = JSON.parse(storedSigning);
-                this.signingKeyPair = await importSigningKeyPair(signingJson);
+                this.identityKeyPair = await importKeyPair(JSON.parse(storedIdentity));
+                this.signingKeyPair = await importSigningKeyPair(JSON.parse(storedSigning));
+                if (storedSignedPreKey) {
+                    this.signedPreKeyPair = await importKeyPair(JSON.parse(storedSignedPreKey));
+                }
             } else {
-                // Lần đầu tiên: Sinh mới và lưu lại Private Key
+                // Tạo mới nếu chưa có
                 this.identityKeyPair = await generateKeyPair();
                 this.signingKeyPair = await generateSigningKeyPair();
+                // SignedPreKey sẽ được tạo ở bước upload
                 await this.saveKeysToStorage();
             }
         } catch (e) {
-            // Khi Web Crypto không có (lỗi ReferenceError), nó sẽ bị bắt ở đây
-            console.error("[E2EE] Failed to load keys from storage, generating temporary keys:", e);
-            // Ném lại lỗi để useChatStore có thể bắt và không cố gắng dùng e2eeService
+            console.error("[E2EE] Key loading error", e);
             throw e;
         }
     }
@@ -113,12 +102,10 @@ class E2EEService {
     private async saveKeysToStorage() {
         if (!this.identityKeyPair || !this.signingKeyPair) return;
 
-        // FIX LỖI 2345: Thêm Assertion cho thuộc tính Key (vì CryptoKeyPair type chưa hoàn chỉnh)
         const identityExport = {
             publicKey: await exportPublicKey(this.identityKeyPair.publicKey as QuickCryptoKey),
             privateKey: await exportPrivateKey(this.identityKeyPair.privateKey as QuickCryptoKey)
         };
-
         const signingExport = {
             publicKey: await exportPublicKey(this.signingKeyPair.publicKey as QuickCryptoKey),
             privateKey: await exportPrivateKey(this.signingKeyPair.privateKey as QuickCryptoKey)
@@ -126,32 +113,36 @@ class E2EEService {
 
         await AsyncStorage.setItem(STORAGE_KEYS.IDENTITY_KEY, JSON.stringify(identityExport));
         await AsyncStorage.setItem(STORAGE_KEYS.SIGNING_KEY, JSON.stringify(signingExport));
+
+        if (this.signedPreKeyPair) {
+            const signedPreKeyExport = {
+                publicKey: await exportPublicKey(this.signedPreKeyPair.publicKey as QuickCryptoKey),
+                privateKey: await exportPrivateKey(this.signedPreKeyPair.privateKey as QuickCryptoKey)
+            };
+            await AsyncStorage.setItem(STORAGE_KEYS.SIGNED_PRE_KEY, JSON.stringify(signedPreKeyExport));
+        }
     }
 
-    /**
-     * Sinh PreKey Bundle (chỉ Public Key) và Upload lên Server.
-     */
     async generateKeyBundleAndUpload(userId: string): Promise<void> {
         if (!this.identityKeyPair) await this.loadKeys();
 
-        // Thêm Assertion cho thuộc tính Key
         const identityPublicKeyBase64 = await exportPublicKey(this.identityKeyPair!.publicKey as QuickCryptoKey);
 
-        const signedPreKeyKeyPair = await generateKeyPair();
-        const signedPreKeyId = generatePreKeyId();
-        // Thêm Assertion cho thuộc tính Key
-        const signedPreKeyPublicKeyBase64 = await exportPublicKey(signedPreKeyKeyPair.publicKey as QuickCryptoKey);
+        // Tạo và lưu Signed PreKey
+        this.signedPreKeyPair = await generateKeyPair();
+        await this.saveKeysToStorage(); // QUAN TRỌNG: Lưu Private Key của SignedPreKey
 
-        // Ký Identity Public Key bằng Signing Private Key
+        const signedPreKeyId = generatePreKeyId();
+        const signedPreKeyPublicKeyBase64 = await exportPublicKey(this.signedPreKeyPair.publicKey as QuickCryptoKey);
+
         const identityPublicKeyBuffer = base64ToArrayBuffer(identityPublicKeyBase64);
-        // Thêm Assertion cho thuộc tính Key
+        // Ký vào Identity Key (hoặc chính SignedPreKey Public Key tuỳ protocol, ở đây ký Identity theo code cũ)
         const signedPreKeySignatureBase64 = await signData(this.signingKeyPair!.privateKey as QuickCryptoKey, identityPublicKeyBuffer);
 
         const oneTimePreKeys: Record<number, string> = {};
         for (let i = 0; i < this.MIN_PREKEYS_TO_UPLOAD; i++) {
             const otKeypair = await generateKeyPair();
             const otKeyId = generatePreKeyId();
-            // Thêm Assertion cho thuộc tính Key
             oneTimePreKeys[otKeyId] = await exportPublicKey(otKeypair.publicKey as QuickCryptoKey);
         }
 
@@ -167,105 +158,92 @@ class E2EEService {
     }
 
     /**
-     * Thiết lập phiên E2EE (X3DH giả định) với người nhận.
-     */
-    async establishSession(receiverId: string): Promise<{ isNewSession: boolean, usedPreKeyId?: number }> {
-        const isEstablished = this.sessionCache.get(receiverId);
-
-        if (isEstablished) {
-            return { isNewSession: false };
-        }
-
-        try {
-            // Lấy Public Key Bundle của người nhận
-            const res = await instance.get<PreKeyBundleResponse>(`/api/v1/keys/fetch/${receiverId}`);
-            const data = res.data;
-
-            if (data.identityPublicKey) {
-                // Tính toán Shared Secret/Session Key
-                const sessionKey = await getSessionKey(receiverId);
-                this.keyCache.set(receiverId, sessionKey);
-                this.sessionCache.set(receiverId, true);
-                return { isNewSession: true, usedPreKeyId: data.oneTimePreKeyId };
-            }
-
-        } catch (e: any) {
-            if (e.response && e.response.status === 404) {
-                // Nếu chính mình chưa upload key (404) -> upload ngay
-                if (receiverId === this.userId) {
-                    await this.generateKeyBundleAndUpload(receiverId);
-                    await AsyncStorage.setItem(STORAGE_KEYS.KEYS_UPLOADED + receiverId, 'true');
-                    return { isNewSession: true, usedPreKeyId: 0 };
-                }
-            }
-            console.warn(`[E2EE] Could not fetch keys for ${receiverId}`, e.message);
-        }
-
-        throw new Error(`Cannot establish E2EE session with ${receiverId}. No key bundle available.`);
-    }
-
-    /**
-     * Mã hóa nội dung bằng AES-GCM sử dụng Session Key.
+     * MÃ HOÁ (SENDER SIDE)
+     * 1. Lấy Bundle của Receiver.
+     * 2. Tạo Ephemeral Key.
+     * 3. Tính Secret = ECDH(EphemeralPriv, ReceiverSignedPreKeyPub). (Simplified X3DH)
+     * 4. Encrypt.
      */
     async encrypt(receiverId: string, content: string): Promise<E2EEMetadata> {
-        await this.establishSession(receiverId);
-
-        const sessionKey = this.keyCache.get(receiverId);
-        if (!sessionKey) {
-            throw new Error("Session key not available for encryption.");
+        // 1. Fetch Bundle
+        let bundle: PreKeyBundleResponse;
+        try {
+            const res = await instance.get<PreKeyBundleResponse>(`/api/v1/keys/fetch/${receiverId}`);
+            bundle = res.data;
+        } catch (e: any) {
+            throw new Error(`Cannot fetch keys for ${receiverId}`);
         }
 
-        const [ivBase64, ciphertextBase64] = await encryptAES(content, sessionKey);
-        const dummyEphemeralKey = Math.random().toString(36).substring(2, 8);
+        if (!bundle.signedPreKeyPublicKey) throw new Error("Invalid Bundle");
 
+        // 2. Import Receiver's Signed PreKey
+        const receiverSignedPreKey = await importPublicKey(bundle.signedPreKeyPublicKey);
+
+        // 3. Generate Ephemeral Key Pair for this message session
+        const ephemeralKeyPair = await generateKeyPair();
+        const senderEphemeralKeyPub = await exportPublicKey(ephemeralKeyPair.publicKey as QuickCryptoKey);
+
+        // 4. Derive Shared Session Key
+        const sessionKey = await deriveSessionKey(
+            ephemeralKeyPair.privateKey as QuickCryptoKey,
+            receiverSignedPreKey
+        );
+
+        // 5. Encrypt Content
+        const [ivBase64, ciphertextBase64] = await encryptAES(content, sessionKey);
+
+        // 6. Return Payload
         return {
-            senderEphemeralKey: dummyEphemeralKey,
+            senderEphemeralKey: senderEphemeralKeyPub, // Real Public Key used for derivation
             initializationVector: ivBase64,
-            ciphertext: ciphertextBase64
+            ciphertext: ciphertextBase64,
+            usedPreKeyId: bundle.signedPreKeyId
         };
     }
 
     /**
-     * Giải mã tin nhắn đã mã hóa E2EE.
+     * GIẢI MÃ (RECEIVER SIDE)
+     * 1. Lấy Sender Ephemeral Public Key từ tin nhắn.
+     * 2. Lấy Signed PreKey Private Key của chính mình (từ storage).
+     * 3. Tính Secret = ECDH(MySignedPreKeyPriv, SenderEphemeralPub).
+     * 4. Decrypt.
      */
     async decrypt(msg: ChatMessage): Promise<string> {
-        if (!this.identityKeyPair) await this.loadKeys();
+        if (!this.signedPreKeyPair) await this.loadKeys();
 
-        const partnerId = msg.senderId.toString();
-        // Thiết lập phiên nếu chưa có (lấy lại Session Key)
-        await this.establishSession(partnerId);
-
-        const sessionKey = this.keyCache.get(partnerId);
-        if (!sessionKey) {
-            return msg.content || "!! Decryption Failed: No Session Key !!";
-        }
-
-        let metadata: E2EEMetadata;
-        try {
-            metadata = JSON.parse(msg.content) as E2EEMetadata;
-            if (!metadata.ciphertext || !metadata.initializationVector) {
-                return msg.content || "";
-            }
-        } catch (e) {
-            return msg.content || "";
+        // Kiểm tra dữ liệu cần thiết
+        if (!msg.senderEphemeralKey || !msg.initializationVector || !msg.content) {
+            return msg.content || ""; // Fallback plaintext
         }
 
         try {
+            // 1. Import Sender's Ephemeral Public Key
+            const senderEphemeralPub = await importPublicKey(msg.senderEphemeralKey);
+
+            // 2. Derive Shared Session Key using MY private key
+            // Note: In Simplified X3DH, we use SignedPreKey. 
+            // In full implementation, we check `usedPreKeyId` to know which key to use.
+            // Assuming simplified flow where we use current SignedPreKey.
+            const sessionKey = await deriveSessionKey(
+                this.signedPreKeyPair!.privateKey as QuickCryptoKey,
+                senderEphemeralPub
+            );
+
+            // 3. Decrypt
             const decryptedContent = await decryptAES(
-                metadata.ciphertext,
-                metadata.initializationVector,
+                msg.content, // Content should be ONLY ciphertext
+                msg.initializationVector,
                 sessionKey
             );
+
             return decryptedContent;
+
         } catch (e) {
             console.error("[E2EE] Decryption error", e);
-            return "!! Decryption Failed: Bad Ciphertext/Key !!";
+            return "!! Decryption Failed !!";
         }
     }
 
-    /**
-     * Thiết lập ID của người dùng hiện tại.
-     */
     setUserId(userId: string) {
         this.userId = userId;
     }

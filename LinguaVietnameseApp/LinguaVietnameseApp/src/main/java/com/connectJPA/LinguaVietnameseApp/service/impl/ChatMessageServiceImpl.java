@@ -73,6 +73,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         response.setTranslations(entity.getTranslations()); 
         response.setPurpose(purpose);
         
+        // Ensure E2EE metadata is returned to FE
         response.setSenderEphemeralKey(entity.getSenderEphemeralKey());
         response.setUsedPreKeyId(entity.getUsedPreKeyId());
         response.setInitializationVector(entity.getInitializationVector());
@@ -111,6 +112,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
         ChatMessage message = chatMessageMapper.toEntity(request);
         
+        // Strict mapping for E2EE fields. 
+        // Content should be the ciphertext string sent by FE, not a JSON blob.
         message.setSenderEphemeralKey(request.getSenderEphemeralKey());
         message.setUsedPreKeyId(request.getUsedPreKeyId());
         message.setInitializationVector(request.getInitializationVector());
@@ -125,6 +128,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
         message.setTranslations(new HashMap<>());
+        message.setRead(false);
 
         ChatMessage savedMessage = chatMessageRepository.save(message);
         room.setUpdatedAt(OffsetDateTime.now());
@@ -152,7 +156,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             event.put("type", "NEW_MESSAGE_EVENT");
             event.put("messageId", savedMessage.getId().getChatMessageId().toString());
             event.put("roomId", roomId.toString());
-            event.put("content", savedMessage.getContent()); // LƯU Ý: Đây là Ciphertext
+            event.put("content", savedMessage.getContent()); // Ciphertext if encrypted
             event.put("senderId", savedMessage.getSenderId().toString());
             
             redisTemplate.convertAndSend("chat_events", event);
@@ -166,7 +170,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                         "screen", "TabApp", "ChatStack", "GroupChatScreen",
                         "roomId", roomId.toString(), "initialFocusMessageId", response.getChatMessageId().toString()
                     );
-                    String contentForNotification = (response.getContent() != null && !response.getContent().isEmpty()) ? "Encrypted Message" : "You sent an attachment";
+                    
+                    boolean isEncrypted = savedMessage.getSenderEphemeralKey() != null;
+                    String contentForNotification = isEncrypted ? "Encrypted Message" : 
+                                                (response.getContent() != null && !response.getContent().isEmpty()) ? response.getContent() : "You sent an attachment";
+                    
                     String payloadJson = gson.toJson(dataPayload);
                     NotificationRequest nreq = NotificationRequest.builder().userId(uId).title("New message").content(contentForNotification).type("CHAT_MESSAGE").payload(payloadJson).build();
                     notificationService.createPushNotification(nreq);
@@ -222,10 +230,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             long minutesSinceSent = ChronoUnit.MINUTES.between(message.getId().getSentAt(), OffsetDateTime.now());
             if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
 
+            // Note: For E2EE, client must re-encrypt and send the new ciphertext as newContent
             message.setContent(newContent);
             message.setTranslations(new HashMap<>()); 
-            
-            // LƯU Ý: Khi Edit Message, Client phải gửi lại Ciphertext đã được mã hóa lại
             
             message.setUpdatedAt(OffsetDateTime.now());
             message = chatMessageRepository.save(message);

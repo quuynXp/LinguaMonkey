@@ -90,37 +90,29 @@ jobs:
 
 
 
-      # --- BƯỚC MỚI: Chỉ Inject CMake version vào build.gradle ---
-
-      - name: 💉 Force CMake 3.28.0 for Subprojects
+      - name: 💉 Force CMake 3.28.0 for Subprojects (Fix Timing)
 
         run: |
 
           echo "💉 Injecting CMake version enforcement into build.gradle..."
 
-          # Dùng cat và EOF để thêm đoạn mã Gradle vào cuối build.gradle
-
           cat <<EOF >> android/build.gradle
 
           
 
-          // FORCE CMAKE VERSION FOR ALL PROJECTS (FIXES 3.22.1 CONFLICT)
+          // FORCE CMAKE VERSION FOR ALL SUBPROJECTS (FIXES TIMING ISSUE)
 
-          allprojects {
+          subprojects {
 
-              afterEvaluate { project ->
+              if (project.hasProperty("android")) {
 
-                  if (project.hasProperty("android")) {
+                  android {
 
-                      android {
+                      externalNativeBuild {
 
-                          externalNativeBuild {
+                          cmake {
 
-                              cmake {
-
-                                  version "3.28.0"
-
-                              }
+                              version "3.28.0"
 
                           }
 

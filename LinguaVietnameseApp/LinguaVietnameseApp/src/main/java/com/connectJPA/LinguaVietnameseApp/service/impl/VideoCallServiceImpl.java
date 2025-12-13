@@ -34,8 +34,10 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -111,7 +113,6 @@ public class VideoCallServiceImpl implements VideoCallService {
 
         videoCallParticipantRepository.saveAll(participants);
         
-        // FIX: Set participants to entity to avoid NPE in mapper
         videoCall.setParticipants(participants);
 
         return videoCallMapper.toResponse(videoCall);
@@ -157,23 +158,30 @@ public class VideoCallServiceImpl implements VideoCallService {
 
             List<UUID> participantIds = request.getParticipantIds();
             
-            // Logic lấy member từ room nếu request không gửi list participant
             if ((participantIds == null || participantIds.isEmpty()) && request.getRoomId() != null) {
                 List<RoomMember> roomMembers = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(request.getRoomId());
                 if (roomMembers != null && !roomMembers.isEmpty()) {
                     participantIds = roomMembers.stream()
                             .map(m -> m.getId().getUserId())
-                            .filter(uid -> !uid.equals(callerId))
                             .collect(Collectors.toList());
                 }
             }
 
             if (participantIds == null || participantIds.isEmpty()) {
-                // Nếu vẫn rỗng sau khi query thì báo lỗi client thay vì crash 500
                 throw new AppException(ErrorCode.INVALID_REQUEST);
             }
 
-            // Tạo phòng tạm cho cuộc gọi (Call Room)
+            // FIX: Sử dụng Set để lọc trùng và loại bỏ callerId khỏi danh sách Guests
+            // Nếu không loại bỏ callerId, sẽ xảy ra lỗi Duplicate Key vì caller đã được add làm HOST
+            Set<UUID> uniqueParticipantIds = new HashSet<>(participantIds);
+            uniqueParticipantIds.remove(callerId);
+
+            if (uniqueParticipantIds.isEmpty()) {
+                // Trường hợp room chỉ có 1 mình người gọi
+                // Tùy nghiệp vụ, có thể throw lỗi hoặc cho phép gọi 1 mình (test)
+                // Ở đây cho phép gọi nhưng không có guest nào
+            }
+
             Room callRoom = Room.builder()
                     .creatorId(callerId)
                     .topic(RoomTopic.WORLD)
@@ -207,8 +215,8 @@ public class VideoCallServiceImpl implements VideoCallService {
                     .build();
             participants.add(host);
 
-            // Add Guests
-            for (UUID userId : participantIds) {
+            // Add Guests (đã lọc)
+            for (UUID userId : uniqueParticipantIds) {
                 VideoCallParticipant participant = VideoCallParticipant.builder()
                         .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
                         .videoCall(videoCall)
@@ -221,34 +229,31 @@ public class VideoCallServiceImpl implements VideoCallService {
             }
             videoCallParticipantRepository.saveAll(participants);
 
-            // CRITICAL FIX: Set lại participants vào entity videoCall để Mapper có dữ liệu
-            // Nếu không set dòng này, mapper.toResponse sẽ gặp NullPointerException khi map list participants
             videoCall.setParticipants(participants);
 
             VideoCallResponse response = videoCallMapper.toResponse(videoCall);
 
             Map<String, Object> socketPayload = new HashMap<>();
             socketPayload.put("type", "INCOMING_CALL");
-            socketPayload.put("roomId", roomSaved.getRoomId().toString()); // ID của phòng gọi (để user join vào)
+            socketPayload.put("roomId", roomSaved.getRoomId().toString());
             socketPayload.put("videoCallId", videoCall.getVideoCallId());
             socketPayload.put("callerId", callerId);
             socketPayload.put("roomName", "Group Call");
 
-            // Gửi socket notification vào Room Chat gốc (Group Chat)
             if (request.getRoomId() != null) {
                  messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
             } else {
-                 for (UUID userId : participantIds) {
-                     try {
-                         messagingTemplate.convertAndSendToUser(
+                 for (UUID userId : uniqueParticipantIds) {
+                      try {
+                          messagingTemplate.convertAndSendToUser(
                             userId.toString(),
                             "/queue/notifications",
                             socketPayload
-                         );
-                     } catch (Exception e) {
+                          );
+                      } catch (Exception e) {
                         log.warn("Failed to notify user {}", userId);
-                     }
-                }
+                      }
+                 }
             }
 
             return response;
@@ -366,7 +371,6 @@ public class VideoCallServiceImpl implements VideoCallService {
 
                 List<VideoCallParticipant> participants = videoCallParticipantRepository.findByVideoCall_VideoCallId(id);
                 
-                // Fix: Set participants to entity for accurate mapping if needed later
                 videoCall.setParticipants(participants);
 
                 for (VideoCallParticipant p : participants) {
