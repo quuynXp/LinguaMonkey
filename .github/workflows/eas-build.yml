@@ -90,6 +90,56 @@ jobs:
 
 
 
+      # --- BƯỚC MỚI: Cài CMake 3.28.1 và Ép sử dụng ---
+
+      - name: 🔧 Install & Force CMake 3.28.1
+
+        run: |
+
+          echo "⬇️ Installing CMake 3.28.1..."
+
+          echo "y" | sudo /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "cmake;3.28.1"
+
+          
+
+          echo "💉 Injecting CMake version enforcement into build.gradle..."
+
+          cat <<EOF >> android/build.gradle
+
+          
+
+          // FORCE CMAKE VERSION FOR ALL PROJECTS
+
+          allprojects {
+
+              afterEvaluate { project ->
+
+                  if (project.hasProperty("android")) {
+
+                      android {
+
+                          externalNativeBuild {
+
+                              cmake {
+
+                                  version "3.28.1"
+
+                              }
+
+                          }
+
+                      }
+
+                  }
+
+              }
+
+          }
+
+          EOF
+
+
+
       - name: 🚀 Configure Gradle Memory (Fix KSP/JVM Args Newline)
 
         run: |
@@ -138,11 +188,11 @@ jobs:
 
             ~/.gradle/wrapper
 
-          key: ${{ runner.os }}-gradle-fe-v4-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v5-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
 
           restore-keys: |
 
-            ${{ runner.os }}-gradle-fe-v4-
+            ${{ runner.os }}-gradle-fe-v5-
 
 
 

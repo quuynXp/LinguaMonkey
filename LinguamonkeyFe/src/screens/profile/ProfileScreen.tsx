@@ -20,7 +20,6 @@ import { useUserStore } from '../../stores/UserStore';
 import { gotoTab } from '../../utils/navigationRef';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import {
-  Character3dResponse,
   FriendshipResponse,
 } from '../../types/dto';
 import { useWallet } from '../../hooks/useWallet';
@@ -42,56 +41,7 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
 
-  const chartData = useMemo(() => {
-    if (!historyData) return [];
-
-    const today = new Date();
-    const numWeeks = 16;
-    const startDate = new Date(today);
-    startDate.setDate(today.getDate() - (numWeeks * 7));
-    const dayOfWeek = startDate.getDay();
-    startDate.setDate(startDate.getDate() - dayOfWeek);
-
-    const weeks = [];
-    let currentWeek = [];
-
-    const itrDate = new Date(startDate);
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() + (6 - today.getDay()));
-
-    while (itrDate <= endDate) {
-      const dateStr = itrDate.toISOString().split('T')[0];
-
-      let count = 0;
-
-      if (historyData.dailyActivity && typeof historyData.dailyActivity === 'object') {
-        count = historyData.dailyActivity[dateStr] || 0;
-      }
-      else if (historyData[dateStr] && typeof historyData[dateStr] === 'number') {
-        count = historyData[dateStr];
-      }
-      else if (historyData.sessions && Array.isArray(historyData.sessions)) {
-        const sessions = historyData.sessions.filter((s: any) => {
-          if (!s.date) return false;
-          return s.date.startsWith(dateStr);
-        });
-        count = sessions.reduce((acc: number, curr: any) => acc + (Math.floor((curr.duration || 0) / 60)), 0);
-      }
-
-      currentWeek.push({ date: dateStr, count });
-
-      if (currentWeek.length === 7) {
-        weeks.push(currentWeek);
-        currentWeek = [];
-      }
-
-      itrDate.setDate(itrDate.getDate() + 1);
-    }
-
-    if (currentWeek.length > 0) weeks.push(currentWeek);
-
-    return weeks;
-  }, [historyData]);
+  const [viewDate, setViewDate] = useState(new Date());
 
   const getLevelColor = (count: number) => {
     if (count === 0) return '#EBEDF0';
@@ -105,6 +55,54 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
     showToast({ type: 'info', message: `${date}: ${count} mins activity` });
   };
 
+  const handlePrevMonth = () => {
+    setViewDate(prev => {
+      const newDate = new Date(prev);
+      newDate.setMonth(newDate.getMonth() - 1);
+      return newDate;
+    });
+  };
+
+  const handleNextMonth = () => {
+    const today = new Date();
+    if (viewDate.getMonth() === today.getMonth() && viewDate.getFullYear() === today.getFullYear()) return;
+
+    setViewDate(prev => {
+      const newDate = new Date(prev);
+      newDate.setMonth(newDate.getMonth() + 1);
+      return newDate;
+    });
+  };
+
+  const monthData = useMemo(() => {
+    if (!historyData) return [];
+
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const days = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+      let count = 0;
+      if (historyData.dailyActivity && typeof historyData.dailyActivity === 'object') {
+        count = historyData.dailyActivity[dateStr] || 0;
+      }
+      else if (historyData[dateStr] && typeof historyData[dateStr] === 'number') {
+        count = historyData[dateStr];
+      }
+
+      days.push({ date: dateStr, count, dayNum: day });
+    }
+    return days;
+  }, [historyData, viewDate]);
+
+  const isCurrentMonth = useMemo(() => {
+    const today = new Date();
+    return viewDate.getMonth() === today.getMonth() && viewDate.getFullYear() === today.getFullYear();
+  }, [viewDate]);
+
   if (isLoading) {
     return (
       <View style={[styles.heatmapContainer, { height: 180, justifyContent: 'center' }]}>
@@ -117,35 +115,44 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
     <View style={styles.heatmapContainer}>
       <View style={styles.heatmapHeader}>
         <Text style={styles.sectionTitle}>{t('profile.activity')}</Text>
-        <Text style={styles.heatmapSubtext}>{t('common.last_months', { count: 4 })}</Text>
+
+        <View style={styles.monthNav}>
+          <TouchableOpacity onPress={handlePrevMonth} style={styles.navBtn}>
+            <Icon name="chevron-left" size={24} color="#6B7280" />
+          </TouchableOpacity>
+          <Text style={styles.monthLabel}>
+            {viewDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </Text>
+          <TouchableOpacity
+            onPress={handleNextMonth}
+            style={[styles.navBtn, isCurrentMonth && styles.navBtnDisabled]}
+            disabled={isCurrentMonth}
+          >
+            <Icon name="chevron-right" size={24} color={isCurrentMonth ? "#E5E7EB" : "#6B7280"} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.heatmapGraph}>
-          {chartData.map((week, wIndex) => (
-            <View key={wIndex} style={styles.heatmapColumn}>
-              {week.map((day) => (
-                <Pressable
-                  key={day.date}
-                  style={[
-                    styles.heatmapCell,
-                    { backgroundColor: getLevelColor(day.count) }
-                  ]}
-                  onPress={() => handleDayPress(day.date, day.count)}
-                />
-              ))}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={styles.heatmapGrid}>
+        {monthData.map((day) => (
+          <Pressable
+            key={day.date}
+            style={[
+              styles.heatmapCellMonth,
+              { backgroundColor: getLevelColor(day.count) }
+            ]}
+            onPress={() => handleDayPress(day.date, day.count)}
+          />
+        ))}
+      </View>
 
       <View style={styles.heatmapLegend}>
         <Text style={styles.legendText}>{t('common.less')}</Text>
-        <View style={[styles.heatmapCell, { backgroundColor: '#EBEDF0' }]} />
-        <View style={[styles.heatmapCell, { backgroundColor: '#9BE9A8' }]} />
-        <View style={[styles.heatmapCell, { backgroundColor: '#40C463' }]} />
-        <View style={[styles.heatmapCell, { backgroundColor: '#30A14E' }]} />
-        <View style={[styles.heatmapCell, { backgroundColor: '#216E39' }]} />
+        <View style={[styles.heatmapCellLegend, { backgroundColor: '#EBEDF0' }]} />
+        <View style={[styles.heatmapCellLegend, { backgroundColor: '#9BE9A8' }]} />
+        <View style={[styles.heatmapCellLegend, { backgroundColor: '#40C463' }]} />
+        <View style={[styles.heatmapCellLegend, { backgroundColor: '#30A14E' }]} />
+        <View style={[styles.heatmapCellLegend, { backgroundColor: '#216E39' }]} />
         <Text style={styles.legendText}>{t('common.more')}</Text>
       </View>
     </View>
@@ -228,9 +235,6 @@ const InfoRow = ({ icon, label, value, copyable = false }: { icon: string; label
     </TouchableOpacity>
   );
 };
-
-// Loại bỏ SimpleUserAvatar và logic cố định Google Drive URL.
-// Chỉ sử dụng URL thô hoặc fallback qua getAvatarSource (dành cho ảnh mặc định)
 
 const CombinedFriendsSection = () => {
   const { t } = useTranslation();
@@ -332,7 +336,6 @@ const CombinedFriendsSection = () => {
         onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: userToDisplay.userId })}
       >
         <View style={{ position: 'relative', width: 50, height: 50 }}>
-          {/* FIX: Xoá SimpleUserAvatar, dùng trực tiếp Image với URL thô (hoặc getAvatarSource cho default) */}
           <Image
             source={userToDisplay.avatarUrl ? { uri: userToDisplay.avatarUrl } : getAvatarSource(null, userToDisplay.gender)}
             style={{ width: 50, height: 50, borderRadius: 25 }}
@@ -401,36 +404,19 @@ const CombinedFriendsSection = () => {
 const ProfileScreen: React.FC = () => {
   const { t } = useTranslation();
   const userStore = useUserStore();
-  const { user, fetchCharacter3d, updateUserAvatar, refreshUserProfile } = userStore;
+  const { user, updateUserAvatar, refreshUserProfile } = userStore;
   const { data: walletData } = useWallet().useWalletBalance(user?.userId);
   const balance = walletData?.balance || 0;
   const [uploading, setUploading] = useState(false);
-  const [character3d, setCharacter3d] = useState<Character3dResponse | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useHeartbeat(true);
 
   useFocusEffect(useCallback(() => { refreshUserProfile(); }, []));
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadCharacter3d = async () => {
-      if (user?.userId) {
-        try {
-          const data = await fetchCharacter3d();
-          if (isMounted) setCharacter3d(data);
-        } catch (e) { console.error('Failed to fetch 3D character data:', e); }
-      }
-    };
-    loadCharacter3d();
-    return () => { isMounted = false; };
-  }, [user?.userId, fetchCharacter3d]);
-
   const onRefresh = async () => {
     setIsRefreshing(true);
     await refreshUserProfile();
-    const charData = await fetchCharacter3d();
-    setCharacter3d(charData);
     setIsRefreshing(false);
   };
 
@@ -453,21 +439,16 @@ const ProfileScreen: React.FC = () => {
   const handleUploadStart = useCallback(() => setUploading(true), []);
   const handleUploadEnd = useCallback(() => setUploading(false), []);
 
-  // FIX: Xóa hàm helper getFixedAvatarUrl theo yêu cầu
-
   const renderSingleHeader = () => {
-    // FIX: Sử dụng URL thô ({ uri: URL }) cho ảnh động. 
-    // Chỉ dùng getAvatarSource để lấy default nếu URL rỗng.
     const rawAvatarUrl = user?.avatarUrl;
     const singleAvatarSource = rawAvatarUrl ? { uri: rawAvatarUrl } : getAvatarSource(null, user?.gender);
 
     const vip = user?.vip || userStore.vip;
-    const show3D = character3d && character3d.modelUrl && character3d.modelUrl.length > 0;
 
     return (
       <View style={styles.singleHeader}>
         <View style={styles.characterContainer}>
-          {show3D ? <Image source={{ uri: character3d!.modelUrl }} style={styles.characterImage} resizeMode="contain" /> : <Image source={singleAvatarSource} style={styles.avatarImage} />}
+          <Image source={singleAvatarSource} style={styles.avatarImage} />
           {user?.country && (
             <View style={styles.flagBadge}>
               <Text style={styles.flagTextSmall}>{getCountryFlag(user?.country)}</Text>
@@ -611,11 +592,15 @@ const styles = createScaledSheet({
   expBarBg: { height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden', marginTop: 6 },
   expBarFill: { height: 8, backgroundColor: '#4F46E5', borderRadius: 4 },
   heatmapContainer: { backgroundColor: '#fff', padding: 16, borderRadius: 20, marginBottom: 16, elevation: 2, minHeight: 180 },
-  heatmapHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
+  heatmapHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   heatmapSubtext: { fontSize: 12, color: '#6B7280' },
-  heatmapGraph: { flexDirection: 'row', gap: 4, paddingBottom: 4 },
-  heatmapColumn: { gap: 4, justifyContent: 'flex-start' },
-  heatmapCell: { width: 12, height: 12, borderRadius: 2 },
+  monthNav: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12, paddingHorizontal: 4 },
+  navBtn: { padding: 4 },
+  navBtnDisabled: { opacity: 0.3 },
+  monthLabel: { fontSize: 13, fontWeight: '600', color: '#374151', marginHorizontal: 8, minWidth: 80, textAlign: 'center' },
+  heatmapGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-start', paddingVertical: 8 },
+  heatmapCellMonth: { width: (width - 64 - 42) / 7, height: (width - 64 - 42) / 7, borderRadius: 4, aspectRatio: 1 },
+  heatmapCellLegend: { width: 12, height: 12, borderRadius: 2 },
   heatmapLegend: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 4, justifyContent: 'flex-end' },
   legendText: { fontSize: 10, color: '#666', marginHorizontal: 4 },
   card: { backgroundColor: '#fff', padding: 16, borderRadius: 20, marginBottom: 16, elevation: 2 },
