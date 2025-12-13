@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
     ActivityIndicator,
     FlatList,
@@ -22,7 +22,6 @@ import { useToast } from "../../utils/useToast";
 import { MemberResponse, UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
 import { useAppStore } from "../../stores/appStore";
 import FileUploader from "../common/FileUploader";
@@ -33,8 +32,8 @@ type UIMessage = {
     id: string;
     sender: 'user' | 'other';
     timestamp: string;
-    text: string; // Nội dung hiển thị (Decrypted Content)
-    content?: string; // Nội dung gốc (Ciphertext hoặc Plaintext)
+    text: string;
+    content?: string;
     mediaUrl?: string;
     messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
     translatedText?: string;
@@ -48,7 +47,6 @@ type UIMessage = {
     senderProfile?: UserProfileResponse;
     roomId?: string;
     isDeleted?: boolean;
-    // Thêm trường E2EE để biết đây là tin nhắn mã hóa hay không
     isEncrypted?: boolean;
 };
 
@@ -62,12 +60,6 @@ interface ChatInnerViewProps {
     initialFocusMessageId?: string | null;
     members?: MemberResponse[];
 }
-
-type LanguageOption = {
-    code: string;
-    name: string;
-    flag: React.JSX.Element | null;
-};
 
 const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en') => {
     const date = new Date(sentAt);
@@ -93,73 +85,6 @@ const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile }: any
     );
 };
 
-const ChatLanguageSelector = ({
-    selectedLanguage,
-    onSelectLanguage,
-    availableLanguages,
-    isAutoTranslateOn,
-    onToggleAuto
-}: {
-    selectedLanguage: LanguageOption;
-    onSelectLanguage: (lang: LanguageOption) => void;
-    availableLanguages: LanguageOption[];
-    isAutoTranslateOn: boolean;
-    onToggleAuto: () => void;
-}) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    const canExpand = availableLanguages.length > 1;
-
-    if (!availableLanguages || availableLanguages.length === 0) return null;
-
-    return (
-        <View style={styles.languageSelectorContainer}>
-            <TouchableOpacity
-                style={[styles.autoSwitch, isAutoTranslateOn && styles.autoSwitchActive]}
-                onPress={onToggleAuto}
-            >
-                <Icon name={isAutoTranslateOn ? "g-translate" : "translate"} size={14} color={isAutoTranslateOn ? "#FFF" : "#6B7280"} style={{ marginRight: 4 }} />
-                <Text style={[styles.autoText, isAutoTranslateOn && { color: '#FFF' }]}>
-                    {isAutoTranslateOn ? "Auto: ON" : "Auto: OFF"}
-                </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-                style={[styles.selectedLanguageButton, !canExpand && { paddingRight: 8 }]}
-                onPress={() => canExpand && setIsExpanded(!isExpanded)}
-                activeOpacity={canExpand ? 0.7 : 1}
-                disabled={!canExpand}
-            >
-                <View style={styles.languageFlagWrapper}>
-                    {selectedLanguage.flag}
-                </View>
-                {canExpand && (
-                    <Icon name={isExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={20} color="#6B7280" style={{ marginLeft: 0 }} />
-                )}
-            </TouchableOpacity>
-
-            {isExpanded && canExpand && (
-                <View style={styles.languageDropdown}>
-                    {availableLanguages.filter(lang => lang.code !== selectedLanguage.code).map((lang) => (
-                        <TouchableOpacity
-                            key={lang.code}
-                            style={styles.languageItem}
-                            onPress={() => {
-                                onSelectLanguage(lang);
-                                setIsExpanded(false);
-                            }}
-                        >
-                            <View style={styles.languageFlagWrapper}>
-                                {lang.flag}
-                            </View>
-                            <Text style={styles.languageName}>{lang.code.toUpperCase()}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            )}
-        </View>
-    );
-};
-
 const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     roomId,
     isBubbleMode = false,
@@ -171,17 +96,15 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const { user } = useUserStore();
 
     const chatSettings = useAppStore(state => state.chatSettings);
-    const setChatSettings = useAppStore(state => state.setChatSettings);
     const nativeLanguage = useAppStore(state => state.nativeLanguage);
 
     const autoTranslate = chatSettings.autoTranslate;
-    const translationTargetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
+    const translationTargetLang = nativeLanguage || 'vi';
 
     const currentUserId = user?.userId;
     const setCurrentViewedRoomId = useChatStore(s => s.setCurrentViewedRoomId);
     const userStatuses = useChatStore(s => s.userStatuses);
     const eagerTranslations = useChatStore(s => s.eagerTranslations);
-    const translateLastNMessages = useChatStore(s => s.translateLastNMessages);
 
     const [inputText, setInputText] = useState("");
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
@@ -189,58 +112,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [isPopupVisible, setIsPopupVisible] = useState(false);
     const [translatingId, setTranslatingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
-
-    const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
-        code: langCode,
-        name: langCode === 'zh' || langCode.startsWith('zh') ? 'ZH' : langCode.toUpperCase(),
-        flag: getCountryFlag(langCode, 24),
-    }), []);
-
-    const availableLanguages: LanguageOption[] = useMemo(() => {
-        const uniqueLangs = new Set<string>();
-        if (nativeLanguage) uniqueLangs.add(nativeLanguage);
-        if (user?.languages && Array.isArray(user.languages)) {
-            user.languages.forEach((l: any) => {
-                if (typeof l === 'string') {
-                    uniqueLangs.add(l);
-                } else if (typeof l === 'object' && l !== null) {
-                    const code = l.lang || l.code || l.language;
-                    if (code) uniqueLangs.add(code);
-                }
-            });
-        }
-        if (translationTargetLang) uniqueLangs.add(translationTargetLang);
-        if (uniqueLangs.size === 0) uniqueLangs.add('vi');
-        return Array.from(uniqueLangs).map(getLanguageOption);
-    }, [user?.languages, nativeLanguage, translationTargetLang, getLanguageOption]);
-
-    const selectedLanguageOption = useMemo(() =>
-        availableLanguages.find(l => l.code === translationTargetLang) || getLanguageOption(translationTargetLang),
-        [availableLanguages, translationTargetLang, getLanguageOption]);
-
-    useEffect(() => {
-        if (!chatSettings.targetLanguage) {
-            const defaultTarget = nativeLanguage || 'vi';
-            setChatSettings({ targetLanguage: defaultTarget });
-        }
-    }, []);
-
-    const handleSelectLanguage = (lang: LanguageOption) => {
-        setChatSettings({
-            targetLanguage: lang.code,
-            autoTranslate: true
-        });
-        showToast({ message: `${t('chat.auto_translate_on')} ${lang.name}`, type: 'success' });
-        translateLastNMessages(roomId, lang.code, 15);
-    };
-
-    const handleToggleAuto = () => {
-        const newState = !autoTranslate;
-        setChatSettings({ autoTranslate: newState });
-        if (newState) {
-            translateLastNMessages(roomId, translationTargetLang, 15);
-        }
-    };
 
     const membersMap = useMemo(() => {
         const map: Record<string, MemberResponse> = {};
@@ -266,7 +137,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const messages: UIMessage[] = useMemo(() => {
         return serverMessages.map((msg: any) => {
             const senderId = msg?.senderId ?? 'unknown';
-            // Safe ID access
             const messageId = msg?.id?.chatMessageId || (typeof msg?.id === 'string' ? msg.id : `${senderId}_${msg.sentAt}`);
 
             const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
@@ -274,13 +144,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const finalTranslation = eagerTrans || dbMapTrans;
 
             const senderProfile = msg.senderProfile || membersMap[senderId];
-
-            // FIX: Ưu tiên Decrypted Content để hiển thị
-            // Nếu có decryptedContent (tức là tin nhắn E2EE đã được giải mã), sử dụng nó.
-            // Ngược lại, sử dụng content (Plaintext cho Group chat/AI, hoặc Ciphertext cho tin nhắn cũ chưa E2EE).
             const displayContent = msg.decryptedContent || msg.content || '';
-
-            // Xác định xem tin nhắn có phải là tin nhắn E2EE không
             const isEncrypted = !!msg.senderEphemeralKey;
 
             return {
@@ -288,8 +152,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 sender: senderId === currentUserId ? 'user' : 'other',
                 senderId: senderId,
                 timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
-                text: displayContent, // Nội dung đã được giải mã/hiển thị
-                content: msg.content || '', // Nội dung gốc (Ciphertext)
+                text: displayContent,
+                content: msg.content || '',
                 mediaUrl: (msg as any).mediaUrl,
                 messageType: (msg as any).messageType || 'TEXT',
                 translatedText: finalTranslation,
@@ -324,9 +188,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
         if (editingMessage) {
-            // Khi edit, phải gửi lại nội dung đã mã hóa (Ciphertext)
-            // Tuy nhiên, logic edit ở Client phải đảm bảo lấy được content gốc (Ciphertext) từ message item
-            // và tái mã hóa content mới với Session Key cũ, sau đó gửi lên.
             editMessage(roomId, editingMessage.id, inputText).then(() => { setEditingMessage(null); setInputText(""); }).catch(() => showToast({ message: t("chat.edit_error"), type: "error" }));
         } else {
             sendMessage(roomId, inputText, 'TEXT');
@@ -335,10 +196,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     };
 
     const handleManualTranslate = async (id: string, text: string) => {
-        // Lấy nội dung đã được giải mã để dịch
         const messageToTranslate = serverMessages.find(m => m.id.chatMessageId === id);
         const contentToTranslate = messageToTranslate?.decryptedContent || messageToTranslate?.content || text;
-
         if (!contentToTranslate) return;
 
         setTranslatingId(id);
@@ -348,10 +207,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const handleUploadSuccess = (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => {
         const finalUrl = result?.secure_url || result?.url || result?.fileUrl;
-
         if (finalUrl) {
-            // Tin nhắn media thường không mã hóa E2EE, hoặc chỉ mã hóa URL và gửi đi. 
-            // Ở đây ta gửi Plaintext (rỗng) và URL.
             sendMessage(roomId, '', type, finalUrl);
         } else {
             console.warn("Upload success but no URL found in result:", result);
@@ -362,27 +218,19 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
         const isUser = item.sender === 'user';
-        const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
+        const isMedia = item.messageType === 'IMAGE' || item.messageType === 'VIDEO';
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
         const isTranslationSameAsOriginal = item.text?.trim().toLowerCase() === item.translatedText?.trim().toLowerCase();
-
         const showTranslatedText = autoTranslate && !!item.translatedText && !isMedia && !isUser && !isTranslationSameAsOriginal;
-
         const showManualButton = !autoTranslate && !isMedia && !isUser;
-
         const isTranslating = translatingId === item.id;
-
-        // Cảnh báo nếu tin nhắn là E2EE nhưng không giải mã được
         const showDecryptionError = item.isEncrypted && item.text?.startsWith('!! Decryption Failed !!');
 
-        // Nội dung hiển thị chính: text (đã giải mã)
         let primaryText = item.text;
         if (item.isEncrypted && primaryText === item.content) {
-            // Nếu là E2EE nhưng content (ciphertext) và text (decrypted content) giống nhau, có thể là lỗi giải mã
             primaryText = showDecryptionError ? t('chat.decryption_failed') : t('chat.encrypted_message');
         }
-
 
         return (
             <Pressable onLongPress={() => isUser && !isMedia && setEditingMessage(item)} style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther]}>
@@ -396,53 +244,55 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
                 <View style={styles.msgContent}>
                     {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
-                    <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
-                        {isMedia ? (
-                            <View>
-                                {item.messageType === 'IMAGE' && <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />}
-                                {item.messageType === 'VIDEO' && <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
-                                {item.messageType === 'DOCUMENT' && (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <Icon name="description" size={30} color={isUser ? "#FFF" : "#4B5563"} />
-                                        <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginLeft: 8 }]}>{t('chat.document')}</Text>
-                                    </View>
-                                )}
-                                {item.text ? <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text> : null}
-                            </View>
-                        ) : (
-                            <View>
-                                {/* Original Text Line (Decrypted Content) */}
-                                <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>
-                                    {primaryText}
-                                </Text>
 
-                                {/* Decryption Error / Encrypted Status */}
-                                {showDecryptionError && (
-                                    <Text style={[styles.textOtherTrans, { fontSize: 12, color: '#D97706', marginTop: 4, fontStyle: 'italic' }]}>
-                                        {t('chat.decryption_error_hint')}
-                                    </Text>
-                                )}
-
-                                {/* Translated Text Line (Only if Auto is ON AND Not User AND Not Same as Original) */}
-                                {showTranslatedText && (
-                                    <View style={styles.dualLineContainer}>
-                                        <View style={styles.separator} />
-                                        <Text style={[styles.translatedText, isUser ? styles.textUserTrans : styles.textOtherTrans]}>
-                                            {item.translatedText}
-                                        </Text>
-                                        <Text style={styles.langTag}>{translationTargetLang.toUpperCase()}</Text>
-                                    </View>
-                                )}
-                            </View>
-                        )}
-
-                        <View style={styles.metaRow}>
-                            <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
-                            {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
+                    {isMedia ? (
+                        // Media render without Bubble Wrapper
+                        <View style={[styles.mediaContainer, isUser ? styles.mediaUser : styles.mediaOther]}>
+                            {item.messageType === 'IMAGE' && (
+                                <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />
+                            )}
+                            {item.messageType === 'VIDEO' && (
+                                <View style={[styles.msgImage, styles.videoPlaceholder]}>
+                                    <Icon name="play-circle-outline" size={50} color="#FFF" />
+                                </View>
+                            )}
                         </View>
-                    </View>
+                    ) : (
+                        // Text/Document render with Bubble Wrapper
+                        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
+                            {item.messageType === 'DOCUMENT' && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+                                    <Icon name="description" size={30} color={isUser ? "#FFF" : "#4B5563"} />
+                                    <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginLeft: 8 }]}>{t('chat.document')}</Text>
+                                </View>
+                            )}
 
-                    {/* Manual Button (Only if Auto is OFF) */}
+                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>
+                                {primaryText}
+                            </Text>
+
+                            {showDecryptionError && (
+                                <Text style={[styles.textOtherTrans, { fontSize: 12, color: '#D97706', marginTop: 4, fontStyle: 'italic' }]}>
+                                    {t('chat.decryption_error_hint')}
+                                </Text>
+                            )}
+
+                            {showTranslatedText && (
+                                <View style={styles.dualLineContainer}>
+                                    <View style={[styles.separator, { backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' }]} />
+                                    <Text style={[styles.translatedText, isUser ? styles.textUserTrans : styles.textOtherTrans]}>
+                                        {item.translatedText}
+                                    </Text>
+                                </View>
+                            )}
+
+                            <View style={styles.metaRow}>
+                                <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
+                                {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
+                            </View>
+                        </View>
+                    )}
+
                     {showManualButton && (
                         <TouchableOpacity onPress={() => handleManualTranslate(item.id, item.text)} style={styles.transBtn} disabled={isTranslating}>
                             {isTranslating ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name="translate" size={16} color="#9CA3AF" />}
@@ -455,26 +305,16 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     return (
         <ScreenLayout style={styles.container}>
-            <View style={styles.chatHeaderToolbar}>
-                <ChatLanguageSelector
-                    selectedLanguage={selectedLanguageOption}
-                    onSelectLanguage={handleSelectLanguage}
-                    availableLanguages={availableLanguages}
-                    isAutoTranslateOn={autoTranslate}
-                    onToggleAuto={handleToggleAuto}
-                />
-            </View>
-
             <FlatList
                 ref={flatListRef}
                 data={messages}
                 keyExtractor={item => item.id}
                 style={styles.list}
                 renderItem={renderMessageItem}
-                contentContainerStyle={{ paddingTop: 40, paddingBottom: 10 }}
+                contentContainerStyle={{ paddingTop: 10, paddingBottom: 10 }}
                 onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
                 onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-                removeClippedSubviews={false} // Improves stability for chat
+                removeClippedSubviews={false}
                 initialNumToRender={15}
             />
 
@@ -531,36 +371,37 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
 const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: '#FFF' },
-    chatHeaderToolbar: { position: 'absolute', top: 8, right: 16, zIndex: 100, backgroundColor: 'transparent', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
-    languageSelectorContainer: { flexDirection: 'row', alignItems: 'center', position: 'relative', zIndex: 50 },
-    autoSwitch: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: "#000", shadowOpacity: 0.05, elevation: 1 },
-    autoSwitchActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
-    autoText: { fontSize: 10, fontWeight: 'bold', color: '#6B7280' },
-    selectedLanguageButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(243, 244, 246, 0.9)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
-    languageDropdown: { position: 'absolute', top: 45, right: 0, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, minWidth: 80, zIndex: 100, paddingVertical: 4 },
-    languageItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-    languageFlagWrapper: { marginRight: 8 },
-    languageName: { fontSize: 12, color: '#374151', fontWeight: '500' },
     list: { flex: 1, paddingHorizontal: 16 },
-    msgRow: { flexDirection: 'row', marginVertical: 8 },
+    msgRow: { flexDirection: 'row', marginVertical: 6 },
     rowUser: { justifyContent: 'flex-end' },
     rowOther: { justifyContent: 'flex-start' },
     msgAvatarImg: { width: 32, height: 32, borderRadius: 16, marginRight: 8, marginTop: 4 },
     msgContent: { maxWidth: '75%' },
     senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2, marginLeft: 4 },
+
+    // Bubble for Text/Docs
     bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
     bubbleUser: { backgroundColor: '#3B82F6', borderBottomRightRadius: 4 },
     bubbleOther: { backgroundColor: '#F3F4F6', borderBottomLeftRadius: 4 },
     localBubble: { opacity: 0.7 },
-    msgImage: { width: 200, height: 200, borderRadius: 12, marginTop: 4, backgroundColor: '#E5E7EB' },
+
+    // Media Styles (No Bubble)
+    mediaContainer: { borderRadius: 12, overflow: 'hidden' },
+    mediaUser: { alignSelf: 'flex-end' },
+    mediaOther: { alignSelf: 'flex-start' },
+    msgImage: { width: 220, height: 220, backgroundColor: '#E5E7EB' },
+    videoPlaceholder: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+
     text: { fontSize: 16, lineHeight: 22 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
+
     metaRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 },
     time: { fontSize: 10 },
     timeUser: { color: 'rgba(255,255,255,0.7)' },
     timeOther: { color: '#9CA3AF' },
     transBtn: { marginTop: 4, padding: 6, alignSelf: 'flex-start', backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6' },
+
     inputWrapper: { borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF', paddingBottom: Platform.OS === 'ios' ? 20 : 0 },
     inputArea: { flexDirection: 'row', padding: 10, alignItems: 'center', backgroundColor: '#FFF' },
     attachBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
@@ -577,12 +418,11 @@ const styles = createScaledSheet({
     activeDot: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderColor: '#FFF' },
     uploadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 10, justifyContent: 'center', alignItems: 'center' },
 
-    dualLineContainer: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.1)' },
-    separator: { height: 0 },
+    dualLineContainer: { marginTop: 6, paddingTop: 6 },
+    separator: { height: 1, width: '100%', marginBottom: 4 },
     translatedText: { fontSize: 15, fontStyle: 'italic', lineHeight: 22 },
     textUserTrans: { color: '#E0F2FE' },
     textOtherTrans: { color: '#4B5563' },
-    langTag: { fontSize: 9, color: 'rgba(0,0,0,0.4)', textAlign: 'right', marginTop: 4, fontWeight: 'bold' }
 });
 
 export default ChatInnerView;

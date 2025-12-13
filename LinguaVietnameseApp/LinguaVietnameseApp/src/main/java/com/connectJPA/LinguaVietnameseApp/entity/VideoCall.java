@@ -7,7 +7,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -18,6 +17,7 @@ import java.util.UUID;
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class VideoCall extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -39,6 +39,7 @@ public class VideoCall extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
+    @Builder.Default
     private VideoCallStatus status = VideoCallStatus.INITIATED;
 
     @Column(name = "start_time")
@@ -53,5 +54,7 @@ public class VideoCall extends BaseEntity {
     @Column(name = "quality_metrics", columnDefinition = "jsonb")
     private String qualityMetrics;
 
+    @OneToMany(mappedBy = "videoCall", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @ToString.Exclude
+    private List<VideoCallParticipant> participants;
 }
-

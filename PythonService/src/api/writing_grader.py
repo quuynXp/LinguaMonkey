@@ -3,22 +3,46 @@ import os
 import logging
 from dotenv import load_dotenv
 import json
-import httpx # Dùng để download file từ URL
+import httpx
+import re
 
 load_dotenv()
+
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel('gemini-2.5-flash')
+
+def transform_google_drive_url(url: str) -> str:
+    """
+    Input: https://drive.google.com/file/d/1UQJYj-wOc9RtZOReRL5ZsUUGK0mIYi87/view?usp=sharing
+    Output: https://drive.google.com/uc?export=download&id=1UQJYj-wOc9RtZOReRL5ZsUUGK0mIYi87
+    """
+    try:
+        if "drive.google.com" in url and "/d/" in url:
+            # Extract File ID
+            file_id_match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+            if file_id_match:
+                file_id = file_id_match.group(1)
+                return f"https://drive.google.com/uc?export=download&id={file_id}"
+    except Exception as e:
+        logging.warning(f"Could not transform Drive URL: {e}")
+    return url
 
 async def download_media(url: str):
     """Hàm helper để download file từ URL"""
     try:
-        # Xử lý link Google Drive để lấy direct link (nếu cần thiết)
-        # Với link drive view?usp=sharing thông thường, ta cần xử lý 1 chút
-        # Cách đơn giản nhất: Dùng httpx follow redirects
+        # 1. Xử lý link Google Drive để lấy direct link
+        direct_url = transform_google_drive_url(url)
+        
+        logging.info(f"Downloading media from: {direct_url}")
+
+        # 2. Download với httpx
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(url)
+            resp = await client.get(direct_url)
             if resp.status_code == 200:
+                # Trả về bytes và content-type thực tế từ header
                 return resp.content, resp.headers.get("content-type")
+            else:
+                logging.error(f"Download failed with status: {resp.status_code}")
     except Exception as e:
         logging.error(f"Download failed: {e}")
     return None, None
@@ -27,7 +51,7 @@ async def grade_writing_logic(
     user_text: str, 
     prompt_text: str, 
     media_bytes: bytes = None, 
-    media_url: str = None, # Nhận thêm URL từ Java
+    media_url: str = None, 
     mime_type: str = None, 
     language: str = "en"
 ) -> tuple[str, float, str]:
@@ -35,14 +59,16 @@ async def grade_writing_logic(
     if not user_text:
         return "Bạn chưa nhập nội dung bài viết.", 0.0, "EMPTY_INPUT"
 
+    # Tính word_count để dùng cho logic hậu kiểm
+    word_count = len(user_text.split())
+
     # --- LOGIC MỚI: XỬ LÝ URL ---
     # Nếu không có bytes nhưng có URL, tải về
     if not media_bytes and media_url:
-        logging.info(f"Downloading media from: {media_url}")
         downloaded_bytes, downloaded_mime = await download_media(media_url)
         if downloaded_bytes:
             media_bytes = downloaded_bytes
-            # Nếu Java gửi mime_type chung chung, lấy mime thật từ header
+            # Nếu Java gửi mime_type chung chung hoặc không gửi, lấy mime thật từ header response
             if not mime_type or "octet-stream" in mime_type or "unknown" in mime_type:
                 mime_type = downloaded_mime
     # -----------------------------
@@ -55,6 +81,7 @@ async def grade_writing_logic(
         elif "video" in mime_type or "mp4" in mime_type:
             media_context_str = "- Context: Based on the provided VIDEO."
         else:
+            # Default fallback to IMAGE logic
             media_context_str = "- Context: Based on the provided IMAGE."
 
     system_prompt = f"""
@@ -77,9 +104,14 @@ async def grade_writing_logic(
     
     if media_bytes:
         try:
-            # Gemini cần mime_type chuẩn. Nếu vẫn unknown, fallback sang image/jpeg hoặc audio/mp3 tùy context
+            # Gemini cần mime_type chuẩn. Nếu vẫn unknown, fallback sang image/jpeg
             final_mime = mime_type if mime_type and "/" in mime_type else "image/jpeg"
-            inputs.append({"mime_type": final_mime, "data": media_bytes})
+            
+            # Validation nhẹ trước khi gửi
+            if "html" in final_mime:
+                 logging.error("Detected HTML content instead of media. Skipping media attachment.")
+            else:
+                inputs.append({"mime_type": final_mime, "data": media_bytes})
         except Exception as e:
             logging.error(f"Media attach error: {e}")
 

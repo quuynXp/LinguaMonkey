@@ -9,7 +9,6 @@ export interface CallPreferences {
   nativeLanguage: string;
   learningLanguage: string;
   ageRange: string;
-  // NEW: Settings for call controls
   subtitleMode: 'dual' | 'native' | 'original' | 'off';
   micEnabled: boolean;
   cameraEnabled: boolean;

@@ -136,6 +136,9 @@ const normalizeMessage = (msg: any): Message => {
     }
   }
 
+  // Ensure mediaUrl is preserved explicitly
+  const safeMediaUrl = msg.mediaUrl || msg.media_url || null;
+
   const baseMsg = {
     ...msg,
     translationsMap: parsedTranslations,
@@ -143,6 +146,7 @@ const normalizeMessage = (msg: any): Message => {
     usedPreKeyId: msg.usedPreKeyId,
     initializationVector: msg.initializationVector,
     decryptedContent: null,
+    mediaUrl: safeMediaUrl, // Explicitly set
   };
 
   if (msg?.id?.chatMessageId) {
@@ -160,6 +164,7 @@ const normalizeMessage = (msg: any): Message => {
       usedPreKeyId: msg.usedPreKeyId,
       initializationVector: msg.initializationVector,
       decryptedContent: null,
+      mediaUrl: safeMediaUrl, // Explicitly set
     };
     return rawMsg as Message;
   }
@@ -173,6 +178,7 @@ const normalizeMessage = (msg: any): Message => {
       usedPreKeyId: msg.usedPreKeyId,
       initializationVector: msg.initializationVector,
       decryptedContent: null,
+      mediaUrl: safeMediaUrl, // Explicitly set
     };
     return rawMsg as Message;
   }
@@ -181,6 +187,7 @@ const normalizeMessage = (msg: any): Message => {
     ...msg,
     id: { chatMessageId: 'unknown-' + Math.random(), sentAt: new Date().toISOString() },
     decryptedContent: null,
+    mediaUrl: safeMediaUrl,
   };
   return fallbackMsg as Message;
 };
@@ -212,11 +219,25 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   let workingList = [...list];
   let isNew = false;
 
+  // FIX: Cải thiện logic lọc message local trùng lặp
   if (msg.senderId === currentUserId && !msg.isLocal) {
     workingList = workingList.filter(m => {
       const isMyLocal = m.isLocal === true;
-      const contentMatch = m.content?.trim() === msg.content?.trim();
-      return !(isMyLocal && contentMatch);
+      let isMatch = false;
+
+      // Nếu có mediaUrl, ưu tiên so sánh mediaUrl (vì content thường rỗng)
+      if (msg.mediaUrl && m.mediaUrl) {
+        isMatch = m.mediaUrl === msg.mediaUrl;
+      }
+      // Nếu là text thường thì so sánh content
+      else if (msg.messageType === 'TEXT') {
+        isMatch = m.content?.trim() === msg.content?.trim();
+      }
+
+      // Nếu là Media nhưng không có URL (đang upload?) hoặc cả 2 đều không có content -> KHÔNG được coi là match bừa bãi
+      // để tránh việc xóa nhầm các ảnh đang upload khác.
+
+      return !(isMyLocal && isMatch);
     });
   }
 
@@ -299,9 +320,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   isBubbleOpen: false,
   currentAppScreen: null,
   appIsActive: true,
-  totalOnlineUsers: 0,
   currentViewedRoomId: null,
   incomingCallRequest: null,
+  totalOnlineUsers: 0,
 
   setCurrentAppScreen: (screen) => set({ currentAppScreen: screen }),
   setAppIsActive: (isActive) => set({ appIsActive: isActive }),
@@ -337,6 +358,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     e2eeService.setUserId(currentUserId || '');
 
     const decryptionPromises = newMessages.map(async (msg) => {
+      // FIX: Ensure we don't try to decrypt Media messages as Text, but we keep them
       if (msg.decryptedContent || msg.messageType !== 'TEXT') return;
 
       const partnerId = msg.senderId === currentUserId ?

@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import type { UserResponse, Character3dResponse } from '../types/dto';
 import { privateClient, mediaClient } from '../api/axiosClient';
+// Giả định i18n nằm ở thư mục cha hoặc utils, hãy chỉnh lại path nếu cần
+import i18n from '../i18n';
 
 interface DailyGoal {
   completedLessons: number;
@@ -115,6 +117,22 @@ let heartbeatInterval: number | null = null;
 let lastHeartbeatTime = 0;
 const HEARTBEAT_DELAY = 5 * 60 * 1000; // 5 minutes
 
+// Helper để sync ngôn ngữ giữa Zustand, i18next và AsyncStorage
+const syncLanguage = async (langCode: string) => {
+  if (!langCode) return;
+  try {
+    // 1. Đổi ngôn ngữ runtime ngay lập tức
+    if (i18n.language !== langCode) {
+      await i18n.changeLanguage(langCode);
+    }
+    // 2. Lưu vào key riêng mà detector của i18n.ts đang đọc ('user-language')
+    // Lưu ý: user-storage-v2 của zustand là key khác, i18n detector đọc key 'user-language'
+    await AsyncStorage.setItem('user-language', langCode);
+  } catch (error) {
+    console.error('Error syncing language:', error);
+  }
+};
+
 export const useUserStore = create<UserState>()(
   persist(
     (set, get) => ({
@@ -166,14 +184,17 @@ export const useUserStore = create<UserState>()(
           vipDaysRemaining: rawUser.vipDaysRemaining || 0,
         });
 
+        // Ưu tiên nativeLanguageCode từ DB user trả về
         if (user.nativeLanguageCode) {
           set({ nativeLanguageId: user.nativeLanguageCode });
+          syncLanguage(user.nativeLanguageCode);
         } else if (detectedLanguage) {
+          // Nếu user chưa có, dùng ngôn ngữ detect được
           get().updateNativeLanguageOnServer(detectedLanguage);
           set({ nativeLanguageId: detectedLanguage });
+          syncLanguage(detectedLanguage);
         }
 
-        // Reset heartbeat timer on new login to allow immediate status update
         lastHeartbeatTime = 0;
         get().initOnlineStatusTracker();
       },
@@ -184,14 +205,19 @@ export const useUserStore = create<UserState>()(
         if (heartbeatInterval) clearInterval(heartbeatInterval);
         lastHeartbeatTime = 0;
         set({ ...defaultUserState });
+        // Tùy chọn: Có reset ngôn ngữ về EN hay giữ nguyên ngôn ngữ hiện tại?
+        // Thường UX tốt là giữ nguyên ngôn ngữ user đã chọn.
       },
 
       setLocalNativeLanguage: (languageId: string) => {
         set({ nativeLanguageId: languageId });
+        syncLanguage(languageId);
       },
 
       updateNativeLanguageOnServer: async (languageId: string) => {
         set({ nativeLanguageId: languageId });
+        syncLanguage(languageId);
+
         const user = get().user;
         if (!user?.userId) return;
 
@@ -293,7 +319,6 @@ export const useUserStore = create<UserState>()(
         });
 
         if (res.data.code === 200) {
-          console.log("finishSetup: Success, updating store.");
           get().setUser(res.data.result);
         } else {
           throw new Error("Backend returned error: " + res.data.message);
@@ -384,7 +409,6 @@ export const useUserStore = create<UserState>()(
         if (!user?.userId) return;
 
         const now = Date.now();
-        // Check if 5 minutes have passed since last successful call
         if (now - lastHeartbeatTime < HEARTBEAT_DELAY) {
           return;
         }
@@ -393,17 +417,15 @@ export const useUserStore = create<UserState>()(
           lastHeartbeatTime = now;
           await privateClient.patch(`/api/v1/users/${user.userId}/last-active`);
         } catch (e) {
-          // If call fails, we just wait for next cycle. 
+          // Silent fail
         }
       },
 
       initOnlineStatusTracker: () => {
         if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-        // Try to send immediately (will respect throttle)
         get().sendHeartbeat();
 
-        // Check regularly
         heartbeatInterval = setInterval(() => {
           if (AppState.currentState === 'active') {
             get().sendHeartbeat();

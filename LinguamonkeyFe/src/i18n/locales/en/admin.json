@@ -1988,6 +1988,7 @@
     "social": "Social",
     "join": "Join",
     "chat": {
+        "sent_an_attachment" : "Sent an attachment",
         "no_active_chats": "Offline",
         "start_conversation_hint": "Start a conversation by selecting AI Chat or User Chat",
         "active_now": "Online",

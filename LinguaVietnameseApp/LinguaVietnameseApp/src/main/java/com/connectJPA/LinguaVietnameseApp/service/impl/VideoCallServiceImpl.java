@@ -81,7 +81,7 @@ public class VideoCallServiceImpl implements VideoCallService {
         VideoCall videoCall = VideoCall.builder()
                 .roomId(roomId)
                 .callerId(callerId)
-                .calleeId(receiverId) 
+                .calleeId(receiverId)
                 .videoCallType(VideoCallType.ONE_TO_ONE)
                 .status(VideoCallStatus.INITIATED)
                 .startTime(OffsetDateTime.now())
@@ -90,7 +90,7 @@ public class VideoCallServiceImpl implements VideoCallService {
         videoCall = videoCallRepository.save(videoCall);
 
         List<VideoCallParticipant> participants = new ArrayList<>();
-        
+
         participants.add(VideoCallParticipant.builder()
                 .id(new VideoCallParticipantId(videoCall.getVideoCallId(), callerId))
                 .videoCall(videoCall)
@@ -110,6 +110,9 @@ public class VideoCallServiceImpl implements VideoCallService {
                 .build());
 
         videoCallParticipantRepository.saveAll(participants);
+        
+        // FIX: Set participants to entity to avoid NPE in mapper
+        videoCall.setParticipants(participants);
 
         return videoCallMapper.toResponse(videoCall);
     }
@@ -151,11 +154,13 @@ public class VideoCallServiceImpl implements VideoCallService {
     public VideoCallResponse createGroupVideoCall(CreateGroupCallRequest request) {
         try {
             UUID callerId = request.getCallerId();
-            
+
             List<UUID> participantIds = request.getParticipantIds();
+            
+            // Logic lấy member từ room nếu request không gửi list participant
             if ((participantIds == null || participantIds.isEmpty()) && request.getRoomId() != null) {
                 List<RoomMember> roomMembers = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(request.getRoomId());
-                if (roomMembers != null) {
+                if (roomMembers != null && !roomMembers.isEmpty()) {
                     participantIds = roomMembers.stream()
                             .map(m -> m.getId().getUserId())
                             .filter(uid -> !uid.equals(callerId))
@@ -164,9 +169,11 @@ public class VideoCallServiceImpl implements VideoCallService {
             }
 
             if (participantIds == null || participantIds.isEmpty()) {
+                // Nếu vẫn rỗng sau khi query thì báo lỗi client thay vì crash 500
                 throw new AppException(ErrorCode.INVALID_REQUEST);
             }
 
+            // Tạo phòng tạm cho cuộc gọi (Call Room)
             Room callRoom = Room.builder()
                     .creatorId(callerId)
                     .topic(RoomTopic.WORLD)
@@ -184,11 +191,12 @@ public class VideoCallServiceImpl implements VideoCallService {
                     .status(VideoCallStatus.INITIATED)
                     .startTime(OffsetDateTime.now())
                     .build();
-            
+
             videoCall = videoCallRepository.save(videoCall);
 
             List<VideoCallParticipant> participants = new ArrayList<>();
-            
+
+            // Add Host
             VideoCallParticipant host = VideoCallParticipant.builder()
                     .id(new VideoCallParticipantId(videoCall.getVideoCallId(), callerId))
                     .videoCall(videoCall)
@@ -199,6 +207,7 @@ public class VideoCallServiceImpl implements VideoCallService {
                     .build();
             participants.add(host);
 
+            // Add Guests
             for (UUID userId : participantIds) {
                 VideoCallParticipant participant = VideoCallParticipant.builder()
                         .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
@@ -212,28 +221,33 @@ public class VideoCallServiceImpl implements VideoCallService {
             }
             videoCallParticipantRepository.saveAll(participants);
 
+            // CRITICAL FIX: Set lại participants vào entity videoCall để Mapper có dữ liệu
+            // Nếu không set dòng này, mapper.toResponse sẽ gặp NullPointerException khi map list participants
+            videoCall.setParticipants(participants);
+
             VideoCallResponse response = videoCallMapper.toResponse(videoCall);
-            
+
             Map<String, Object> socketPayload = new HashMap<>();
             socketPayload.put("type", "INCOMING_CALL");
-            socketPayload.put("roomId", roomSaved.getRoomId().toString());
+            socketPayload.put("roomId", roomSaved.getRoomId().toString()); // ID của phòng gọi (để user join vào)
             socketPayload.put("videoCallId", videoCall.getVideoCallId());
             socketPayload.put("callerId", callerId);
             socketPayload.put("roomName", "Group Call");
 
+            // Gửi socket notification vào Room Chat gốc (Group Chat)
             if (request.getRoomId() != null) {
                  messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
             } else {
                  for (UUID userId : participantIds) {
-                    try {
-                        messagingTemplate.convertAndSendToUser(
+                     try {
+                         messagingTemplate.convertAndSendToUser(
                             userId.toString(),
                             "/queue/notifications",
                             socketPayload
-                        );
-                    } catch (Exception e) {
+                         );
+                     } catch (Exception e) {
                         log.warn("Failed to notify user {}", userId);
-                    }
+                     }
                 }
             }
 
@@ -253,7 +267,7 @@ public class VideoCallServiceImpl implements VideoCallService {
         map.put("videoCallId", response.getVideoCallId());
         map.put("callerId", response.getCallerId());
         map.put("videoCallType", response.getVideoCallType());
-        map.put("content", "Video call started"); 
+        map.put("content", "Video call started");
         return map;
     }
 
@@ -351,6 +365,10 @@ public class VideoCallServiceImpl implements VideoCallService {
                 }
 
                 List<VideoCallParticipant> participants = videoCallParticipantRepository.findByVideoCall_VideoCallId(id);
+                
+                // Fix: Set participants to entity for accurate mapping if needed later
+                videoCall.setParticipants(participants);
+
                 for (VideoCallParticipant p : participants) {
                     if (p.getStatus() == VideoCallParticipantStatus.CONNECTED || p.getRole() == VideoCallRole.HOST) {
                         

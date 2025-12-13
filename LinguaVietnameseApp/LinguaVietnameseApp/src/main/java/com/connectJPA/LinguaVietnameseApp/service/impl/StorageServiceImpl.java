@@ -33,12 +33,25 @@ public class StorageServiceImpl implements StorageService {
     @Value("${google.drive.folderId}")
     private String folderId;
 
-    // Limit to 100MB
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
     
-    // UPDATED: Using Direct Link format (lh3) for images to work in mobile apps
-    private static final String VIEW_URL_TEMPLATE = "https://lh3.googleusercontent.com/d/%s";
-    private static final String STREAM_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
+    private static final String IMAGE_URL_TEMPLATE = "https://lh3.googleusercontent.com/d/%s";
+    
+    private static final String BINARY_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
+
+    private String generateUrl(String fileId, String mimeType) {
+        if (mimeType != null && mimeType.startsWith("image/")) {
+            return String.format(IMAGE_URL_TEMPLATE, fileId);
+        }
+        return String.format(BINARY_URL_TEMPLATE, fileId);
+    }
+    
+    private String generateUrl(String fileId, MediaType mediaType) {
+        if (mediaType == MediaType.IMAGE) {
+            return String.format(IMAGE_URL_TEMPLATE, fileId);
+        }
+        return String.format(BINARY_URL_TEMPLATE, fileId);
+    }
 
     @Transactional
     @Override
@@ -67,29 +80,26 @@ public class StorageServiceImpl implements StorageService {
 
             InputStreamContent mediaContent = new InputStreamContent(contentType, inputStream);
 
-            // Upload file
             File uploadedFile = driveService.files().create(fileMetadata, mediaContent)
-                    .setFields("id, webViewLink")
+                    .setFields("id")
                     .execute();
 
             String fileId = uploadedFile.getId();
 
-            // Set public permission for immediate access
             try {
-                Permission permission = new Permission()
-                        .setType("anyone")
-                        .setRole("reader");
+                Permission permission = new Permission().setType("anyone").setRole("reader");
                 driveService.permissions().create(fileId, permission).execute();
             } catch (Exception e) {
-                log.warn("Could not set public permission for file {}. Frontend might not view it.", fileId);
+                log.warn("Could not set public permission for file {}", fileId);
             }
 
-            log.info("Uploaded {} to Drive (OAuth2). ID: {}", fileName, fileId);
+            log.info("Uploaded {} to Drive. ID: {}", fileName, fileId);
             
-            return getFileUrl(fileId);
+            return generateUrl(fileId, contentType);
+            
         } catch (IOException e) {
             log.error("Google Drive stream upload failed", e);
-            throw new RuntimeException("Failed to upload stream to Google Drive: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to upload stream to Google Drive", e);
         }
     }
 
@@ -97,50 +107,13 @@ public class StorageServiceImpl implements StorageService {
     @Override
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {
         try {
-            String fileId = tempPath;
-            
-            // Robustly extract fileId from various URL formats
-            
-            // Case 1: Standard View URL: /file/d/ID/view
-            if (tempPath.contains("/file/d/")) {
-                int startIndex = tempPath.indexOf("/file/d/") + 8; // Start after /file/d/
-                
-                int endId = -1;
-                int endView = tempPath.indexOf("/view", startIndex);
-                int endParam = tempPath.indexOf("?", startIndex);
+            String fileId = extractFileId(tempPath); // Tách hàm extract ra cho gọn
 
-                // Prioritize the delimiter that appears first after the ID
-                if (endView != -1 && (endParam == -1 || endView < endParam)) {
-                    endId = endView;
-                } else if (endParam != -1) {
-                    endId = endParam;
-                }
-                
-                if (endId == -1) endId = tempPath.length();
-                
-                fileId = tempPath.substring(startIndex, endId); 
-            } 
-            // Case 2: Direct Link URL: googleusercontent.com/d/ID
-            else if (tempPath.contains("googleusercontent.com/d/")) {
-                int startIndex = tempPath.indexOf("/d/") + 3;
-                int endId = tempPath.indexOf("?", startIndex);
-                if (endId == -1) endId = tempPath.length();
-                fileId = tempPath.substring(startIndex, endId);
-            }
-            // Case 3: Old Download URL: id=ID
-            else if (tempPath.contains("id=")) {
-                int startId = tempPath.indexOf("id=") + 3;
-                int endId = tempPath.indexOf("&", startId);
-                if (endId == -1) endId = tempPath.length();
-                fileId = tempPath.substring(startId, endId);
-            }
-
-            // Now fileId should be clean, use it to fetch metadata
             File driveFile = driveService.files().get(fileId).setFields("name").execute();
             String fileName = driveFile.getName();
 
             UserMedia media = UserMedia.builder()
-                    .filePath(fileId) // Store the clean Drive ID as filePath
+                    .filePath(fileId) // Chỉ lưu ID sạch vào DB
                     .fileName(fileName)
                     .userId(userId)
                     .mediaType(mediaType)
@@ -149,14 +122,36 @@ public class StorageServiceImpl implements StorageService {
 
             UserMedia savedMedia = mediaRepo.save(media);
             
-            // Generate the final URL using the clean ID
-            savedMedia.setFileUrl(getFileUrl(fileId)); 
+            savedMedia.setFileUrl(generateUrl(fileId, mediaType)); 
             
             return savedMedia;
         } catch (IOException e) {
             log.error("Commit Drive file failed", e);
-            throw new RuntimeException("Commit Drive file failed: " + e.getMessage(), e);
+            throw new RuntimeException("Commit Drive file failed", e);
         }
+    }
+
+    // Hàm tách ID chuẩn xác
+    private String extractFileId(String url) {
+        String fileId = url;
+        if (url.contains("/file/d/")) {
+            int start = url.indexOf("/file/d/") + 8;
+            int end = url.indexOf("/", start);
+            if (end == -1) end = url.indexOf("?", start);
+            if (end == -1) end = url.length();
+            fileId = url.substring(start, end);
+        } else if (url.contains("/d/")) { // Cho link lh3
+            int start = url.indexOf("/d/") + 3;
+            int end = url.indexOf("?", start); // lh3 thường không có params nhưng cứ check
+            if (end == -1) end = url.length();
+            fileId = url.substring(start, end);
+        } else if (url.contains("id=")) {
+            int start = url.indexOf("id=") + 3;
+            int end = url.indexOf("&", start);
+            if (end == -1) end = url.length();
+            fileId = url.substring(start, end);
+        }
+        return fileId;
     }
 
     @Override
@@ -165,18 +160,22 @@ public class StorageServiceImpl implements StorageService {
             driveService.files().delete(objectPath).execute();
             log.info("Deleted file from Drive: {}", objectPath);
         } catch (IOException e) {
-            log.error("Google Drive delete failed for File ID: {}", objectPath, e);
-            throw new RuntimeException("Delete file failed: " + e.getMessage(), e);
+            log.error("Delete failed for File ID: {}", objectPath, e);
+            throw new RuntimeException("Delete file failed", e);
         }
     }
 
     @Override
     public String getFileUrl(String fileId) {
-        return String.format(STREAM_URL_TEMPLATE, fileId);
+        return String.format(BINARY_URL_TEMPLATE, fileId);
+    }
+    
+    public String getFileUrl(String fileId, MediaType type) {
+        return generateUrl(fileId, type);
     }
 
     @Override
     public byte[] getFile(String objectPath) {
-        throw new UnsupportedOperationException("Direct file download not supported for Drive streaming setup");
+        throw new UnsupportedOperationException("Not supported");
     }
 }

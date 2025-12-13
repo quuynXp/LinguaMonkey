@@ -15,14 +15,13 @@ from src.core.session import AsyncSessionLocal
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# CHỈ DÙNG OPUS-100 (ĐÃ TEST OK 100%)
 DATASET_SOURCES = [
     {
         "name": "Helsinki-NLP/opus-100",
         "config": "en-vi",
         "split": "train",
         "mapping": {"en": "en", "vi": "vi"}, 
-        "limit": 500000  # Load nhiều hơn để filter ra những câu ngắn
+        "limit": 500000
     },
     {
         "name": "Helsinki-NLP/opus-100",
@@ -34,7 +33,6 @@ DATASET_SOURCES = [
 ]
 
 BATCH_SIZE = 2000
-# Bump version v10 - Thay đổi version để ép chạy lại
 INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v10" 
 
 def normalize_text(text: str) -> str:
@@ -48,14 +46,13 @@ def get_redis_key(lang: str, text: str) -> str:
 async def ingest_huggingface_data(redis: Redis):
     async with AsyncSessionLocal() as db:
         try:
-            # Check flag (Bỏ comment nếu muốn chặn chạy lại)
             # if await redis.exists(INGESTION_FLAG_KEY):
             #     logger.info(f"⚡ [SKIP] Hugging Face data already ingested.")
             #     return
 
             pipeline = redis.pipeline()
             total_processed = 0
-            MAX_ITEMS_PER_LANG = 50000 # Chỉ lưu 50k items tốt nhất mỗi cặp ngôn ngữ
+            MAX_ITEMS_PER_LANG = 50000
 
             for source in DATASET_SOURCES:
                 logger.info(f"📥 Loading dataset: {source['name']} ({source['config']})....")
@@ -100,8 +97,6 @@ async def ingest_huggingface_data(redis: Redis):
                     text_src = text_src.strip()
                     text_tgt = text_tgt.strip()
 
-                    # [QUAN TRỌNG] FILTER LOGIC: Chỉ lấy câu ngắn/cụm từ (<= 10 từ)
-                    # Điều này biến Dataset thành một Dictionary/Phrasebook thay vì các câu văn dài
                     if len(text_src.split()) > 10:
                         continue
 
