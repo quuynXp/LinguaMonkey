@@ -136,7 +136,7 @@ services:
     numInstances: 1
 
   # ==========================================
-  # 2. PYTHON SERVICE
+  # 2. PYTHON SERVICE (UPDATED)
   # ==========================================
   - type: web
     name: pythonservice
@@ -151,8 +151,12 @@ services:
         value: Asia/Ho_Chi_Minh
       - key: PORT
         value: 10000
+      - key: HTTP_PORT
+        value: 8001
       - key: MALLOC_ARENA_MAX
         value: "2"
+
+      # --- Database (Mounted) ---
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres
@@ -173,6 +177,18 @@ services:
         fromDatabase:
           name: shared-postgres
           property: password
+
+      # --- Database Aliases (For compatibility with Python .env naming) ---
+      - key: APP_DB_HOST
+        value: ${DB_HOST}
+      - key: APP_DB_NAME
+        value: ${DB_NAME}
+      - key: APP_DB_USER
+        value: ${DB_USER}
+      - key: APP_DB_PASS
+        value: ${DB_PASSWORD}
+
+      # --- Redis (Mounted) ---
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -185,12 +201,53 @@ services:
           property: port
       - key: REDIS_PASSWORD
         value: "redisPass123"
+
+      # --- Internal Communication ---
       - key: JAVA_SERVICE_URL
         value: http://linguavietnameseapp:10000
       - key: GRPC_PORT
         value: 50051
       - key: JAVA_GRPC_ADDRESS
         value: linguavietnameseapp:9090
+
+      # --- MISSING KEYS ADDED BELOW ---
+
+      # AI Services
+      - key: AZURE_SPEECH_KEY
+        value: 7CK8VzxiMbfR1PdEYlreoeM1fSYP8T34GfwakmGfqXr8XgvB9UJQJQQJ99BKAC3pKaRXJ3w3AAAYACOG93o3
+      - key: AZURE_SPEECH_REGION
+        value: eastasia
+      - key: GOOGLE_API_KEY
+        value: AIzaSyBxTgU1h5yfoYQFUUYN9ULpS5wDGdtJkOg
+
+      # Auth (Critical for JWT Verification)
+      - key: PUBLIC_KEY
+        value: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1LNS9rOO1cg//uC3GXvur6HIw9HsDRsU6r+yyV/RjioHLLwasQByDTJhMZfvRJkMmZWKLxam+v8p9tyDLBRa/jm+LHrl37ZgRo3EnQeJvJRNWLr0Uahuqez8OLRXAKdydgZWf0B4fJxgN+RsSXP7vWNm6idJ0h32M7Obnd8iJDP0+MXdgy2pVd8PUAVFcmS/+7VLcWj1V0gDoMbHscN1kswUB8rykRF0m+v5l1jx4ldSX1eKeYoQdznRMjViUTkKuYf5vhTsApgbows5pzs46NxKcxxm2kHLDpa4TKexdSJX9ckDkFAA4Z5ohAwcDvMcwyn0BHJaxIjGtRRwQP+HOQIDAQAB
+          -----END PUBLIC KEY-----
+
+      # Storage (MinIO) - Ensure these values are reachable from Render
+      - key: MINIO_ACCESS_KEY
+        value: minioadmin
+      - key: MINIO_SECRET_KEY
+        value: minioadmin
+      - key: MINIO_BUCKET_NAME
+        value: media
+      - key: MINIO_URL
+        value: http://minio:9000
+
+      # Infrastructure (Elastic/Kafka) - Ensure these hosts are valid in Prod
+      - key: ELASTICSEARCH_HOST
+        value: your-prod-elasticsearch-host
+      - key: ELASTICSEARCH_PORT
+        value: 9200
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: your-prod-kafka-broker-1:9092,your-prod-kafka-broker-2:9092
+      - key: KAFKA_CONSUMER_GROUP_ID
+        value: python-profile-consumer
+      - key: KAFKA_USER_PROFILE_TOPIC
+        value: USER_PROFILE_UPDATES
 
     numInstances: 1
 
