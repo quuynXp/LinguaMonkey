@@ -283,7 +283,7 @@ public class CourseServiceImpl implements CourseService {
         if (request.getLessonIds() != null) {
             if (version.getLessons() != null) {
                 version.getLessons().clear();
-            } else {
+                        } else {
                 version.setLessons(new ArrayList<>());
             }
             
@@ -492,29 +492,29 @@ public class CourseServiceImpl implements CourseService {
         Pageable pageable = PageRequest.of(page, size);
         OffsetDateTime now = OffsetDateTime.now();
 
-        // 1. Lấy dữ liệu thô từ Repository (đang trả về List Discount)
+        // 1. Fetch raw data from Repository with corrected countQuery and Enum parameter
         Page<CourseVersionDiscount> discountPage = discountRepository.findSpecialOffers(
-                keyword, languageCode, minRating, now, pageable
+                keyword, languageCode, minRating, VersionStatus.PUBLIC, now, pageable
         );
 
-        // 2. Convert từng Discount thành CourseResponse
+        // 2. Convert each Discount to CourseResponse
         List<CourseResponse> courseResponses = discountPage.getContent().stream().map(discount -> {
-            // Lấy entity Course và Version từ mối quan hệ trong Discount
+            // Get Course and Version from Discount relation
             CourseVersion version = discount.getCourseVersion();
             Course course = version.getCourse();
 
-            // Map cơ bản từ Entity Course sang Response
+            // Map basic Course Entity to Response
             CourseResponse response = courseMapper.toResponse(course);
 
-            // --- QUAN TRỌNG: Gán dữ liệu phiên bản và giá để Frontend hiển thị ---
+            // --- IMPORTANT: Populate version and price data for Frontend display ---
             
-            // 1. Gán version public (chính là version đang được giảm giá)
+            // 1. Assign public version (the one currently discounted)
             response.setLatestPublicVersion(versionMapper.toResponse(version));
 
-            // 2. Gán % giảm giá (Frontend dùng field này để hiện badge đỏ -XX%)
+            // 2. Assign discount percentage (Frontend uses this for red badge -XX%)
             response.setActiveDiscountPercentage(discount.getDiscountPercentage());
 
-            // 3. Tính lại giá sau giảm (FIX: Sử dụng BigDecimal)
+            // 3. Recalculate discounted price (FIX: Use BigDecimal)
             if (version.getPrice() != null) {
                 BigDecimal originalPrice = version.getPrice();
                 BigDecimal discountPercent = BigDecimal.valueOf(discount.getDiscountPercentage());
@@ -534,7 +534,7 @@ public class CourseServiceImpl implements CourseService {
             return response;
         }).collect(Collectors.toList());
 
-        // 3. Trả về PageResponse đúng kiểu CourseResponse mà Frontend đợi
+        // 3. Return PageResponse
         return PageResponse.<CourseResponse>builder()
                 .content(courseResponses)
                 .pageNumber(discountPage.getNumber())

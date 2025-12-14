@@ -1,4 +1,5 @@
 const { getDefaultConfig } = require("expo/metro-config");
+const path = require("path"); // Cần import path
 
 module.exports = (() => {
   const config = getDefaultConfig(__dirname);
@@ -17,9 +18,14 @@ module.exports = (() => {
     ...new Set([...config.resolver.sourceExts, "cjs", "mjs"]),
   ];
 
-  config.resolver.extraNodeModules = {
-    ...config.resolver.extraNodeModules,
-  };
+  // THÊM CẤU HÌNH QUAN TRỌNG NÀY ĐỂ GIẢI QUYẾT LỖI NOBLE CRYPTO
+  // Điều này đảm bảo Metro biết cách tìm các subpath imports như '@noble/curves/p256'
+  // mà không cần thêm .js hoặc các thủ thuật khác.
+  config.resolver.nodeModulesPaths = [
+    path.resolve(path.join(__dirname, "node_modules", "@noble", "curves")),
+    path.resolve(path.join(__dirname, "node_modules", "@noble", "hashes")),
+    path.resolve(__dirname, "node_modules"),
+  ];
 
   return config;
 })();

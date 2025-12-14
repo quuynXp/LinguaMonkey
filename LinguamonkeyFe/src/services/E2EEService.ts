@@ -14,10 +14,10 @@ import {
     base64ToArrayBuffer,
     generatePreKeyId,
     importPublicKey,
-    deriveSessionKey
+    deriveSessionKey,
+    CryptoKey,
+    CryptoKeyPair
 } from "../utils/crypto";
-
-import type { CryptoKey as QuickCryptoKey, CryptoKeyPair as QuickCryptoKeyPair } from "react-native-quick-crypto";
 
 type PreKeyBundleResponse = {
     identityPublicKey: string;
@@ -37,7 +37,7 @@ type PreKeyBundleRequest = {
 };
 
 type E2EEMetadata = {
-    senderEphemeralKey: string; // Base64 Public Key
+    senderEphemeralKey: string;
     usedPreKeyId?: number;
     initializationVector: string;
     ciphertext: string;
@@ -51,12 +51,11 @@ const STORAGE_KEYS = {
 };
 
 class E2EEService {
-    private sessionCache: Map<string, QuickCryptoKey> = new Map();
     private readonly MIN_PREKEYS_TO_UPLOAD = 50;
 
-    private identityKeyPair?: QuickCryptoKeyPair;
-    private signingKeyPair?: QuickCryptoKeyPair;
-    private signedPreKeyPair?: QuickCryptoKeyPair;
+    private identityKeyPair?: CryptoKeyPair;
+    private signingKeyPair?: CryptoKeyPair;
+    private signedPreKeyPair?: CryptoKeyPair;
     private userId?: string;
 
     async initAndCheckUpload(userId: string) {
@@ -103,12 +102,12 @@ class E2EEService {
         if (!this.identityKeyPair || !this.signingKeyPair) return;
 
         const identityExport = {
-            publicKey: await exportPublicKey(this.identityKeyPair.publicKey as QuickCryptoKey),
-            privateKey: await exportPrivateKey(this.identityKeyPair.privateKey as QuickCryptoKey)
+            publicKey: await exportPublicKey(this.identityKeyPair.publicKey),
+            privateKey: await exportPrivateKey(this.identityKeyPair.privateKey)
         };
         const signingExport = {
-            publicKey: await exportPublicKey(this.signingKeyPair.publicKey as QuickCryptoKey),
-            privateKey: await exportPrivateKey(this.signingKeyPair.privateKey as QuickCryptoKey)
+            publicKey: await exportPublicKey(this.signingKeyPair.publicKey),
+            privateKey: await exportPrivateKey(this.signingKeyPair.privateKey)
         };
 
         await AsyncStorage.setItem(STORAGE_KEYS.IDENTITY_KEY, JSON.stringify(identityExport));
@@ -116,8 +115,8 @@ class E2EEService {
 
         if (this.signedPreKeyPair) {
             const signedPreKeyExport = {
-                publicKey: await exportPublicKey(this.signedPreKeyPair.publicKey as QuickCryptoKey),
-                privateKey: await exportPrivateKey(this.signedPreKeyPair.privateKey as QuickCryptoKey)
+                publicKey: await exportPublicKey(this.signedPreKeyPair.publicKey),
+                privateKey: await exportPrivateKey(this.signedPreKeyPair.privateKey)
             };
             await AsyncStorage.setItem(STORAGE_KEYS.SIGNED_PRE_KEY, JSON.stringify(signedPreKeyExport));
         }
@@ -126,22 +125,22 @@ class E2EEService {
     async generateKeyBundleAndUpload(userId: string): Promise<void> {
         if (!this.identityKeyPair) await this.loadKeys();
 
-        const identityPublicKeyBase64 = await exportPublicKey(this.identityKeyPair!.publicKey as QuickCryptoKey);
+        const identityPublicKeyBase64 = await exportPublicKey(this.identityKeyPair!.publicKey);
 
         this.signedPreKeyPair = await generateKeyPair();
         await this.saveKeysToStorage();
 
         const signedPreKeyId = generatePreKeyId();
-        const signedPreKeyPublicKeyBase64 = await exportPublicKey(this.signedPreKeyPair.publicKey as QuickCryptoKey);
+        const signedPreKeyPublicKeyBase64 = await exportPublicKey(this.signedPreKeyPair.publicKey);
 
         const identityPublicKeyBuffer = base64ToArrayBuffer(identityPublicKeyBase64);
-        const signedPreKeySignatureBase64 = await signData(this.signingKeyPair!.privateKey as QuickCryptoKey, identityPublicKeyBuffer);
+        const signedPreKeySignatureBase64 = await signData(this.signingKeyPair!.privateKey, identityPublicKeyBuffer);
 
         const oneTimePreKeys: Record<number, string> = {};
         for (let i = 0; i < this.MIN_PREKEYS_TO_UPLOAD; i++) {
             const otKeypair = await generateKeyPair();
             const otKeyId = generatePreKeyId();
-            oneTimePreKeys[otKeyId] = await exportPublicKey(otKeypair.publicKey as QuickCryptoKey);
+            oneTimePreKeys[otKeyId] = await exportPublicKey(otKeypair.publicKey);
         }
 
         const request: PreKeyBundleRequest = {
@@ -155,18 +154,13 @@ class E2EEService {
         await instance.post(`/api/v1/keys/upload/${userId}`, request);
     }
 
-    /**
-     * MÃ HOÁ (SENDER SIDE)
-     */
     async encrypt(receiverId: string, content: string): Promise<E2EEMetadata> {
         console.log(`[E2EE_DEBUG] Encrypting for Receiver: ${receiverId}`);
 
-        // 1. Fetch Bundle
         let bundle: PreKeyBundleResponse;
         try {
             const res = await instance.get<PreKeyBundleResponse>(`/api/v1/keys/fetch/${receiverId}`);
             bundle = res.data;
-            console.log(`[E2EE_DEBUG] Fetched bundle. SignedPreKeyId: ${bundle.signedPreKeyId}, OneTimeKeyId: ${bundle.oneTimePreKeyId}`);
         } catch (e: any) {
             console.error(`[E2EE_DEBUG] Failed to fetch bundle for ${receiverId}`, e);
             throw new Error(`Cannot fetch keys for ${receiverId}`);
@@ -174,25 +168,20 @@ class E2EEService {
 
         if (!bundle.signedPreKeyPublicKey) throw new Error("Invalid Bundle");
 
-        // 2. Import Receiver's Signed PreKey
         const receiverSignedPreKey = await importPublicKey(bundle.signedPreKeyPublicKey);
 
-        // 3. Generate Ephemeral Key Pair for this message session
         const ephemeralKeyPair = await generateKeyPair();
-        const senderEphemeralKeyPub = await exportPublicKey(ephemeralKeyPair.publicKey as QuickCryptoKey);
+        const senderEphemeralKeyPub = await exportPublicKey(ephemeralKeyPair.publicKey);
 
-        // 4. Derive Shared Session Key
         const sessionKey = await deriveSessionKey(
-            ephemeralKeyPair.privateKey as QuickCryptoKey,
+            ephemeralKeyPair.privateKey,
             receiverSignedPreKey
         );
         console.log(`[E2EE_DEBUG] Session Key derived successfully`);
 
-        // 5. Encrypt Content
         const [ivBase64, ciphertextBase64] = await encryptAES(content, sessionKey);
-        console.log(`[E2EE_DEBUG] AES Encryption complete. Ciphertext length: ${ciphertextBase64.length}`);
+        console.log(`[E2EE_DEBUG] AES Encryption complete.`);
 
-        // 6. Return Payload
         return {
             senderEphemeralKey: senderEphemeralKeyPub,
             initializationVector: ivBase64,
@@ -201,14 +190,10 @@ class E2EEService {
         };
     }
 
-    /**
-     * GIẢI MÃ (RECEIVER SIDE)
-     */
     async decrypt(msg: ChatMessage): Promise<string> {
         if (!this.signedPreKeyPair) await this.loadKeys();
 
         if (!msg.senderEphemeralKey || !msg.initializationVector || !msg.content) {
-            console.log(`[E2EE_DEBUG] Message is missing E2EE fields. Returning content as is.`);
             return msg.content || "";
         }
 
@@ -216,7 +201,7 @@ class E2EEService {
             const senderEphemeralPub = await importPublicKey(msg.senderEphemeralKey);
 
             const sessionKey = await deriveSessionKey(
-                this.signedPreKeyPair!.privateKey as QuickCryptoKey,
+                this.signedPreKeyPair!.privateKey,
                 senderEphemeralPub
             );
 
