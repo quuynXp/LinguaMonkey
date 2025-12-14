@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Production Ready)
+name: LinguamonkeyFe - Signed APK Build (Disk Space Optimized)
 
 on:
   push:
@@ -19,14 +19,32 @@ jobs:
       - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🗑️ AGGRESSIVE DISK CLEANUP
+      - name: 🗑️ MAXIMUM DISK CLEANUP
         run: |
+          echo "🔥 Cleaning up disk space..."
+          
+          # Xóa các Runtime không dùng
           sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/lib/android/sdk/ndk # Xóa NDK cũ có sẵn, Gradle sẽ tải bản mới cần thiết
+          sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/lib/google-cloud-sdk
+          
+          # Xóa Docker images
           sudo docker image prune --all --force
-          sudo apt-get clean
-          sudo rm -rf /tmp/*
+          
+          # Xóa System Images của Android Emulator (Rất nặng, >5GB)
           sudo rm -rf /usr/local/lib/android/sdk/system-images
+          
+          # Xóa Cache quản lý gói
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo rm -rf /tmp/*
+          
+          echo "✅ Disk space cleaned."
+          df -h # In ra dung lượng trống để kiểm tra
 
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
@@ -58,10 +76,10 @@ jobs:
         run: |
           # 1. Giảm Xmx xuống 3GB để dành RAM cho C++ compiler
           # 2. org.gradle.workers.max=1 -> BẮT BUỘC để tránh sập nguồn
+          # 3. Giữ enableR8 để tối ưu kích thước file (giúp giảm dung lượng build)
           echo -e "\norg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Dkotlin.daemon.jvm.options=\"-Xmx1024m\"" >> ./android/gradle.properties
           echo "org.gradle.workers.max=1" >> ./android/gradle.properties
           echo "android.enableR8=true" >> ./android/gradle.properties
-
 
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
@@ -75,9 +93,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v11-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v12-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v11-
+            ${{ runner.os }}-gradle-fe-v12-
 
       - name: 🔐 Setup Keystore
         run: |
@@ -93,7 +111,7 @@ jobs:
           cd android
           chmod +x gradlew
           
-          echo "🔨 Starting Build (Production Ready)..."
+          echo "🔨 Starting Build (Production Ready + Disk Optimized)..."
           
           ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \

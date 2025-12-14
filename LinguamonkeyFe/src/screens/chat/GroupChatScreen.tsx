@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, Switch, ScrollView } from "react-native";
+import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, Switch, ScrollView, ActivityIndicator } from "react-native";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
@@ -20,9 +20,8 @@ import IncomingCallModal from "../../components/modals/IncomingCallModal";
 import { stompService } from "../../services/stompService";
 import { gotoTab } from "../../utils/navigationRef";
 
-// --- 1. THÊM IMPORT TYPE ROOM ---
+// --- IMPORT TYPE ROOM FROM ENTITY ---
 import type { Room } from "../../types/entity";
-// --------------------------------
 
 type ChatRoomParams = {
     ChatRoom: {
@@ -78,22 +77,25 @@ const GroupChatScreen = () => {
 
     const [showSettings, setShowSettings] = useState(false);
 
-    // --- 2. SỬA LỖI TYPE MISMATCH Ở ĐÂY ---
+    // State cho Modal mời thành viên
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+    const [isStartingCall, setIsStartingCall] = useState(false);
+
+    // --- FIX TYPE MISMATCH FOR ROOM ENTITY ---
     useEffect(() => {
         if (roomInfo) {
-            // Chúng ta cần convert RoomResponse (DTO) -> Room (Entity)
+            // Convert RoomResponse (DTO) -> Room (Entity)
             const roomEntity: Room = {
                 ...roomInfo,
-                // Thêm field thiếu
                 isDeleted: false,
-                // Ép kiểu members: Trong ngữ cảnh E2EE, chúng ta chỉ cần userId trong members để tìm partner
-                // Dữ liệu từ API (UserProfileResponse) có userId nên ép kiểu là an toàn
+                // Cast members strictly for local store compatibility
                 members: (roomInfo.members || []) as any
             };
             upsertRoom(roomEntity);
         }
     }, [roomInfo, upsertRoom]);
-    // --------------------------------------
+    // ----------------------------------------
 
     const syncSettingToBackend = async (
         updateChat: Partial<typeof chatSettings> = {},
@@ -200,18 +202,60 @@ const GroupChatScreen = () => {
         if (activeBubbleRoomId === roomId) closeBubble();
     }, [roomId, activeBubbleRoomId, closeBubble]);
 
-    const handleStartVideoCall = () => {
+    // Handle opening the Invite Modal instead of immediate call
+    const handleVideoIconPress = () => {
+        if (isPrivateRoom) {
+            // If private room, start call immediately (only 2 people)
+            handleStartVideoCall([]);
+        } else {
+            // Group room: Show popup to select members
+            setSelectedMemberIds([]); // Reset selection
+            setShowInviteModal(true);
+        }
+    };
+
+    const handleToggleMemberSelect = (userId: string) => {
+        setSelectedMemberIds(prev => {
+            if (prev.includes(userId)) {
+                return prev.filter(id => id !== userId);
+            } else {
+                return [...prev, userId];
+            }
+        });
+    };
+
+    const handleStartVideoCall = (invitees: string[]) => {
         if (!user?.userId || !roomId) {
             showToast({ type: "error", message: t("error.start_call_failed") });
             return;
         }
+
+        setIsStartingCall(true);
 
         createGroupCall({
             callerId: user.userId,
             roomId: roomId,
             videoCallType: 'GROUP' as unknown as VideoCallType
         }, {
-            onSuccess: (res) => {
+            onSuccess: async (res) => {
+                // Call created successfully, now add participants if any selected
+                if (invitees.length > 0) {
+                    try {
+                        const promises = invitees.map(inviteeId =>
+                            privateClient.post(`/api/v1/video-calls/${res.videoCallId}/participants`, null, {
+                                params: { userId: inviteeId }
+                            })
+                        );
+                        await Promise.all(promises);
+                    } catch (err) {
+                        console.error("Failed to add participants", err);
+                        // Continue anyway, they can join manually
+                    }
+                }
+
+                setIsStartingCall(false);
+                setShowInviteModal(false);
+
                 gotoTab("ChatStack", 'WebRTCCallScreen', {
                     roomId: res.roomId,
                     videoCallId: res.videoCallId,
@@ -219,9 +263,15 @@ const GroupChatScreen = () => {
                     mode: 'GROUP'
                 });
             },
-            onError: (err) => {
+            onError: (err: any) => {
+                setIsStartingCall(false);
                 console.error("Start Call Failed:", err);
-                showToast({ type: "error", message: t("error.start_call_failed") });
+                const statusCode = err?.response?.status;
+                if (statusCode === 500) {
+                    Alert.alert(t('common.error'), "Internal Server Error. Please check backend logs.");
+                } else {
+                    showToast({ type: "error", message: t("error.start_call_failed") });
+                }
             }
         });
     };
@@ -255,6 +305,31 @@ const GroupChatScreen = () => {
         );
     };
 
+    const renderInviteItem = ({ item }: { item: MemberResponse }) => {
+        if (item.userId === user?.userId) return null; // Don't show self
+        const displayName = item.nickNameInRoom || item.nickname || item.fullname;
+        const isSelected = selectedMemberIds.includes(item.userId);
+
+        return (
+            <TouchableOpacity
+                style={[styles.memberItem, { backgroundColor: isSelected ? '#F0F9FF' : 'transparent' }]}
+                onPress={() => handleToggleMemberSelect(item.userId)}
+            >
+                <View>
+                    <Image source={item.avatarUrl ? { uri: item.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={styles.memberAvatar} />
+                    {renderMemberDot(item.userId)}
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.memberName} numberOfLines={1}>{displayName}</Text>
+                    <Text style={styles.memberRole}>{item.role === 'ADMIN' ? t('chat.admin') : t('chat.member')}</Text>
+                </View>
+                <View style={styles.checkbox}>
+                    {isSelected ? <Icon name="check-circle" size={24} color="#3B82F6" /> : <Icon name="radio-button-unchecked" size={24} color="#D1D5DB" />}
+                </View>
+            </TouchableOpacity>
+        );
+    };
+
     return (
         <ScreenLayout>
             <IncomingCallModal />
@@ -272,8 +347,8 @@ const GroupChatScreen = () => {
                         <Text style={styles.headerSubtitle}>{getHeaderStatusText()}</Text>
                     </View>
                 </View>
-                <TouchableOpacity onPress={handleStartVideoCall} style={{ padding: 8 }} disabled={isCalling}>
-                    <Icon name="videocam" size={26} color={isCalling ? "#9CA3AF" : "#4F46E5"} />
+                <TouchableOpacity onPress={handleVideoIconPress} style={{ padding: 8 }} disabled={isCalling || isStartingCall}>
+                    <Icon name="videocam" size={26} color={(isCalling || isStartingCall) ? "#9CA3AF" : "#4F46E5"} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
                     <Icon name="info-outline" size={26} color="#4F46E5" />
@@ -290,6 +365,7 @@ const GroupChatScreen = () => {
                 />
             </View>
 
+            {/* Settings Modal */}
             <Modal visible={showSettings} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowSettings(false)}>
                 <View style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
@@ -320,6 +396,41 @@ const GroupChatScreen = () => {
                     </ScrollView>
                 </View>
             </Modal>
+
+            {/* Invite Members Modal (New Popup) */}
+            <Modal visible={showInviteModal} animationType="slide" transparent={true} onRequestClose={() => setShowInviteModal(false)}>
+                <View style={styles.inviteModalOverlay}>
+                    <View style={styles.inviteModalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>{t('chat.invite_to_call')}</Text>
+                            <TouchableOpacity onPress={() => setShowInviteModal(false)}><Icon name="close" size={24} color="#374151" /></TouchableOpacity>
+                        </View>
+                        <Text style={{ paddingHorizontal: 20, paddingBottom: 10, color: '#6B7280' }}>
+                            {t('chat.select_members_to_invite')}
+                        </Text>
+                        <FlatList
+                            data={members}
+                            renderItem={renderInviteItem}
+                            keyExtractor={item => item.userId}
+                            style={{ maxHeight: 400 }}
+                        />
+                        <View style={styles.inviteFooter}>
+                            <TouchableOpacity
+                                style={[styles.startCallBtn, { opacity: isStartingCall ? 0.7 : 1 }]}
+                                onPress={() => handleStartVideoCall(selectedMemberIds)}
+                                disabled={isStartingCall}
+                            >
+                                {isStartingCall ? (
+                                    <ActivityIndicator color="#FFF" style={{ marginRight: 8 }} />
+                                ) : (
+                                    <Icon name="videocam" size={20} color="#FFF" style={{ marginRight: 8 }} />
+                                )}
+                                <Text style={styles.startCallText}>{t('chat.start_call')}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </ScreenLayout>
     );
 };
@@ -330,20 +441,33 @@ const styles = StyleSheet.create({
     headerTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937' },
     headerSubtitle: { fontSize: 12, color: '#10B981', fontWeight: '500' },
     headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#FFF' },
-    modalContainer: { flex: 1, backgroundColor: '#F9FAFB', paddingTop: 0 },
+
+    // Modal Styles
+    modalContainer: { flex: 1, backgroundColor: '#F9FAFB', paddingTop: 30 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
     modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1F2937' },
+
     sectionContainer: { marginTop: 20, backgroundColor: '#FFF', paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#F3F4F6' },
     sectionTitle: { fontSize: 13, fontWeight: '700', color: '#6B7280', paddingHorizontal: 16, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
     settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
     settingLabel: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
+
     memberItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
     memberAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E5E7EB' },
     memberName: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 2 },
     memberRole: { fontSize: 12, color: '#6B7280' },
     iconBtn: { padding: 10 },
+
     leaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2', padding: 16, margin: 20, borderRadius: 12, borderWidth: 1, borderColor: '#FECACA' },
     leaveBtnText: { color: '#EF4444', fontWeight: 'bold', fontSize: 16 },
+
+    // Invite Modal specific
+    inviteModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+    inviteModalContent: { width: '90%', backgroundColor: '#FFF', borderRadius: 16, maxHeight: '80%', overflow: 'hidden' },
+    inviteFooter: { padding: 16, borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#F9FAFB' },
+    checkbox: { marginLeft: 'auto', padding: 4 },
+    startCallBtn: { flexDirection: 'row', backgroundColor: '#4F46E5', paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    startCallText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 }
 });
 
 export default GroupChatScreen;

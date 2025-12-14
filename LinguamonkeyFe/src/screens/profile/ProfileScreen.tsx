@@ -33,6 +33,7 @@ import { useUsers } from '../../hooks/useUsers';
 import { FriendshipStatus } from '../../types/enums';
 import FileUploader from '../../components/common/FileUploader';
 import { useToast } from '../../utils/useToast';
+import { getBadgeImage } from '../../utils/courseUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -40,7 +41,7 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
   const { data: historyData, isLoading } = useGetStudyHistory(userId, 'year');
   const { t } = useTranslation();
   const { showToast } = useToast();
-  
+
   const [viewDate, setViewDate] = useState(new Date());
 
   const getLevelColor = (count: number) => {
@@ -66,7 +67,7 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
   const handleNextMonth = () => {
     const today = new Date();
     if (viewDate.getMonth() === today.getMonth() && viewDate.getFullYear() === today.getFullYear()) return;
-    
+
     setViewDate(prev => {
       const newDate = new Date(prev);
       newDate.setMonth(newDate.getMonth() + 1);
@@ -80,11 +81,11 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
+
     const days = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      
+
       let count = 0;
       if (historyData.dailyActivity && typeof historyData.dailyActivity === 'object') {
         count = historyData.dailyActivity[dateStr] || 0;
@@ -115,7 +116,7 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
     <View style={styles.heatmapContainer}>
       <View style={styles.heatmapHeader}>
         <Text style={styles.sectionTitle}>{t('profile.activity')}</Text>
-        
+
         <View style={styles.monthNav}>
           <TouchableOpacity onPress={handlePrevMonth} style={styles.navBtn}>
             <Icon name="chevron-left" size={24} color="#6B7280" />
@@ -123,8 +124,8 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
           <Text style={styles.monthLabel}>
             {viewDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
           </Text>
-          <TouchableOpacity 
-            onPress={handleNextMonth} 
+          <TouchableOpacity
+            onPress={handleNextMonth}
             style={[styles.navBtn, isCurrentMonth && styles.navBtnDisabled]}
             disabled={isCurrentMonth}
           >
@@ -183,6 +184,7 @@ const BadgeProgressSection = ({ userId }: { userId: string }) => {
       <View style={styles.badgeGrid}>
         {displayedBadges.map((item, index) => {
           const isLocked = !item.isAchieved;
+          const badgeSource = getBadgeImage(item.imageUrl);
 
           return (
             <TouchableOpacity
@@ -191,7 +193,7 @@ const BadgeProgressSection = ({ userId }: { userId: string }) => {
               onPress={handleSeeAllBadges}
             >
               <View style={[styles.badgeImageContainer, isLocked && styles.grayscale]}>
-                <Image source={{ uri: item.imageUrl }} style={styles.badgeImageLarge} />
+                <Image source={badgeSource} style={styles.badgeImageLarge} />
                 {isLocked && (
                   <View style={styles.lockOverlay}>
                     {item.currentUserProgress >= item.criteriaThreshold ? (
@@ -214,7 +216,7 @@ const BadgeProgressSection = ({ userId }: { userId: string }) => {
   );
 };
 
-const InfoRow = ({ icon, label, value, copyable = false }: { icon: string; label: string; value?: string | null | number | boolean; copyable?: boolean }) => {
+const InfoRow = ({ icon, label, value, copyable = false, color }: { icon: string; label: string; value?: string | null | number | boolean; copyable?: boolean; color?: string }) => {
   if (value === undefined || value === null || value === '') return null;
   const handleCopy = () => {
     if (copyable && typeof value === 'string') {
@@ -225,7 +227,9 @@ const InfoRow = ({ icon, label, value, copyable = false }: { icon: string; label
   return (
     <TouchableOpacity style={styles.infoRow} onPress={handleCopy} disabled={!copyable} activeOpacity={0.7}>
       <View style={styles.infoLabelContainer}>
-        <Icon name={icon} size={18} color="#666" style={{ marginRight: 8 }} />
+        <View style={[styles.iconBox, { backgroundColor: color ? `${color}15` : '#F3F4F6' }]}>
+          <Icon name={icon} size={18} color={color || "#6B7280"} />
+        </View>
         <Text style={styles.infoLabel}>{label}</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
@@ -235,6 +239,35 @@ const InfoRow = ({ icon, label, value, copyable = false }: { icon: string; label
     </TouchableOpacity>
   );
 };
+
+const AboutAppSection = () => {
+  const { t } = useTranslation();
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>{t('about.title')}</Text>
+        <TouchableOpacity onPress={() => gotoTab('Profile', 'AboutScreen')}>
+          <Text style={styles.seeAllText}>{t('common.seeAll')}</Text>
+        </TouchableOpacity>
+      </View>
+      <TouchableOpacity
+        style={styles.aboutAppContainer}
+        onPress={() => gotoTab('Profile', 'AboutScreen')}
+        activeOpacity={0.7}
+      >
+        <View style={styles.aboutAppIconContainer}>
+          <Icon name="language" size={32} color="#4F46E5" />
+        </View>
+        <View style={styles.aboutAppInfo}>
+          <Text style={styles.aboutAppName}>LinguaMonkey</Text>
+          <Text style={styles.aboutAppVersion}>{t('about.version', { version: '1.0.0' })}</Text>
+        </View>
+        <Icon name="chevron-right" size={24} color="#9CA3AF" />
+      </TouchableOpacity>
+    </View>
+  )
+}
 
 const CombinedFriendsSection = () => {
   const { t } = useTranslation();
@@ -517,7 +550,9 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.content}>
           <View style={styles.header}>
             <Text style={styles.title}>{t('profile.title')}</Text>
-            <TouchableOpacity style={styles.settingsButton} onPress={() => gotoTab('Profile', 'SettingsScreen')}><Icon name="settings" size={26} color="#6B7280" /></TouchableOpacity>
+            <TouchableOpacity style={styles.settingsButton} onPress={() => gotoTab('Profile', 'SettingsScreen')}>
+              <Icon name="settings" size={26} color="#6B7280" />
+            </TouchableOpacity>
           </View>
           {renderSingleHeader()}
           {renderWalletCard()}
@@ -526,20 +561,26 @@ const ProfileScreen: React.FC = () => {
 
           {user?.userId && <ActivityHeatmap userId={user.userId} />}
           {user?.userId && <BadgeProgressSection userId={user.userId} />}
+
+          <AboutAppSection />
+
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>{t('profile.aboutMe')}</Text>
             <View style={styles.infoGrid}>
-              <InfoRow icon="verified-user" label="VIP Status" value={userStore.vip ? `${userStore.vipDaysRemaining || 0} days remaining` : t('common.no')} />
-              <InfoRow icon="badge" label={t('profile.nickname')} value={user?.nickname} />
-              <InfoRow icon="email" label={t('profile.email')} value={user?.email} />
-              <InfoRow icon="phone" label={t('profile.phone')} value={user?.phone} />
-              <InfoRow icon="person" label={t('profile.gender')} value={user?.gender ? t(`gender.${user.gender}`) : null} />
-              <InfoRow icon="event" label={t('profile.dayOfBirth')} value={user?.dayOfBirth} />
-              <InfoRow icon="public" label={t('profile.country')} value={user?.country} />
-              <InfoRow icon="schedule" label={t('profile.joined')} value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : null} />
+              <InfoRow icon="verified-user" label="VIP Status" value={userStore.vip ? `${userStore.vipDaysRemaining || 0} days remaining` : t('common.no')} color="#F59E0B" />
+              <InfoRow icon="badge" label={t('profile.nickname')} value={user?.nickname} color="#3B82F6" />
+              <InfoRow icon="email" label={t('profile.email')} value={user?.email} color="#EC4899" />
+              <InfoRow icon="phone" label={t('profile.phone')} value={user?.phone} color="#10B981" />
+              <InfoRow icon="person" label={t('profile.gender')} value={user?.gender ? t(`gender.${user.gender}`) : null} color="#8B5CF6" />
+              <InfoRow icon="cake" label={t('profile.dayOfBirth')} value={user?.dayOfBirth} color="#EF4444" />
+              <InfoRow icon="public" label={t('profile.country')} value={user?.country} color="#0EA5E9" />
+              <InfoRow icon="schedule" label={t('profile.joined')} value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : null} color="#64748B" />
+
               {userStore.languages && userStore.languages.length > 0 && (
                 <View style={styles.languagesContainer}>
-                  <Icon name="language" size={18} color="#666" style={{ marginRight: 8 }} />
+                  <View style={[styles.iconBox, { backgroundColor: '#F3F4F6' }]}>
+                    <Icon name="language" size={18} color="#666" />
+                  </View>
                   <View style={styles.languageTags}>{userStore.languages.map((lang, idx) => (<View key={idx} style={styles.langTag}><View style={{ marginRight: 4 }}>{getCountryFlag(lang, 14)}</View><Text style={styles.langTagText}>{lang.toUpperCase()}</Text></View>))}</View>
                 </View>
               )}
@@ -598,9 +639,8 @@ const styles = createScaledSheet({
   navBtn: { padding: 4 },
   navBtnDisabled: { opacity: 0.3 },
   monthLabel: { fontSize: 13, fontWeight: '600', color: '#374151', marginHorizontal: 8, minWidth: 80, textAlign: 'center' },
-  // Cập nhật lại styles cho ô vuông nhỏ và bố cục lưới
   heatmapGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-start', paddingVertical: 8 },
-  heatmapCellMonth: { width: 12, height: 12, borderRadius: 2 }, 
+  heatmapCellMonth: { width: 12, height: 12, borderRadius: 2 },
   heatmapCellLegend: { width: 12, height: 12, borderRadius: 2 },
   heatmapLegend: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 4, justifyContent: 'flex-end' },
   legendText: { fontSize: 10, color: '#666', marginHorizontal: 4 },
@@ -608,11 +648,12 @@ const styles = createScaledSheet({
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingRight: 4 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937', paddingLeft: 4 },
   infoGrid: { gap: 12 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
-  infoLabelContainer: { flexDirection: 'row', alignItems: 'center', width: 120 },
-  infoLabel: { fontSize: 14, color: '#6B7280' },
+  infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
+  infoLabelContainer: { flexDirection: 'row', alignItems: 'center', width: 140 },
+  iconBox: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  infoLabel: { fontSize: 14, color: '#4B5563', fontWeight: '500' },
   infoValue: { fontSize: 14, color: '#111827', fontWeight: '600', flexShrink: 1, textAlign: 'right' },
-  languagesContainer: { marginTop: 10, flexDirection: 'row', alignItems: 'center' },
+  languagesContainer: { marginTop: 10, flexDirection: 'row', alignItems: 'center', paddingTop: 8 },
   languageTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, flex: 1 },
   langTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   langTagText: { fontSize: 12, color: '#4B5563' },
@@ -620,7 +661,7 @@ const styles = createScaledSheet({
   badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   badgeCard: { width: (width - 64) / 3, alignItems: 'center', marginBottom: 16 },
   badgeImageContainer: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', marginBottom: 8 },
-  badgeImageLarge: { width: 60, height: 60, borderRadius: 30 },
+  badgeImageLarge: { width: 60, height: 60, borderRadius: 30, resizeMode: 'contain' },
   grayscale: { opacity: 0.5, backgroundColor: '#E5E7EB' },
   lockOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
   badgeName: { fontSize: 11, fontWeight: '600', color: '#4B5563', textAlign: 'center', marginBottom: 4 },
@@ -633,6 +674,11 @@ const styles = createScaledSheet({
   flagBadgeSmall: { position: 'absolute', top: -2, left: -2, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 8, padding: 1, elevation: 2 },
   acceptButtonHorizontal: { backgroundColor: '#10B981', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
   acceptButtonTextHorizontal: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+  aboutAppContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+  aboutAppIconContainer: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  aboutAppInfo: { flex: 1 },
+  aboutAppName: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 4 },
+  aboutAppVersion: { fontSize: 13, color: '#6B7280' },
 });
 
 export default ProfileScreen;

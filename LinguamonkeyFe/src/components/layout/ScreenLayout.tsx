@@ -13,7 +13,6 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import {
     GestureDetector,
     Gesture,
-    Directions,
 } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { goBack, gotoTab } from '../../utils/navigationRef';
@@ -58,73 +57,59 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     const bottomSpacerHeight =
         !bottomComponent && !unsafe ? insets.bottom : 0;
 
-    // --- ACTIONS ---
     const handleNavigateTab = () => {
         if (swipeToTab) {
             gotoTab(swipeToTab);
         }
     };
 
-    const handleGoBack = () => {
+    const handleGoBack = (): boolean => {
         if (enableSwipeBack) {
-            goBack();
+            return goBack();
         }
+        return false;
     };
 
     // --- ANDROID HARDWARE BACK BUTTON / SYSTEM GESTURE ---
+    // NOTE: actual android back handling is centralized in RootNavigation to avoid
+    // conflicts across screens. We keep this hook minimal to avoid double-handling.
     useEffect(() => {
-        const onBackPress = () => {
-            if (enableSwipeBack) {
-                handleGoBack();
-                return true; // Chặn hành động thoát app mặc định
-            }
-            return false;
-        };
-
-        if (Platform.OS === 'android') {
-            const subscription = BackHandler.addEventListener(
-                'hardwareBackPress',
-                onBackPress
-            );
-            return () => subscription.remove();
-        }
+        // noop here — RootNavigation handles BackHandler on Android globally.
+        // This keeps ScreenLayout from interfering.
     }, [enableSwipeBack]);
 
-    // --- GESTURE CONFIGURATION ---
-
-    /**
-     * Cấu hình Pan Gesture để xử lý vuốt mượt mà hơn Fling.
-     * - failOffsetY: Huỷ gesture nếu ngón tay di chuyển dọc quá 10px (tránh conflict với ScrollView dọc).
-     * - activeOffsetX: Chỉ kích hoạt khi đã vuốt ngang rõ ràng (20px).
-     */
-    const panGesture = Gesture.Pan()
-        .failOffsetY([-10, 10]) // Quan trọng: Nhường quyền cho scroll dọc
-        .activeOffsetX([-20, 20]) // Cần vuốt dứt khoát 20px mới kích hoạt
+    const panGesture = Platform.OS === 'ios' ? Gesture.Pan()
+        .failOffsetY([-10, 10])
+        .activeOffsetX([-20, 20])
         .onEnd((e) => {
-            // Logic xác định hướng vuốt dựa trên translation và velocity
             const isSwipeRight = e.translationX > 50 && e.velocityX > 500;
             const isSwipeLeft = e.translationX < -50 && e.velocityX < -500;
 
-            // 1. Xử lý BACK (Vuốt từ trái sang phải)
             if (isSwipeRight) {
-                // iOS: Chỉ back khi vuốt từ mép trái (giống native)
-                // Android: Bỏ qua (hệ thống tự xử lý edge swipe)
                 if (
-                    Platform.OS === 'ios' &&
                     enableSwipeBack &&
-                    e.x < 50 // CHỈ BACK NẾU BẮT ĐẦU TỪ MÉP (Fix conflict carousel)
+                    e.x < 50
                 ) {
                     runOnJS(handleGoBack)();
                 }
             }
 
-            // 2. Xử lý NEXT TAB (Vuốt từ phải sang trái)
             if (isSwipeLeft && swipeToTab) {
-                // Chỉ swipe tab khi bắt đầu từ mép phải (hoặc thả lỏng hơn tuỳ UX)
-                // Ở đây để thả lỏng hơn 1 chút để dễ chuyển tab
                 runOnJS(handleNavigateTab)();
             }
-        });
+        }) : undefined; // KHÔNG ĐỊNH NGHĨA PAN GESTURE NẾU LÀ ANDROID
+
+    const content = (
+        <View style={styles.content}>{children}</View>
+    );
+
+    const gestureContent = panGesture ? (
+        <GestureDetector gesture={panGesture}>
+            {content}
+        </GestureDetector>
+    ) : (
+        content
+    );
 
     return (
         <View style={[styles.container, { backgroundColor }]}>
@@ -136,7 +121,6 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                 translucent={true}
             />
 
-            {/* HEADER AREA */}
             {headerComponent ? (
                 <View
                     style={[
@@ -158,17 +142,10 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                 />
             )}
 
-            {/* CONTENT AREA */}
             <View style={[styles.contentWrapper, style]}>
-                {/* Sử dụng GestureDetector bao quanh content.
-            Lưu ý: PanGesture đã được config failOffsetY để không chặn scroll dọc.
-         */}
-                <GestureDetector gesture={panGesture}>
-                    <View style={styles.content}>{children}</View>
-                </GestureDetector>
+                {gestureContent}
             </View>
 
-            {/* BOTTOM AREA */}
             {bottomComponent ? (
                 <View
                     style={[

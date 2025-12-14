@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { stompService } from '../services/stompService';
 import { pythonAiWsService } from '../services/pythonAiWsService';
@@ -45,10 +46,8 @@ export type UserStatus = {
 interface UseChatState {
   stompConnected: boolean;
   aiWsConnected: boolean;
-
   rooms: { [roomId: string]: Room };
   userStatuses: { [userId: string]: UserStatus };
-
   lexiconMaster: Map<string, LexiconEntry>;
   aiRoomList: Room[];
   pendingSubscriptions: string[];
@@ -60,9 +59,7 @@ interface UseChatState {
   loadingByRoom: { [roomId: string]: boolean };
   aiChatHistory: AiMessage[];
   isAiStreaming: boolean;
-
   eagerTranslations: { [messageId: string]: { [lang: string]: string } };
-
   videoSubtitleService: VideoSubtitleService | null;
   currentVideoSubtitles: DualSubtitle | null;
   activeBubbleRoomId: string | null;
@@ -106,7 +103,6 @@ interface UseChatState {
   acceptIncomingCall: () => void;
   rejectIncomingCall: () => void;
   updateUserStatus: (userId: string, isOnline: boolean, lastActiveAt?: string) => void;
-
   performEagerTranslation: (messageId: string, text: string, targetLang?: string) => Promise<void>;
   translateLastNMessages: (roomId: string, targetLang: string, count?: number) => Promise<void>;
   decryptNewMessages: (roomId: string, newMessages: Message[]) => Promise<void>;
@@ -144,7 +140,7 @@ const normalizeMessage = (msg: any): Message => {
     senderEphemeralKey: msg.senderEphemeralKey,
     usedPreKeyId: msg.usedPreKeyId,
     initializationVector: msg.initializationVector,
-    decryptedContent: null,
+    decryptedContent: msg.decryptedContent || null,
     mediaUrl: safeMediaUrl,
   };
 
@@ -162,7 +158,7 @@ const normalizeMessage = (msg: any): Message => {
       senderEphemeralKey: msg.senderEphemeralKey,
       usedPreKeyId: msg.usedPreKeyId,
       initializationVector: msg.initializationVector,
-      decryptedContent: null,
+      decryptedContent: msg.decryptedContent || null,
       mediaUrl: safeMediaUrl,
     };
     return rawMsg as Message;
@@ -176,7 +172,7 @@ const normalizeMessage = (msg: any): Message => {
       senderEphemeralKey: msg.senderEphemeralKey,
       usedPreKeyId: msg.usedPreKeyId,
       initializationVector: msg.initializationVector,
-      decryptedContent: null,
+      decryptedContent: msg.decryptedContent || null,
       mediaUrl: safeMediaUrl,
     };
     return rawMsg as Message;
@@ -185,7 +181,7 @@ const normalizeMessage = (msg: any): Message => {
   const fallbackMsg = {
     ...msg,
     id: { chatMessageId: 'unknown-' + Math.random(), sentAt: new Date().toISOString() },
-    decryptedContent: null,
+    decryptedContent: msg.decryptedContent || null,
     mediaUrl: safeMediaUrl,
   };
   return fallbackMsg as Message;
@@ -211,45 +207,80 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
     return { list: list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId), isNew: false };
   }
 
-  if (eagerCallback && msg.senderId !== currentUserId && msg.messageType === 'TEXT' && msg.content) {
+  // ✅ Không gọi eager translation cho encrypted messages
+  if (eagerCallback && msg.senderId !== currentUserId && msg.messageType === 'TEXT' && msg.content && !msg.senderEphemeralKey) {
     eagerCallback(msg);
   }
 
   let workingList = [...list];
   let isNew = false;
 
+  // ✅ FIX CHÍNH: Xử lý tin nhắn của chính mình từ server
   if (msg.senderId === currentUserId && !msg.isLocal) {
-    workingList = workingList.filter(m => {
-      const isMyLocal = m.isLocal === true;
-      let isMatch = false;
+    // Tìm optimistic message tương ứng
+    const optimisticIndex = workingList.findIndex(m => {
+      if (!m.isLocal) return false;
 
+      // Match strategy:
+      // 1. Media messages: match by mediaUrl
+      // 2. Text messages: match by timestamp gần nhau (trong 10s) và có E2EE metadata giống nhau
       if (msg.mediaUrl && m.mediaUrl) {
-        isMatch = m.mediaUrl === msg.mediaUrl;
-      }
-      else if (msg.messageType === 'TEXT') {
-        isMatch = m.content?.trim() === msg.content?.trim();
+        return m.mediaUrl === msg.mediaUrl;
       }
 
-      return !(isMyLocal && isMatch);
+      if (msg.messageType === 'TEXT') {
+        const timeDiff = Math.abs(parseDate(msg.id.sentAt) - parseDate(m.id.sentAt));
+        const isTimeClose = timeDiff < 10000; // 10 seconds
+
+        // Nếu cả 2 đều encrypted, kiểm tra metadata
+        if (msg.senderEphemeralKey && m.senderEphemeralKey) {
+          return isTimeClose && m.senderEphemeralKey === msg.senderEphemeralKey;
+        }
+
+        // Nếu không encrypted, match bằng content
+        return isTimeClose && m.content?.trim() === msg.content?.trim();
+      }
+
+      return false;
     });
+
+    if (optimisticIndex !== -1) {
+      const optimisticMsg = workingList[optimisticIndex];
+
+      // ✅ PRESERVE: Giữ lại decryptedContent từ optimistic message
+      if (optimisticMsg.decryptedContent) {
+        msg.decryptedContent = optimisticMsg.decryptedContent;
+        console.log(`[ChatStore] ✅ Preserved plaintext for self-message: ${msg.id.chatMessageId}`);
+      }
+
+      // Xóa optimistic message
+      workingList.splice(optimisticIndex, 1);
+    }
   }
 
+  // ✅ Kiểm tra message đã tồn tại chưa
   const existsIndex = workingList.findIndex((m) => m.id.chatMessageId === msg.id.chatMessageId);
 
   if (existsIndex > -1) {
     const existing = workingList[existsIndex];
+
+    // Merge translations
     if (Object.keys(existing.translationsMap || {}).length > Object.keys(msg.translationsMap || {}).length) {
       msg.translationsMap = { ...msg.translationsMap, ...existing.translationsMap };
     }
-    if (existing.decryptedContent) {
+
+    // Preserve decryptedContent nếu đã có
+    if (existing.decryptedContent && !msg.decryptedContent) {
       msg.decryptedContent = existing.decryptedContent;
     }
+
     workingList[existsIndex] = msg;
   } else {
     workingList = [msg, ...workingList];
     isNew = true;
   }
 
+  // Sort messages
   workingList.sort((a, b) => {
     const timeA = parseDate(a.id?.sentAt);
     const timeB = parseDate(b.id?.sentAt);
@@ -304,9 +335,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   aiChatHistory: [],
   isAiStreaming: false,
   activeAiRoomId: null,
-
   eagerTranslations: {},
-
   videoSubtitleService: null,
   currentVideoSubtitles: null,
   activeBubbleRoomId: null,
@@ -360,26 +389,31 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     e2eeService.setUserId(currentUserId || '');
 
     const decryptionPromises = newMessages.map(async (msg) => {
+      // ✅ SKIP: Không decrypt tin nhắn của chính mình (đã có plaintext)
+      if (msg.senderId === currentUserId) {
+        console.log(`[ChatStore] ⏩ Skipping self-message decryption: ${msg.id.chatMessageId}`);
+        return;
+      }
+
+      // Skip nếu đã decrypt hoặc không phải TEXT
       if (msg.decryptedContent || msg.messageType !== 'TEXT') return;
 
-      const partnerId = msg.senderId === currentUserId ?
-        room.members.find(m => m.userId !== currentUserId)?.userId : msg.senderId;
-
+      const partnerId = msg.senderId;
       if (!partnerId) return;
 
       try {
         const decryptedContent = await e2eeService.decrypt(msg);
         get().updateDecryptedContent(roomId, msg.id.chatMessageId, decryptedContent);
 
-        // --- TRIGGER TRANSLATION AFTER SUCCESSFUL DECRYPTION ---
-        const { chatSettings } = useAppStore.getState();
+        // ✅ Translate plaintext sau khi decrypt
+        const { chatSettings, nativeLanguage } = useAppStore.getState();
         if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
           await get().performEagerTranslation(msg.id.chatMessageId, decryptedContent);
         }
 
       } catch (e: any) {
-        console.warn(`Failed to decrypt message ${msg.id.chatMessageId}:`, e);
-        get().updateDecryptedContent(roomId, msg.id.chatMessageId, `[DECRYPTION FAILED: ${e.message || 'Key Error'}]`);
+        console.warn(`❌ Failed to decrypt message ${msg.id.chatMessageId}:`, e);
+        get().updateDecryptedContent(roomId, msg.id.chatMessageId, `!! Decryption Failed: ${e.message || 'Key Error'} !!`);
       }
     });
 
@@ -389,18 +423,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
     if (!text || !messageId) return;
 
+    // ✅ GUARD: Không translate ciphertext
     if (text.trim().startsWith('{') && text.includes('ciphertext')) {
-      const state = get();
-      let foundMsg: Message | undefined;
-      for (const rId in state.messagesByRoom) {
-        foundMsg = state.messagesByRoom[rId]?.find(m => m.id.chatMessageId === messageId);
-        if (foundMsg) break;
-      }
-      if (foundMsg && foundMsg.decryptedContent) {
-        text = foundMsg.decryptedContent;
-      } else {
-        return;
-      }
+      console.warn(`[Translation] ⚠️ Skipping ciphertext translation`);
+      return;
+    }
+
+    // ✅ GUARD: Không translate decryption errors
+    if (text.includes('!! Decryption Failed')) {
+      return;
     }
 
     const { nativeLanguage, chatSettings } = useAppStore.getState();
@@ -427,6 +458,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       return;
     }
 
+    // Client-side LPM translation
     const lexicon = get().lexiconMaster;
     const words = text.split(/\s+/).filter(w => w);
     let translatedText = '';
@@ -481,6 +513,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       return;
     }
 
+    // Backend fallback
     try {
       const res = await instance.post('/api/py/translate', {
         text,
@@ -499,7 +532,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           }
         }));
       }
-    } catch (e) { }
+    } catch (e) {
+      console.error('[Translation] Backend fallback failed:', e);
+    }
   },
 
   fetchLexiconMaster: async () => {
@@ -921,8 +956,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const optimisticMsg = {
       id: { chatMessageId: optimisticId, sentAt: new Date().toISOString() },
       senderId: user?.userId,
-      content: finalPayload.content || optimisticContent,
-      decryptedContent: optimisticContent,
+      content: finalPayload.content || optimisticContent, // Content là ciphertext, nhưng...
+      decryptedContent: optimisticContent, // ✅ decryptedContent là plaintext
       messageType: type,
       mediaUrl: mediaUrl || null,
       isLocal: true,

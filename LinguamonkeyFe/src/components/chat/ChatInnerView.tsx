@@ -135,40 +135,55 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const flatListRef = useRef<FlatList>(null);
 
     const messages: UIMessage[] = useMemo(() => {
-        return serverMessages.map((msg: any) => {
-            const senderId = msg?.senderId ?? 'unknown';
-            const messageId = msg?.id?.chatMessageId || (typeof msg?.id === 'string' ? msg.id : `${senderId}_${msg.sentAt}`);
+        return serverMessages
+            .filter((msg: any) => msg.type !== 'INCOMING_CALL' && msg.messageType !== 'INCOMING_CALL')
+            .map((msg: any) => {
+                const senderId = msg?.senderId ?? 'unknown';
+                const messageId = msg?.id?.chatMessageId || (typeof msg?.id === 'string' ? msg.id : `${senderId}_${msg.sentAt}`);
 
-            const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
-            const dbMapTrans = msg.translationsMap ? msg.translationsMap[translationTargetLang] : null;
-            const finalTranslation = eagerTrans || dbMapTrans;
+                const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
+                const dbMapTrans = msg.translationsMap ? msg.translationsMap[translationTargetLang] : null;
+                const finalTranslation = eagerTrans || dbMapTrans;
 
-            const senderProfile = msg.senderProfile || membersMap[senderId];
-            const displayContent = msg.decryptedContent || msg.content || '';
-            const isEncrypted = !!msg.senderEphemeralKey;
+                const senderProfile = msg.senderProfile || membersMap[senderId];
 
-            return {
-                id: messageId,
-                sender: senderId === currentUserId ? 'user' : 'other',
-                senderId: senderId,
-                timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
-                text: displayContent,
-                content: msg.content || '',
-                mediaUrl: (msg as any).mediaUrl,
-                messageType: (msg as any).messageType || 'TEXT',
-                translatedText: finalTranslation,
-                translatedLang: translationTargetLang,
-                user: senderProfile?.fullname || senderProfile?.nickname || 'Unknown',
-                avatar: senderProfile?.avatarUrl || null,
-                sentAt: msg?.id?.sentAt,
-                isRead: msg.isRead,
-                isLocal: (msg as any).isLocal,
-                senderProfile: senderProfile,
-                roomId: roomId,
-                isDeleted: msg.isDeleted,
-                isEncrypted: isEncrypted,
-            } as UIMessage;
-        }).sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+                let displayContent = msg.decryptedContent || msg.content || '';
+                const isEncrypted = !!msg.senderEphemeralKey;
+
+                // FIX: Đảm bảo tin nhắn tự gửi đã mã hóa luôn hiển thị plaintext từ decryptedContent.
+                // Sau khi load, decryptNewMessages/upsertMessage sẽ cập nhật decryptedContent.
+                if (isEncrypted) {
+                    if (senderId === currentUserId) {
+                        // Tin nhắn tự gửi đã mã hóa: ưu tiên decryptedContent (plaintext)
+                        displayContent = msg.decryptedContent || msg.content;
+                    } else {
+                        // Tin nhắn người khác đã mã hóa: hiển thị decryptedContent (sau decrypt) hoặc content (ciphertext)
+                        displayContent = msg.decryptedContent || msg.content;
+                    }
+                }
+
+                return {
+                    id: messageId,
+                    sender: senderId === currentUserId ? 'user' : 'other',
+                    senderId: senderId,
+                    timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
+                    text: displayContent,
+                    content: msg.content || '',
+                    mediaUrl: (msg as any).mediaUrl,
+                    messageType: (msg as any).messageType || 'TEXT',
+                    translatedText: finalTranslation,
+                    translatedLang: translationTargetLang,
+                    user: senderProfile?.fullname || senderProfile?.nickname || 'Unknown',
+                    avatar: senderProfile?.avatarUrl || null,
+                    sentAt: msg?.id?.sentAt,
+                    isRead: msg.isRead,
+                    isLocal: (msg as any).isLocal,
+                    senderProfile: senderProfile,
+                    roomId: roomId,
+                    isDeleted: msg.isDeleted,
+                    isEncrypted: isEncrypted,
+                } as UIMessage;
+            }).sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
     }, [serverMessages, eagerTranslations, translationTargetLang, currentUserId, membersMap]);
 
     useEffect(() => { loadMessages(roomId); }, [roomId]);
@@ -228,12 +243,31 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const showTranslatedText = autoTranslate && !!item.translatedText && !isMedia && !isUser && !isTranslationSameAsOriginal;
         const showManualButton = !autoTranslate && !isMedia && !isUser;
         const isTranslating = translatingId === item.id;
-        const showDecryptionError = item.isEncrypted && item.text?.startsWith('!! Decryption Failed !!');
+
+        const showDecryptionError = item.isEncrypted && !isUser && item.text?.includes('!! Decryption Failed');
 
         let primaryText = item.text;
-        if (item.isEncrypted && primaryText === item.content) {
-            primaryText = showDecryptionError ? t('chat.decryption_failed') : t('chat.encrypted_message');
+
+        if (item.isEncrypted) {
+            if (isUser) {
+                // Tin nhắn tự gửi đã mã hóa
+                if (item.text === item.content) {
+                    // Đây là trường hợp hiếm nếu store bị lỗi hoặc message load lại chưa kịp update decryptedContent
+                    primaryText = t('chat.self_message_missing_plaintext');
+                } else {
+                    primaryText = item.text; // Đã là plaintext từ useMemo
+                }
+            } else {
+                // Tin nhắn người khác đã mã hóa
+                if (showDecryptionError) {
+                    primaryText = t('chat.decryption_failed');
+                } else if (item.text === item.content) {
+                    // Tin nhắn đang là ciphertext (hoặc chưa decrypt xong)
+                    primaryText = t('chat.encrypted_message');
+                }
+            }
         }
+
 
         return (
             <Pressable onLongPress={() => isUser && !isMedia && setEditingMessage(item)} style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther]}>

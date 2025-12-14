@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { View, AppState } from "react-native";
+import { View, AppState, BackHandler, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
-import { RootNavigationRef, flushPendingActions } from "./utils/navigationRef";
+import { RootNavigationRef, flushPendingActions, gotoTab } from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
 import notificationService from "./services/notificationService";
 import { useTokenStore } from "./stores/tokenStore";
@@ -18,6 +18,7 @@ import i18n from "./i18n";
 import AuthStack from "./navigation/stack/AuthStack";
 import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
 import ChatBubble from "./components/chat/ChatBubble";
+import Toast from "react-native-toast-message";
 
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +34,7 @@ const RootNavigation = () => {
   const [initialMainRoute, setInitialMainRoute] = useState<keyof MainStackParamList>("TabApp");
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
   const appState = useRef(AppState.currentState);
+  const lastBackPressed = useRef<number>(0);
 
   useEffect(() => {
     if (accessToken) {
@@ -49,24 +51,16 @@ const RootNavigation = () => {
     return () => { subscription.remove(); };
   }, [accessToken, initStompClient, disconnectStompClient, setAppIsActive]);
 
-  // --- CẤU HÌNH DEEP LINKING ---
   const linking = useMemo(() => ({
-    // 1. Prefixes phải trùng với AndroidManifest.xml
     prefixes: [
       Linking.createURL("/"),
       "monkeylingua://",
       "https://monkeylingua.vercel.app"
     ],
     config: {
-      // Cấu hình fallback cho màn hình chưa login
       screens: {
         LoginScreen: "login",
         RegisterScreen: "register",
-
-        // Cấu hình cho MainStack (Sau khi login)
-        // RootNavigation sẽ tự tìm screen trong stack đang active
-
-        // 1. Tab Bar
         TabApp: {
           screens: {
             Home: "home",
@@ -74,36 +68,25 @@ const RootNavigation = () => {
             Profile: "profile",
           },
         },
-
-        // 2. Payment Stack (Quan trọng cho VNPAY)
-        // URL: monkeylingua://payment/...
         PaymentStack: {
           path: 'payment',
           screens: {
-            // WalletScreen: 'wallet',
             TopUpScreen: 'topup',
             WithdrawScreen: 'withdraw',
             DepositScreen: 'deposit',
             TransactionHistoryScreen: 'history',
-
-            // Hứng link: monkeylingua://payment/result?...
             WalletScreen: 'result',
           },
         },
-
-        // 3. Các Stack khác (Optional - map để support mở từ noti sau này)
         CourseStack: {
           path: 'course',
           screens: {
-            CourseDetail: 'detail/:courseId', // monkeylingua://course/detail/123
+            CourseDetail: 'detail/:courseId',
           }
         },
-
-        // Catch-all cho Chat
         ChatStack: 'chat-full',
       },
     },
-    // Đảm bảo listener hoạt động chuẩn
     subscribe(listener: (url: string) => void) {
       const onReceiveURL = ({ url }: { url: string }) => listener(url);
       const eventListener = Linking.addEventListener("url", onReceiveURL);
@@ -120,7 +103,6 @@ const RootNavigation = () => {
 
   const HEALTH_CHECK_ENDPOINT = "/actuator/health";
 
-  // ... (Giữ nguyên logic boot và check server của bạn) ...
   useEffect(() => {
     let mounted = true;
     const waitForConnectivity = async () => {
@@ -155,8 +137,6 @@ const RootNavigation = () => {
         const isHealthy = await waitForConnectivity();
         if (!mounted || !isHealthy) return;
 
-        fetchLexiconMaster();
-
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
         if (!savedLanguage) {
@@ -168,6 +148,7 @@ const RootNavigation = () => {
 
         const currentToken = useTokenStore.getState().accessToken;
         if (currentToken) {
+          fetchLexiconMaster();
           const userIsAdmin = isAdmin(currentToken);
           setIsUserAdmin(userIsAdmin);
           const payload = decodeToken(currentToken);
@@ -178,9 +159,12 @@ const RootNavigation = () => {
               setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: userIsAdmin ? ["ROLE_ADMIN"] : ["ROLE_USER"] }, savedLanguage);
               notificationService.registerTokenToBackend();
 
+              // FIX: Đọc hasFinishedSetup từ Store sau khi setUser chạy để đảm bảo giá trị đã được chuẩn hóa.
+              const hasSetupFinished = useUserStore.getState().hasFinishedSetup || false;
+
               if (userIsAdmin) {
                 setInitialMainRoute("AdminStack");
-              } else if (rawUser.hasFinishedSetup === false) {
+              } else if (hasSetupFinished === false) {
                 setInitialMainRoute("SetupInitScreen");
               } else {
                 setInitialMainRoute("TabApp");
@@ -200,6 +184,137 @@ const RootNavigation = () => {
     boot();
     return () => { mounted = false; };
   }, [initializeTokens, setUser, setLocalNativeLanguage, fetchLexiconMaster]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const debugLog = (...args: any[]) => {
+    };
+
+    const getRootStateSafely = () => {
+      const s = (RootNavigationRef as any).getRootState?.() ?? RootNavigationRef.current?.getRootState?.() ?? RootNavigationRef.current?.getState?.();
+      return s;
+    };
+
+    const onBackPress = () => {
+      try {
+        debugLog('back pressed');
+
+        if (!RootNavigationRef.isReady()) {
+          debugLog('nav not ready -> consume');
+          const now = Date.now();
+          if (now - lastBackPressed.current < 2000) {
+            BackHandler.exitApp();
+          } else {
+            lastBackPressed.current = now;
+            Toast.show({ type: 'info', text1: 'Nhấn trở lại lần nữa để thoát ứng dụng' });
+          }
+          return true;
+        }
+
+        const rootState = getRootStateSafely();
+        debugLog('rootState', !!rootState);
+
+        if (!rootState) {
+          const current = RootNavigationRef.current?.getCurrentRoute();
+          debugLog('no rootState, current:', current?.name);
+          if (!current) {
+            const now = Date.now();
+            if (now - lastBackPressed.current < 2000) {
+              BackHandler.exitApp();
+            } else {
+              lastBackPressed.current = now;
+              Toast.show({ type: 'info', text1: 'Nhấn trở lại lần nữa để thoát ứng dụng' });
+            }
+            return true;
+          }
+
+          if (current.name === 'TabApp') {
+            const now = Date.now();
+            if (now - lastBackPressed.current < 2000) {
+              BackHandler.exitApp();
+            } else {
+              lastBackPressed.current = now;
+              Toast.show({ type: 'info', text1: 'Nhấn trở lại lần nữa để thoát ứng dụng' });
+            }
+            return true;
+          }
+
+          if (RootNavigationRef.canGoBack()) {
+            RootNavigationRef.goBack();
+            return true;
+          }
+
+          const now = Date.now();
+          if (now - lastBackPressed.current < 2000) {
+            BackHandler.exitApp();
+          } else {
+            lastBackPressed.current = now;
+            Toast.show({ type: 'info', text1: 'Nhấn trở lại lần nữa để thoát ứng dụng' });
+          }
+          return true;
+        }
+
+        const routes = (rootState as any).routes || [];
+        const tabRoute = routes.find((r: any) => r.name === 'TabApp') ?? routes[(rootState as any).index || 0];
+        debugLog('tabRoute', !!tabRoute, tabRoute?.name);
+
+        if (!tabRoute) {
+          if (RootNavigationRef.canGoBack()) {
+            RootNavigationRef.goBack();
+            return true;
+          }
+          const now = Date.now();
+          if (now - lastBackPressed.current < 2000) {
+            BackHandler.exitApp();
+          } else {
+            lastBackPressed.current = now;
+            Toast.show({ type: 'info', text1: 'Nhấn trở lại lần nữa để thoát ứng dụng' });
+          }
+          return true;
+        }
+
+        const tabState = (tabRoute as any).state || {};
+        const activeTabRoute = tabState.routes?.[tabState.index] || { name: 'Home' };
+        const activeTabName = activeTabRoute?.name;
+        const activeTabNestedIndex = (activeTabRoute as any).state?.index ?? 0;
+
+        debugLog('activeTabName', activeTabName, 'nestedIndex', activeTabNestedIndex);
+
+        if (activeTabNestedIndex > 0) {
+          RootNavigationRef.goBack();
+          return true;
+        }
+
+        if (activeTabName === 'Profile' || activeTabName === 'Learn') {
+          gotoTab('Home');
+          return true;
+        }
+
+        const now = Date.now();
+        if (now - lastBackPressed.current < 2000) {
+          BackHandler.exitApp();
+        } else {
+          lastBackPressed.current = now;
+          Toast.show({ type: 'info', text1: 'Nhấn trở lại lần nữa để thoát ứng dụng' });
+        }
+        return true;
+      } catch (err) {
+        console.error('onBackPress error', err);
+        const now = Date.now();
+        if (now - lastBackPressed.current < 2000) {
+          BackHandler.exitApp();
+        } else {
+          lastBackPressed.current = now;
+          Toast.show({ type: 'info', text1: 'Nhấn trở lại lần nữa để thoát ứng dụng' });
+        }
+        return true;
+      }
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, []);
 
   if (isLoading) return <SplashScreen serverError={serverErrorMsg} />;
 

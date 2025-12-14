@@ -112,8 +112,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
         ChatMessage message = chatMessageMapper.toEntity(request);
         
-        // Strict mapping for E2EE fields. 
-        // Content should be the ciphertext string sent by FE, not a JSON blob.
         message.setSenderEphemeralKey(request.getSenderEphemeralKey());
         message.setUsedPreKeyId(request.getUsedPreKeyId());
         message.setInitializationVector(request.getInitializationVector());

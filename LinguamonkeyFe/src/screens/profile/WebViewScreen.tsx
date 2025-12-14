@@ -1,10 +1,11 @@
-import React, { useState, useRef, useLayoutEffect } from 'react';
-import { View, TouchableOpacity, Text, ActivityIndicator, BackHandler } from 'react-native';
+import React, { useState, useRef, useCallback } from 'react';
+import { View, TouchableOpacity, Text, ActivityIndicator, BackHandler, Platform } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useTranslation } from 'react-i18next';
+import { useFocusEffect } from '@react-navigation/native';
 
 interface WebViewScreenProps {
     navigation: any;
@@ -19,6 +20,7 @@ interface WebViewScreenProps {
 
 const WebViewScreen = ({ navigation, route }: WebViewScreenProps) => {
     const { url, title, hideHeader = false } = route.params;
+    // webviewRef must be typed as React-Native-WebView instance
     const webviewRef = useRef<WebView | null>(null);
     const { t } = useTranslation();
 
@@ -32,22 +34,34 @@ const WebViewScreen = ({ navigation, route }: WebViewScreenProps) => {
         setCurrentUrl(navState.url);
     };
 
-    const handleGoBack = () => {
+    // Hardware back: only handle if webview can goBack.
+    // If can't, return false so RootNavigation handles (tab/home/double-exit).
+    const handleHardwareBack = useCallback(() => {
+        if (Platform.OS !== 'android') return false;
         if (canGoBack && webviewRef.current) {
             webviewRef.current.goBack();
-            return true;
+            return true; // consumed by webview
+        }
+        return false; // not handled here -> let RootNavigation handle
+    }, [canGoBack]);
+
+    // Header back button: explicit user intent -> navigate back (webview history first)
+    const handleHeaderBack = () => {
+        if (canGoBack && webviewRef.current) {
+            webviewRef.current.goBack();
+            return;
         }
         navigation.goBack();
-        return true;
     };
 
-    useLayoutEffect(() => {
-        const backHandler = BackHandler.addEventListener(
-            'hardwareBackPress',
-            handleGoBack,
-        );
-        return () => backHandler.remove();
-    }, [canGoBack]);
+    // Register hardware listener only when screen is focused
+    useFocusEffect(
+        useCallback(() => {
+            if (Platform.OS !== 'android') return;
+            const sub = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
+            return () => sub.remove();
+        }, [handleHardwareBack])
+    );
 
     const handleRefresh = () => {
         if (webviewRef.current) {
@@ -77,7 +91,7 @@ const WebViewScreen = ({ navigation, route }: WebViewScreenProps) => {
             <View style={styles.container}>
                 {!hideHeader && (
                     <View style={styles.header}>
-                        <TouchableOpacity onPress={handleGoBack} style={styles.headerBackButton}>
+                        <TouchableOpacity onPress={handleHeaderBack} style={styles.headerBackButton}>
                             <Icon name="arrow-back" size={24} color="#374151" />
                         </TouchableOpacity>
                         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -92,7 +106,8 @@ const WebViewScreen = ({ navigation, route }: WebViewScreenProps) => {
                         renderError()
                     ) : (
                         <WebView
-                            ref={webviewRef}
+                            // Fix: Use a block body for the ref callback to ensure it returns void.
+                            ref={(r) => { webviewRef.current = r; }}
                             source={{ uri: url || 'about:blank' }}
                             onLoadStart={() => { setIsLoading(true); setHasError(false); }}
                             onLoadEnd={() => setIsLoading(false)}

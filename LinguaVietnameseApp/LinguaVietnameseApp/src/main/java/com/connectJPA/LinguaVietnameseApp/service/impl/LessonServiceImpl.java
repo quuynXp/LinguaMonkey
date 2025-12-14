@@ -1,13 +1,13 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonQuestionRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
-import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonHierarchicalResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonQuestionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
 import com.connectJPA.LinguaVietnameseApp.dto.response.QuizResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.CourseLessonId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.CourseVersionLessonId;
@@ -41,7 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.*;
-
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -378,7 +377,8 @@ public class LessonServiceImpl implements LessonService {
         resp.put("allowedRetakeCount", lesson.getAllowedRetakeCount());
         
         int attemptNumber = 1;
-        Float latestScore = null;
+        // FIX 4: Thay đổi kiểu dữ liệu từ Float sang float (primitive) để tránh nhầm lẫn về null
+        float latestScore = 0.0f; 
         List<String> wrongQuestionIds = new ArrayList<>();
 
         if (userId != null) {
@@ -386,7 +386,7 @@ public class LessonServiceImpl implements LessonService {
             if (existing.isPresent()) {
                 LessonProgress lp = existing.get();
                 attemptNumber = lp.getAttemptNumber() + 1;
-                latestScore = lp.getScore(); 
+                latestScore = lp.getScore(); // Lấy giá trị float (không thể null)
             }
 
             List<LessonProgressWrongItem> wrongItems = lessonProgressWrongItemRepository
@@ -398,6 +398,7 @@ public class LessonServiceImpl implements LessonService {
         }
 
         resp.put("attemptNumber", attemptNumber);
+        // FIX 4: latestScore (float) sẽ được auto-box thành Float khi đưa vào Map, và không phải là null (trừ khi latestScore=0.0f và được coi là null, nhưng ta đã khởi tạo nó là 0.0f)
         resp.put("latestScore", latestScore); 
         resp.put("wrongQuestionIds", wrongQuestionIds); 
 
@@ -428,6 +429,8 @@ public class LessonServiceImpl implements LessonService {
                 .stream().filter(q -> !q.isDeleted()).collect(Collectors.toList());
 
         int totalMax = questions.stream().mapToInt(q -> q.getWeight() == null ? 1 : q.getWeight()).sum();
+        if (totalMax == 0) totalMax = 1; 
+
         int totalScore = 0;
         List<LessonProgressWrongItem> wrongItems = new ArrayList<>();
 
@@ -467,20 +470,37 @@ public class LessonServiceImpl implements LessonService {
 
         if (!wrongItems.isEmpty()) lessonProgressWrongItemRepository.saveAll(wrongItems);
 
-        float percent = totalMax == 0 ? 0f : ((float)totalScore / totalMax) * 100f;
-        LessonProgressId pid = new LessonProgressId(lessonId, userId);
-        LessonProgress lp = lessonProgressRepository.findById(pid).orElse(LessonProgress.builder().id(pid).build());
+        float percent = ((float)totalScore / totalMax) * 100f;
         
-        if (lp.getScore() < 0 || percent > lp.getScore()) {
-            lp.setScore(percent); lp.setMaxScore(totalMax);
-            try { lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers)); } catch (Exception ex) { lp.setAnswersJson("{}"); }
+        LessonProgressId pid = new LessonProgressId(lessonId, userId);
+        LessonProgress lp = lessonProgressRepository.findById(pid)
+                .orElse(LessonProgress.builder().id(pid).score(0.0f).build()); 
+        
+        // FIX 5: Loại bỏ việc kiểm tra lp.getScore() != null
+        float currentBestScore = lp.getScore(); // Lấy giá trị float hiện tại (khởi tạo là 0.0f nếu không tìm thấy)
+
+        try { 
+            lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers)); 
+        } catch (Exception ex) { 
+            lp.setAnswersJson("{}"); 
         }
         lp.setAttemptNumber(attemptNumber);
-        
-        if (percent >= 50) { lp.setCompletedAt(OffsetDateTime.now()); }
+        lp.setMaxScore(totalMax);
         
         boolean needsReview = questions.stream().anyMatch(q -> (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) && (percent < 100));
         lp.setNeedsReview(needsReview);
+
+        // Chỉ cập nhật điểm nếu điểm mới cao hơn hoặc điểm hiện tại là 0 (lần đầu nộp bài)
+        if (percent > currentBestScore || currentBestScore <= 0) { 
+            lp.setScore(percent);
+        }
+        
+        if (percent >= 50) { 
+            if (lp.getCompletedAt() == null) {
+                lp.setCompletedAt(OffsetDateTime.now()); 
+            } else {
+            }
+        }
         
         lessonProgressRepository.saveAndFlush(lp);
 
@@ -506,8 +526,6 @@ public class LessonServiceImpl implements LessonService {
             userRepository.save(user);
         }
 
-        // CRITICAL FIX: Explicitly fetch CourseVersionLesson links to ensure list is populated
-        // Avoiding Lazy Initialization issues on lesson.getCourseVersions()
         List<CourseVersionLesson> linkedVersions = courseVersionLessonRepository.findByLesson_LessonId(lessonId);
         if (linkedVersions != null && !linkedVersions.isEmpty()) {
             for (CourseVersionLesson cvl : linkedVersions) {
@@ -533,7 +551,12 @@ public class LessonServiceImpl implements LessonService {
 
         int progressPercent = computeProgressVsUserGoal(userId, lesson, percent);
         Map<String, Object> result = new HashMap<>();
-        result.put("lessonId", lessonId); result.put("totalScore", totalScore); result.put("maxScore", totalMax); result.put("percent", percent); result.put("needsReview", lp.getNeedsReview()); result.put("progressPercent", progressPercent);
+        result.put("lessonId", lessonId); 
+        result.put("totalScore", totalScore); 
+        result.put("maxScore", totalMax); 
+        result.put("percent", percent); 
+        result.put("needsReview", lp.getNeedsReview()); 
+        result.put("progressPercent", progressPercent);
         return result;
     }
 
@@ -557,7 +580,10 @@ public class LessonServiceImpl implements LessonService {
             return got.equalsIgnoreCase(correctAnswer);
         } 
         if (q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK) {
-            List<String> validOptions = Arrays.stream(correctAnswer.split("\\|\\|")).map(String::trim).collect(Collectors.toList());
+            List<String> validOptions = Arrays.stream(correctAnswer.split("\\|\\|"))
+                .map(String::trim)
+                .map(String::toLowerCase)
+                .collect(Collectors.toList());
             return validOptions.contains(got);
         }
         if (q.getQuestionType() == QuestionType.MATCHING) {
@@ -618,11 +644,10 @@ public class LessonServiceImpl implements LessonService {
             
             LessonProgress progress = LessonProgress.builder()
                     .id(new LessonProgressId(lessonId, userId))
-                    .score(score != null ? score : 0)
+                    .score(score != null ? score.floatValue() : 0.0f) // Assuming Float in Entity
                     .completedAt(OffsetDateTime.now())
                     .build();
             
-            // Fix flush here as well for consistency
             lessonProgressRepository.saveAndFlush(progress);
 
             UserLearningActivity activity = UserLearningActivity.builder()
@@ -639,7 +664,6 @@ public class LessonServiceImpl implements LessonService {
             dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
             badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
             
-            // Explicitly sync versions
             List<CourseVersionLesson> linkedVersions = courseVersionLessonRepository.findByLesson_LessonId(lessonId);
             if (linkedVersions != null) {
                 for (CourseVersionLesson cvl : linkedVersions) {

@@ -9,13 +9,65 @@ import java.util.List;
 import java.util.UUID;
 
 public interface DailyChallengeRepository extends JpaRepository<DailyChallenge, UUID> {
-    @Query(value = "SELECT * FROM daily_challenges WHERE language_code = :langCode AND period = :period AND is_deleted = false ORDER BY RANDOM() LIMIT :limit", nativeQuery = true)
-    List<DailyChallenge> findRandomChallengesByLangAndPeriod(@Param("langCode") String langCode, 
-                                                             @Param("period") String period, 
-                                                             @Param("limit") int limit);
 
-    List<DailyChallenge> findByIsDeletedFalse();
+    @Query(value = """
+        SELECT * FROM daily_challenges dc
+        WHERE dc.language_code = :langCode 
+        AND dc.period = :period 
+        AND dc.is_deleted = false
+        AND dc.id NOT IN (
+            SELECT udc.challenge_id FROM user_daily_challenges udc 
+            WHERE udc.user_id = :userId 
+            AND udc.assigned_at >= :startOfDay 
+            AND udc.assigned_at <= :endOfDay
+        )
+        ORDER BY RANDOM() 
+        LIMIT :limit
+    """, nativeQuery = true)
+    List<DailyChallenge> findNewChallengesForUser(
+            @Param("userId") UUID userId,
+            @Param("langCode") String langCode,
+            @Param("period") String period,
+            @Param("startOfDay") String startOfDay,
+            @Param("endOfDay") String endOfDay,
+            @Param("limit") int limit
+    );
 
-    // Thêm query lọc theo ngôn ngữ và chưa bị xóa
+    @Query(value = """
+        SELECT * FROM daily_challenges dc
+        WHERE dc.language_code = 'en' 
+        AND dc.period = :period 
+        AND dc.is_deleted = false
+        AND dc.id NOT IN (
+            SELECT udc.challenge_id FROM user_daily_challenges udc 
+            WHERE udc.user_id = :userId 
+            AND udc.assigned_at >= :startOfDay 
+            AND udc.assigned_at <= :endOfDay
+        )
+        ORDER BY RANDOM() 
+        LIMIT :limit
+    """, nativeQuery = true)
+    List<DailyChallenge> findFallbackChallengesForUser(
+            @Param("userId") UUID userId,
+            @Param("period") String period,
+            @Param("startOfDay") String startOfDay,
+            @Param("endOfDay") String endOfDay,
+            @Param("limit") int limit
+    );
+    
     List<DailyChallenge> findByLanguageCodeAndIsDeletedFalse(String languageCode);
+
+    @Query(value = """
+        SELECT * FROM daily_challenges dc
+        WHERE dc.language_code = :languageCode
+        AND dc.period = :period
+        AND dc.is_deleted = false
+        ORDER BY RANDOM()
+        LIMIT :limit
+    """, nativeQuery = true)
+    List<DailyChallenge> findRandomChallengesByLanguageCodeAndPeriod(
+            @Param("languageCode") String languageCode,
+            @Param("period") String period,
+            @Param("limit") int limit
+    );
 }

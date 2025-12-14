@@ -1042,7 +1042,7 @@ export interface CoupleResponse {
 
 export interface CourseVersionDiscountResponse {
     discountId: string;
-    versionId: string; // Changed from courseId
+    versionId: string;
     discountPercentage: number;
     startDate: string;
     endDate: string;

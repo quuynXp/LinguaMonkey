@@ -741,6 +741,7 @@ export interface User extends BaseEntity {
     bio?: string;
     phone?: string;
     avatarUrl?: string;
+    coins?: number;
     character3dId?: string;
     nativeLanguageCode?: string;
     country?: Enums.Country;

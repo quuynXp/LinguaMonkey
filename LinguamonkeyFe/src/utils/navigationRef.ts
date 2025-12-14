@@ -5,9 +5,9 @@ export const RootNavigationRef = createNavigationContainerRef();
 let pendingActions: (() => void)[] = [];
 
 interface NotificationPayload {
-  screen?: string; 			// Ví dụ: "Chat", "Home"
-  stackScreen?: string; // Ví dụ: "ChatDetail"
-  [key: string]: any; 	// Các params khác: chatId, courseId...
+  screen?: string;
+  stackScreen?: string;
+  [key: string]: any;
 }
 
 function queuePending(fn: () => void) {
@@ -27,12 +27,7 @@ export function flushPendingActions() {
   });
 }
 
-/**
- * Xử lý data từ notification để navigate
- * Hỗ trợ input là remoteMessage (Firebase) hoặc data object trực tiếp (Expo)
- */
 export const handleNotificationNavigation = (raw: any) => {
-  // Extract data: Nếu là remoteMessage thì lấy .data, nếu không thì dùng trực tiếp raw
   const data = (raw?.data ? raw.data : raw) as NotificationPayload;
 
   if (!data || !data.screen) {
@@ -129,15 +124,17 @@ export function gotoTab(
   console.log('[navigationRef] goto ->', screenName, nestedScreen);
 }
 
-export function goBack() {
-  const run = () => {
-    if (RootNavigationRef.canGoBack()) {
-      RootNavigationRef.goBack();
-    }
-  };
+export function goBack(): boolean {
+  if (!RootNavigationRef.isReady()) {
+    return false;
+  }
 
-  if (RootNavigationRef.isReady()) run();
-  else queuePending(run);
+  if (RootNavigationRef.canGoBack()) {
+    RootNavigationRef.goBack();
+    return true;
+  }
+
+  return false;
 }
 
 export function resetToAuth(screen: 'LoginScreen' | 'RegisterScreen' = 'LoginScreen') {

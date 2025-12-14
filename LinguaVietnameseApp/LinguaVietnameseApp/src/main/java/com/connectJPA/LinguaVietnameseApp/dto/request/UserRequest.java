@@ -48,6 +48,7 @@ public class UserRequest {
     private List<String> goalIds;
     private List<String> certificationIds;
     private String nativeLanguageCode;
+    private Boolean hasFinishedSetup;
     private ProficiencyLevel proficiency;
     private List<String> languages;
     private Country country;

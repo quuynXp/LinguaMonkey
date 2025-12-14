@@ -4,9 +4,9 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.CreateGroupCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoCallResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCall;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCallParticipant;
-import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.VideoCallParticipantId;
 import com.connectJPA.LinguaVietnameseApp.enums.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
@@ -20,6 +20,7 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoCallRepository;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.VideoCallService;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -47,6 +48,9 @@ public class VideoCallServiceImpl implements VideoCallService {
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    
+    // Inject EntityManager để xử lý refresh entity
+    private final EntityManager entityManager;
 
     @Lazy
     private final DailyChallengeService dailyChallengeService;
@@ -112,7 +116,9 @@ public class VideoCallServiceImpl implements VideoCallService {
                 .build());
 
         videoCallParticipantRepository.saveAll(participants);
-        videoCall.setParticipants(participants);
+        
+        // FIX: Refresh để Hibernate tự load lại participants, tránh NonUniqueObjectException
+        entityManager.refresh(videoCall);
 
         return videoCallMapper.toResponse(videoCall);
     }
@@ -166,17 +172,16 @@ public class VideoCallServiceImpl implements VideoCallService {
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
             // 2. Tạo VideoCall
-            // LƯU Ý: calleeId set null ở đây yêu cầu DB column callee_id phải cho phép NULL
             VideoCall videoCall = VideoCall.builder()
                     .callerId(request.getCallerId())
                     .roomId(request.getRoomId())
                     .calleeId(null) // Group Call -> CalleeId is NULL
-                    .videoCallType(request.getVideoCallType()) // Use Type from request
+                    .videoCallType(request.getVideoCallType())
                     .status(VideoCallStatus.INITIATED)
                     .startTime(OffsetDateTime.now())
                     .build();
 
-            // Lưu và Flush ngay để bắt lỗi Constraint (nếu có) và lấy ID
+            // Lưu và Flush ngay để có ID
             videoCall = videoCallRepository.saveAndFlush(videoCall);
 
             // 3. Add HOST
@@ -193,22 +198,21 @@ public class VideoCallServiceImpl implements VideoCallService {
             participants.add(host);
             videoCallParticipantRepository.saveAll(participants);
             
-            // Set ngược lại vào Entity để Mapper có dữ liệu
-            videoCall.setParticipants(participants);
+            // FIX: Thay vì setParticipants thủ công gây lỗi, ta refresh entity
+            entityManager.refresh(videoCall);
 
             // 4. Bắn Socket
             try {
                 Map<String, Object> socketPayload = new HashMap<>();
                 socketPayload.put("type", "INCOMING_CALL");
                 socketPayload.put("roomId", request.getRoomId().toString());
-                socketPayload.put("videoCallId", videoCall.getVideoCallId());
-                socketPayload.put("callerId", request.getCallerId());
+                socketPayload.put("videoCallId", videoCall.getVideoCallId().toString());
+                socketPayload.put("callerId", request.getCallerId().toString());
                 socketPayload.put("roomName", "Group Call");
                 
                 messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
             } catch (Exception e) {
                 log.warn("Failed to send WebSocket notification for group call: {}", e.getMessage());
-                // Không throw exception ở đây để không chặn luồng tạo call
             }
 
             return videoCallMapper.toResponse(videoCall);
@@ -216,9 +220,8 @@ public class VideoCallServiceImpl implements VideoCallService {
         } catch (AppException ae) {
             throw ae;
         } catch (Exception e) {
-            // Log full stack trace để debug lỗi 500
-            log.error("CRITICAL ERROR creating group video call. Caller: {}, Room: {}", 
-                    request.getCallerId(), request.getRoomId(), e);
+            log.error("CRITICAL ERROR creating group video call. Caller: {}, Room: {}, Error: {}", 
+                    request.getCallerId(), request.getRoomId(), e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

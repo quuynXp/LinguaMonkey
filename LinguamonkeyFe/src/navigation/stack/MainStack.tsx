@@ -17,6 +17,8 @@ import WebViewScreen from '../../screens/profile/WebViewScreen';
 import TestSessionScreen from '../../screens/appLaunch/TestSessionScreen';
 import TestResultScreen from '../../screens/appLaunch/TestResultScreen';
 import NotificationsScreen from '../../screens/notification/NotificationsScreen';
+import { Platform } from 'react-native'; // CẦN IMPORT PLATFORM ĐỂ KIỂM TRA HỆ ĐIỀU HÀNH
+
 export type MainStackParamList = {
   TabApp: undefined;
   LearnStack: { screen?: string; params?: any } | undefined;
@@ -50,9 +52,9 @@ const MainStack = ({ initialRouteName = 'TabApp', isAdmin = false }: MainStackPr
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
-        gestureEnabled: true,
+        gestureEnabled: Platform.OS === 'ios',
         gestureDirection: 'horizontal',
-        fullScreenGestureEnabled: true,
+        fullScreenGestureEnabled: Platform.OS === 'ios',
       }}
     >
       <Stack.Screen name="TabApp" component={TabNavigator} />

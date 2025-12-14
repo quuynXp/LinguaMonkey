@@ -166,7 +166,13 @@ class E2EEService {
             throw new Error(`Cannot fetch keys for ${receiverId}`);
         }
 
-        if (!bundle.signedPreKeyPublicKey) throw new Error("Invalid Bundle");
+        if (!bundle.signedPreKeyPublicKey) {
+            console.error('[E2EE_DEBUG] Bundle missing signedPreKeyPublicKey:', bundle);
+            throw new Error("Invalid Bundle: Missing signedPreKeyPublicKey");
+        }
+
+        // Debug log to catch format issues
+        // console.log(`[E2EE_DEBUG] Importing Key: ${bundle.signedPreKeyPublicKey.substring(0, 20)}...`);
 
         const receiverSignedPreKey = await importPublicKey(bundle.signedPreKeyPublicKey);
 

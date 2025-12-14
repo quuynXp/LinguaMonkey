@@ -6,6 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.VideoCallType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.ColumnTransformer;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -27,10 +28,10 @@ public class VideoCall extends BaseEntity {
     @Column(name = "room_id")
     private UUID roomId;
 
-    @Column(name = "caller_id")
+    @Column(name = "caller_id", nullable = false)
     private UUID callerId;
 
-    @Column(name = "callee_id")
+    @Column(name = "callee_id", nullable = true)
     private UUID calleeId;
 
     @Enumerated(EnumType.STRING)
@@ -52,7 +53,9 @@ public class VideoCall extends BaseEntity {
     private String duration;
 
     @Column(name = "quality_metrics", columnDefinition = "jsonb")
+    @ColumnTransformer(write = "?::jsonb")
     private String qualityMetrics;
+    // -------------------------------------------------------------------------------------------------
 
     @OneToMany(mappedBy = "videoCall", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @ToString.Exclude

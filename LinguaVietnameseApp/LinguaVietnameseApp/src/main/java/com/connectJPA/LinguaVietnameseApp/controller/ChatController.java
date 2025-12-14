@@ -236,30 +236,30 @@ public class ChatController {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             }
 
-            if (messageRequest.isRoomAutoTranslate()) {
-                String targetLang = "vi";
-                CompletableFuture.runAsync(() -> {
-                    try {
-                        var tr = grpcClientService.callTranslateAsync(token, message.getContent(), "", targetLang).get();
+            // if (messageRequest.isRoomAutoTranslate()) {
+            //     String targetLang = "vi";
+            //     CompletableFuture.runAsync(() -> {
+            //         try {
+            //             var tr = grpcClientService.callTranslateAsync(token, message.getContent(), "", targetLang).get();
 
-                        if (!tr.getError().isEmpty()) {
-                            log.warn("Translate returned error: {}", tr.getError());
-                            return;
-                        }
+            //             if (!tr.getError().isEmpty()) {
+            //                 log.warn("Translate returned error: {}", tr.getError());
+            //                 return;
+            //             }
 
-                        ChatMessageResponse translatedResp = chatMessageService.saveTranslation(messageId, targetLang, tr.getTranslatedText());
+            //             ChatMessageResponse translatedResp = chatMessageService.saveTranslation(messageId, targetLang, tr.getTranslatedText());
 
-                        TranslationEvent evt = new TranslationEvent();
-                        evt.setMessageId(messageId);
-                        evt.setTargetLang(targetLang);
-                        evt.setTranslatedText(tr.getTranslatedText());
+            //             TranslationEvent evt = new TranslationEvent();
+            //             evt.setMessageId(messageId);
+            //             evt.setTargetLang(targetLang);
+            //             evt.setTranslatedText(tr.getTranslatedText());
 
-                        messagingTemplate.convertAndSend("/topic/room/" + roomId + "/translations", evt);
-                    } catch (Exception e) {
-                        log.error("Translation async failed for message {}: {}", messageId, e.getMessage());
-                    }
-                }, Executors.newCachedThreadPool());
-            }
+            //             messagingTemplate.convertAndSend("/topic/room/" + roomId + "/translations", evt);
+            //         } catch (Exception e) {
+            //             log.error("Translation async failed for message {}: {}", messageId, e.getMessage());
+            //         }
+            //     }, Executors.newCachedThreadPool());
+            // }
         }
     }
 

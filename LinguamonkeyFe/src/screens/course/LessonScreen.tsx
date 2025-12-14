@@ -111,7 +111,8 @@ const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean 
 
 const LessonScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
-  const { lesson } = route.params as { lesson: LessonResponse };
+  // FIX: Destructure lesson, onComplete, and isCompleted from route.params
+  const { lesson, onComplete, isCompleted } = route.params as { lesson: LessonResponse, onComplete?: () => void, isCompleted?: boolean };
   const userStore = useUserStore();
   const userId = userStore.user?.userId;
 
@@ -134,20 +135,50 @@ const LessonScreen = ({ navigation, route }: any) => {
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
 
+  // FIX: Separate Modal for Retake/Review
+  const [showCompletedModal, setShowCompletedModal] = useState(false);
+
   const { data: testData, isLoading } = useLessonTest(lesson.lessonId, userId!, !!userId);
 
   useEffect(() => {
-    if (testData?.questions) {
+    if (isCompleted) {
+      setShowCompletedModal(true);
+    } else if (testData?.questions) {
       setActiveQuestions(testData.questions);
       setCurrentQuestionIndex(0);
       setCorrectCount(0);
       // Reset start time when questions load
       startTime.current = Date.now();
     }
-  }, [testData]);
+  }, [testData, isCompleted]);
 
   const currentQuestion = activeQuestions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex >= activeQuestions.length - 1;
+
+  const handleRetake = () => {
+    setShowCompletedModal(false);
+    // Force a refetch of the test data to get a new attemptNumber/questions
+    if (userId) {
+      // Assuming useLessonTest is configured to refetch on enable/key change. 
+      // TanStack Query useLessonTest is configured with staleTime: 0, gcTime: 0, so simply re-rendering will refetch
+      // However, to be explicit, one might call a refetch function if available or trigger an invalidation.
+      // Since the dependency array [testData, isCompleted] is watched, a change in isCompleted should re-check useEffect logic.
+      // We will simply dismiss the modal and let the existing test logic re-run.
+      if (testData?.questions) {
+        setActiveQuestions(testData.questions);
+        setCurrentQuestionIndex(0);
+        setCorrectCount(0);
+        startTime.current = Date.now();
+      }
+    }
+  };
+
+  const handleViewWrong = () => {
+    setShowCompletedModal(false);
+    // Navigate to a dedicated WrongAnswersScreen or ReviewScreen
+    Alert.alert("Feature Missing", "Navigation to review wrong questions is not implemented yet.");
+    navigation.goBack();
+  };
 
   const handleSubmitAnswer = async (answerValue: any) => {
     if (!currentQuestion || isProcessingAI) return;
@@ -197,6 +228,8 @@ const LessonScreen = ({ navigation, route }: any) => {
             durationSeconds: durationSeconds // FIX: Send duration to backend
           }
         });
+        // FIX: Call the onComplete callback from CourseDetailsScreen
+        if (onComplete) onComplete();
       } catch (error) { console.error(error); }
       setShowSummary(true);
     } else {
@@ -213,12 +246,35 @@ const LessonScreen = ({ navigation, route }: any) => {
 
   return (
     <ScreenLayout style={styles.container}>
+      {/* Summary Modal (After submitting a test) */}
       <Modal visible={showSummary} animationType="slide">
         <SafeAreaView style={styles.summaryContainer}>
           <Text style={styles.summaryTitle}>Lesson Complete!</Text>
           <Text style={styles.scoreText}>{Math.round((correctCount / activeQuestions.length) * 100)}%</Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}><Text style={{ color: '#FFF' }}>Finish</Text></TouchableOpacity>
         </SafeAreaView>
+      </Modal>
+
+      {/* Completed Lesson Modal (When pressing a completed lesson from CourseDetails) */}
+      <Modal visible={showCompletedModal} animationType="slide" transparent>
+        <View style={styles.completedModalOverlay}>
+          <View style={styles.completedModalContent}>
+            <Text style={styles.completedTitle}>Lesson Completed!</Text>
+            <Text style={styles.completedSubtitle}>You have already finished this lesson. What would you like to do?</Text>
+
+            <TouchableOpacity style={[styles.primaryBtn, { marginBottom: 10 }]} onPress={handleRetake}>
+              <Text style={{ color: '#FFF' }}>Retake Test</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleViewWrong}>
+              <Text style={{ color: '#4F46E5' }}>Review Wrong Questions</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={{ marginTop: 20 }} onPress={() => navigation.goBack()}>
+              <Text style={{ color: '#9CA3AF' }}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       <View style={styles.header}>
@@ -288,7 +344,12 @@ const styles = StyleSheet.create({
   summaryContainer: { flex: 1, backgroundColor: '#FFF', padding: 20, justifyContent: 'center', alignItems: 'center' },
   summaryTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
   scoreText: { fontSize: 48, fontWeight: 'bold', color: '#4F46E5', marginBottom: 40 },
-  primaryBtn: { backgroundColor: '#4F46E5', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10 }
+  primaryBtn: { backgroundColor: '#4F46E5', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10 },
+  completedModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  completedModalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 16, padding: 30, alignItems: 'center' },
+  completedTitle: { fontSize: 22, fontWeight: 'bold', color: '#10B981', marginBottom: 10 },
+  completedSubtitle: { fontSize: 16, color: '#4B5563', textAlign: 'center', marginBottom: 30 },
+  secondaryBtn: { backgroundColor: '#EEF2FF', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10, borderWidth: 1, borderColor: '#4F46E5' }
 });
 
 export default LessonScreen;

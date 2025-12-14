@@ -65,7 +65,7 @@ public class DailyChallengeScheduler {
             String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
             
             List<DailyChallenge> challenges = dailyChallengeRepository
-                    .findRandomChallengesByLangAndPeriod(langCode, period.name(), limit);
+                    .findRandomChallengesByLanguageCodeAndPeriod(langCode, period.name(), limit);
 
             for (DailyChallenge challenge : challenges) {
                 UserDailyChallengeId id = UserDailyChallengeId.builder()

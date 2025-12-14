@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
     View, Text, TouchableOpacity, ScrollView, ActivityIndicator,
-    Alert, BackHandler, AppState
+    Alert, BackHandler
 } from "react-native";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { createScaledSheet } from "../../utils/scaledStyles";
@@ -48,27 +48,24 @@ const TestSessionScreen = () => {
         return () => clearInterval(timer);
     }, []);
 
-    // 2. Prevent Back Button (Đã Sửa Lỗi removeEventListener)
+    // 2. Prevent Back Button while test in focus
     useFocusEffect(
         useCallback(() => {
             const onBackPress = () => {
                 Alert.alert(
                     "Exit Test?",
-                    "Time will verify continue running. Are you sure you want to quit? Your progress will be lost.",
+                    "Time will continue running. Are you sure you want to quit? Your progress will be lost.",
                     [
                         { text: "Cancel", style: "cancel", onPress: () => { } },
-                        { text: "Quit", style: "destructive", onPress: () => navigation.goBack() }
+                        { text: "Quit", style: "destructive", onPress: () => (navigation as any).goBack() }
                     ]
                 );
                 return true; // Prevent default behavior
             };
 
-            // LƯU ĐỐI TƯỢNG SUBSCRIPTION TRẢ VỀ
             const backHandlerSubscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-
-            // GỌI PHƯƠNG THỨC .remove() ĐỂ DỌN DẸP
             return () => backHandlerSubscription.remove();
-        }, [])
+        }, [navigation])
     );
 
     const formatTime = (seconds: number) => {
@@ -127,7 +124,6 @@ const TestSessionScreen = () => {
 
     return (
         <ScreenLayout style={styles.container}>
-            {/* Custom Header with Timer */}
             <View style={styles.header}>
                 <View>
                     <Text style={styles.testTitle} numberOfLines={1}>{title}</Text>
@@ -141,12 +137,10 @@ const TestSessionScreen = () => {
                 </View>
             </View>
 
-            {/* Progress Bar */}
             <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${progress}%` }]} />
             </View>
 
-            {/* Question Content */}
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.questionCard}>
                     <Text style={styles.questionText}>
@@ -174,7 +168,6 @@ const TestSessionScreen = () => {
                 </View>
             </ScrollView>
 
-            {/* Footer Navigation */}
             <View style={styles.footer}>
                 <TouchableOpacity
                     style={[styles.navButton, currentIndex === 0 && styles.disabledButton]}

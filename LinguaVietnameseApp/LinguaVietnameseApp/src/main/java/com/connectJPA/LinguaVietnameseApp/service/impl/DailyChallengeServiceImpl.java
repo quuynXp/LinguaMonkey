@@ -49,18 +49,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         OffsetDateTime startOfWeek = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).truncatedTo(ChronoUnit.DAYS);
         OffsetDateTime endOfWeek = startOfWeek.plusDays(7).minusNanos(1);
 
-        boolean hasDailyForToday = userDailyChallengeRepository.existsByUserIdAndPeriodAndDateRange(
-                userId, ChallengePeriod.DAILY, startOfDay, endOfDay
-        );
-
-        boolean hasWeeklyForWeek = userDailyChallengeRepository.existsByUserIdAndPeriodAndDateRange(
-                userId, ChallengePeriod.WEEKLY, startOfWeek, endOfWeek
-        );
-
-        if (!hasDailyForToday || !hasWeeklyForWeek) {
-            assignMissingChallenges(userId, !hasDailyForToday, !hasWeeklyForWeek);
-        }
-
         List<UserDailyChallenge> dailies = userDailyChallengeRepository.findChallengesByPeriodAndDateRange(
                 userId, ChallengePeriod.DAILY, startOfDay, endOfDay
         );
@@ -68,6 +56,20 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         List<UserDailyChallenge> weeklies = userDailyChallengeRepository.findChallengesByPeriodAndDateRange(
                 userId, ChallengePeriod.WEEKLY, startOfWeek, endOfWeek
         );
+
+        boolean needDaily = dailies.size() < 5;
+        boolean needWeekly = weeklies.size() < 5;
+
+        if (needDaily || needWeekly) {
+            assignMissingChallengesV2(userId, dailies, weeklies, needDaily, needWeekly);
+            
+            dailies = userDailyChallengeRepository.findChallengesByPeriodAndDateRange(
+                    userId, ChallengePeriod.DAILY, startOfDay, endOfDay
+            );
+            weeklies = userDailyChallengeRepository.findChallengesByPeriodAndDateRange(
+                    userId, ChallengePeriod.WEEKLY, startOfWeek, endOfWeek
+            );
+        }
 
         return Stream.concat(dailies.stream(), weeklies.stream())
                 .sorted(Comparator.comparingInt((UserDailyChallenge c) -> {
@@ -79,7 +81,11 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .collect(Collectors.toList());
     }
 
-    private void assignMissingChallenges(UUID userId, boolean assignDaily, boolean assignWeekly) {
+    private void assignMissingChallengesV2(UUID userId, 
+                                           List<UserDailyChallenge> existingDailies, 
+                                           List<UserDailyChallenge> existingWeeklies,
+                                           boolean assignDaily, 
+                                           boolean assignWeekly) {
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         
         String userLang = user.getNativeLanguageCode();
@@ -90,31 +96,47 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         List<UserDailyChallenge> newAssignments = new ArrayList<>();
 
-        if (assignDaily) {
-            List<DailyChallenge> randomDailies = dailyChallengeRepository.findRandomChallengesByLangAndPeriod(
-                    userLang, "DAILY", 5
-            );
-            if (randomDailies.isEmpty() && !userLang.equals("en")) {
-                 randomDailies = dailyChallengeRepository.findRandomChallengesByLangAndPeriod("en", "DAILY", 5);
-            }
+        List<DailyChallenge> allChallenges = dailyChallengeRepository.findByLanguageCodeAndIsDeletedFalse(userLang);
+        if (allChallenges.isEmpty() && !userLang.equals("en")) {
+            allChallenges = dailyChallengeRepository.findByLanguageCodeAndIsDeletedFalse("en");
+        }
 
-            for (DailyChallenge dc : randomDailies) {
-                newAssignments.add(createTransferObject(user, dc, now));
-            }
+        if (assignDaily) {
+            Set<UUID> existingIds = existingDailies.stream()
+                .map(udc -> udc.getChallenge().getId())
+                .collect(Collectors.toSet());
+
+            int needed = 5 - existingDailies.size();
+            
+            List<DailyChallenge> availableDailies = allChallenges.stream()
+                .filter(c -> "DAILY".equalsIgnoreCase(String.valueOf(c.getPeriod())))
+                .filter(c -> !existingIds.contains(c.getId()))
+                .collect(Collectors.toList());
+
+            Collections.shuffle(availableDailies);
+            
+            availableDailies.stream()
+                .limit(needed)
+                .forEach(dc -> newAssignments.add(createTransferObject(user, dc, now)));
         }
 
         if (assignWeekly) {
-            // CHANGED: Limit from 1 to 5
-            List<DailyChallenge> randomWeekly = dailyChallengeRepository.findRandomChallengesByLangAndPeriod(
-                    userLang, "WEEKLY", 5 
-            );
-             if (randomWeekly.isEmpty() && !userLang.equals("en")) {
-                 randomWeekly = dailyChallengeRepository.findRandomChallengesByLangAndPeriod("en", "WEEKLY", 5);
-            }
+            Set<UUID> existingIds = existingWeeklies.stream()
+                .map(udc -> udc.getChallenge().getId())
+                .collect(Collectors.toSet());
 
-            for (DailyChallenge dc : randomWeekly) {
-                newAssignments.add(createTransferObject(user, dc, now));
-            }
+            int needed = 5 - existingWeeklies.size();
+
+            List<DailyChallenge> availableWeeklies = allChallenges.stream()
+                .filter(c -> "WEEKLY".equalsIgnoreCase(String.valueOf(c.getPeriod())))
+                .filter(c -> !existingIds.contains(c.getId()))
+                .collect(Collectors.toList());
+
+            Collections.shuffle(availableWeeklies);
+
+            availableWeeklies.stream()
+                .limit(needed)
+                .forEach(dc -> newAssignments.add(createTransferObject(user, dc, now)));
         }
 
         if (!newAssignments.isEmpty()) {
@@ -144,6 +166,9 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     @Override
     @Transactional
     public DailyChallengeUpdateResponse updateChallengeProgress(UUID userId, ChallengeType challengeType, int increment) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        String userLang = (user.getNativeLanguageCode() != null) ? user.getNativeLanguageCode() : "en";
+
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime startOfDay = now.truncatedTo(ChronoUnit.DAYS);
         OffsetDateTime startOfWeek = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).truncatedTo(ChronoUnit.DAYS);
@@ -179,10 +204,14 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 target.setStatus(ChallengeStatus.CAN_CLAIM);
                 anyCompleted = true;
 
-                sendChallengeCompletedNotification(userId, target);
+                if (target.getChallenge().getLanguageCode().equals(userLang)) {
+                    sendChallengeCompletedNotification(userId, target);
+                }
             }
             
-            if (primaryUpdated == null) {
+            if (target.getChallenge().getLanguageCode().equals(userLang)) {
+                primaryUpdated = target;
+            } else if (primaryUpdated == null) {
                 primaryUpdated = target;
             }
         }
@@ -195,7 +224,7 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                     .title(primaryUpdated.getTitle())
                     .progress(primaryUpdated.getProgress())
                     .target(primaryUpdated.getTargetAmount())
-                    .isCompleted(anyCompleted)
+                    .isCompleted(anyCompleted) // Flag này báo hiệu có bất kỳ task nào hoàn thành
                     .expReward(primaryUpdated.getExpReward())
                     .rewardCoins(primaryUpdated.getRewardCoins())
                     .build();
@@ -278,6 +307,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     @Override
     @Transactional
     public void assignAllChallengesToNewUser(UUID userId) {
-        assignMissingChallenges(userId, true, true);
+        getTodayChallenges(userId);
     }
 }

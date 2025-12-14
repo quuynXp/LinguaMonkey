@@ -21,6 +21,6 @@ public class UpdateCourseVersionRequest {
     private String languageCode;
     private DifficultyLevel difficultyLevel;
     private String categoryCode;
-    
+    private String instructionLanguage;
     private List<UUID> lessonIds;
 }

@@ -33,6 +33,8 @@ public interface CourseVersionLessonRepository extends JpaRepository<CourseVersi
 
     List<CourseVersionLesson> findByLesson_LessonId(UUID lessonId);
 
+    void deleteByCourseVersion_VersionId(UUID versionId);
+
     // Hoặc dùng HQL nếu cần:
     // @Transactional
     // @Modifying

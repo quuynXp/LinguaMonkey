@@ -5,7 +5,7 @@ import EditProfileScreen from '../../screens/profile/EditProfileScreen';
 import HelpSupportScreen from '../../screens/profile/HelpSupportScreen';
 import LanguageManagementScreen from '../../screens/profile/LanguageManagementScreen';
 import LearningGoalsScreen from '../../screens/profile/LearningGoalsScreen';
-import PrivacySettingsScreen from '../../screens/profile/PrivacySettingScreen';
+// import PrivacySettingsScreen from '../../screens/profile/PrivacySettingScreen';
 import ProfileScreen from '../../screens/profile/ProfileScreen';
 import NotificationHistoryScreen from '../../screens/notification/NotificationHistoryScreen';
 import NotificationSettingsScreen from '../../screens/notification/NotificationSettingsScreen';
@@ -23,7 +23,7 @@ type ProfileStackParamList = {
   LearningGoalsScreen: undefined;
   LanguageManagementScreen: undefined;
   UserProfileViewScreen: undefined;
-  PrivacySettingsScreen: undefined;
+  // PrivacySettingsScreen: undefined;
   HelpSupportScreen: undefined;
   AboutScreen: undefined;
   SettingsScreen: undefined;
@@ -44,7 +44,7 @@ const ProfileStack = () => (
     <Stack.Screen name="EditProfileScreen" component={EditProfileScreen} />
     <Stack.Screen name="LanguageManagementScreen" component={LanguageManagementScreen} />
     <Stack.Screen name="LearningGoalsScreen" component={LearningGoalsScreen} />
-    <Stack.Screen name="PrivacySettingsScreen" component={PrivacySettingsScreen} />
+    {/* <Stack.Screen name="PrivacySettingsScreen" component={PrivacySettingsScreen} /> */}
     <Stack.Screen name="HelpSupportScreen" component={HelpSupportScreen} />
     <Stack.Screen name="UserProfileViewScreen" component={UserProfileViewScreen} />
     <Stack.Screen name="AboutScreen" component={AboutScreen} />

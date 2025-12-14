@@ -90,8 +90,11 @@ public class CourseServiceImpl implements CourseService {
 
     private static final List<String> CEFR_LEVELS = Arrays.asList("A1", "A2", "B1", "B2", "C1", "C2");
 
+    // --- FIX QUAN TRỌNG: Cập nhật hàm enrichCourseResponse ---
     private CourseResponse enrichCourseResponse(CourseResponse response) {
         if (response != null && response.getCourseId() != null) {
+            
+            // 1. Creator Info Enrichment (Giữ nguyên)
             if (response.getCreatorId() != null) {
                 try {
                     UUID creatorId = response.getCreatorId();
@@ -108,6 +111,7 @@ public class CourseServiceImpl implements CourseService {
                 }
             }
 
+            // 2. Stats Enrichment (Giữ nguyên)
             try {
                 Double avgRating = courseReviewRepository.getAverageRatingByCourseId(response.getCourseId());
                 long count = courseReviewRepository.countByCourseIdAndParentIsNullAndIsDeletedFalse(response.getCourseId());
@@ -118,14 +122,27 @@ public class CourseServiceImpl implements CourseService {
             } catch (Exception e) {
             }
 
+            // 3. Populate DRAFT version (Giữ nguyên)
             courseVersionRepository.findByCourseIdAndStatusAndIsDeletedFalse(response.getCourseId(), VersionStatus.DRAFT)
                     .stream()
                     .findFirst()
                     .ifPresent(draft -> response.setLatestDraftVersion(versionMapper.toResponse(draft)));
+            
+            // 4. FIX LOGIC: Populate PUBLIC version nếu bị Null do Lazy Loading
+            if (response.getLatestPublicVersion() == null) {
+                // Thay vì query Course (vẫn bị Lazy), query trực tiếp CourseVersionRepository
+                courseVersionRepository.findByCourseIdAndStatusAndIsDeletedFalse(response.getCourseId(), VersionStatus.PUBLIC)
+                    .stream()
+                    .findFirst() // Giả định mỗi course chỉ có 1 Public version active tại 1 thời điểm
+                    .ifPresent(publicVer -> 
+                        response.setLatestPublicVersion(versionMapper.toResponse(publicVer))
+                    );
+            }
         }
         return response;
     }
 
+    // ... (Giữ nguyên các hàm override khác, không thay đổi) ...
 
     @Override
     public CourseVersionResponse getCourseVersionById(UUID versionId) {
@@ -271,19 +288,19 @@ public class CourseServiceImpl implements CourseService {
         User creator = userRepository.findById(course.getCreatorId())
                 .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST));
 
-        // 1. Update Basic Info
         if (request.getDescription() != null) version.setDescription(request.getDescription());
         if (request.getThumbnailUrl() != null) version.setThumbnailUrl(request.getThumbnailUrl());
         if (request.getPrice() != null) version.setPrice(request.getPrice());
         if (request.getLanguageCode() != null) version.setLanguageCode(request.getLanguageCode());
         if (request.getDifficultyLevel() != null) version.setDifficultyLevel(request.getDifficultyLevel());
         if (request.getCategoryCode() != null) version.setCategoryCode(request.getCategoryCode());
+        if (request.getInstructionLanguage() != null) version.setInstructionLanguage(request.getInstructionLanguage());
 
-        // 2. Update Lessons & Order
         if (request.getLessonIds() != null) {
+            cvlRepository.deleteByCourseVersion_VersionId(versionId); // Ensure cleanup before adding new ones
             if (version.getLessons() != null) {
                 version.getLessons().clear();
-                        } else {
+            } else {
                 version.setLessons(new ArrayList<>());
             }
             
@@ -303,7 +320,7 @@ public class CourseServiceImpl implements CourseService {
 
         boolean isValid = true;
         
-        if (version.getDescription() == null ) isValid = false;
+        if (version.getDescription() == null || version.getDescription().length() < 20) isValid = false;
         if (version.getThumbnailUrl() == null || version.getThumbnailUrl().isBlank()) isValid = false;
         if (version.getLessons() == null || version.getLessons().isEmpty()) isValid = false;
         if (version.getPrice() != null && version.getPrice().compareTo(BigDecimal.ZERO) < 0) isValid = false;
@@ -330,11 +347,11 @@ public class CourseServiceImpl implements CourseService {
         Course course = courseRepository.findById(version.getCourseId())
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 
-        // Re-validate one last time to be safe
+        // Re-validate (Đã thêm logic kiểm tra description.length() >= 20 ở update, nhưng kiểm tra lại ở đây)
         if (version.getDescription() == null || version.getDescription().length() < 20 ||
             version.getThumbnailUrl() == null || version.getThumbnailUrl().isBlank() ||
             version.getLessons() == null || version.getLessons().isEmpty()) {
-             throw new AppException(ErrorCode.INVALID_REQUEST);
+                throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
         if (Boolean.FALSE.equals(version.getIsIntegrityValid()) || Boolean.FALSE.equals(version.getIsContentValid())) {
@@ -346,13 +363,12 @@ public class CourseServiceImpl implements CourseService {
         version.setStatus(VersionStatus.PUBLIC);
         version.setPublishedAt(OffsetDateTime.now());
         
-        // CRITICAL FIX: Save the version FIRST to ensure it's persisted as PUBLIC
+        // SAVE VERSION FIRST
         version = courseVersionRepository.save(version);
 
         // 2. Handle Old Version Archival
         if (course.getLatestPublicVersion() != null) {
             CourseVersion oldPublic = course.getLatestPublicVersion();
-            // Prevent archiving itself if somehow references match (sanity check)
             if (!oldPublic.getVersionId().equals(version.getVersionId())) {
                 oldPublic.setStatus(VersionStatus.ARCHIVED);
                 courseVersionRepository.save(oldPublic);
@@ -362,7 +378,7 @@ public class CourseServiceImpl implements CourseService {
         // 3. Update Course Reference
         course.setLatestPublicVersion(version);
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
-        courseRepository.save(course); // Persist FK change
+        courseRepository.save(course); 
 
         // Notifications
         sendLearnerUpdateNotification(
@@ -403,6 +419,9 @@ public class CourseServiceImpl implements CourseService {
             newDraft.setLanguageCode(publicVersion.getLanguageCode());
             newDraft.setDifficultyLevel(publicVersion.getDifficultyLevel());
             newDraft.setCategoryCode(publicVersion.getCategoryCode());
+            // START FIX: Sao chép instructionLanguage từ phiên bản public
+            newDraft.setInstructionLanguage(publicVersion.getInstructionLanguage());
+            // END FIX
             
             newDraft.setLessons(new ArrayList<>());
             List<CourseVersionLesson> oldLessons = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(publicVersion.getVersionId());
@@ -471,7 +490,7 @@ public class CourseServiceImpl implements CourseService {
 
         if (isAdminCreated != null && isAdminCreated) {
             courses = courseRepository.findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(
-                    CourseApprovalStatus.APPROVED, pageable
+                        CourseApprovalStatus.APPROVED, pageable
             );
         } 
         else if (title != null && !title.isBlank()) {
@@ -492,36 +511,23 @@ public class CourseServiceImpl implements CourseService {
         Pageable pageable = PageRequest.of(page, size);
         OffsetDateTime now = OffsetDateTime.now();
 
-        // 1. Fetch raw data from Repository with corrected countQuery and Enum parameter
         Page<CourseVersionDiscount> discountPage = discountRepository.findSpecialOffers(
-                keyword, languageCode, minRating, VersionStatus.PUBLIC, now, pageable
+                    keyword, languageCode, minRating, VersionStatus.PUBLIC, now, pageable
         );
 
-        // 2. Convert each Discount to CourseResponse
         List<CourseResponse> courseResponses = discountPage.getContent().stream().map(discount -> {
-            // Get Course and Version from Discount relation
             CourseVersion version = discount.getCourseVersion();
             Course course = version.getCourse();
-
-            // Map basic Course Entity to Response
             CourseResponse response = courseMapper.toResponse(course);
-
-            // --- IMPORTANT: Populate version and price data for Frontend display ---
             
-            // 1. Assign public version (the one currently discounted)
             response.setLatestPublicVersion(versionMapper.toResponse(version));
-
-            // 2. Assign discount percentage (Frontend uses this for red badge -XX%)
             response.setActiveDiscountPercentage(discount.getDiscountPercentage());
 
-            // 3. Recalculate discounted price (FIX: Use BigDecimal)
             if (version.getPrice() != null) {
                 BigDecimal originalPrice = version.getPrice();
                 BigDecimal discountPercent = BigDecimal.valueOf(discount.getDiscountPercentage());
                 BigDecimal oneHundred = BigDecimal.valueOf(100);
 
-                // Formula: originalPrice * (100 - discount) / 100
-                // Scale 2, RoundingMode.HALF_UP
                 BigDecimal discountedPrice = originalPrice
                         .multiply(oneHundred.subtract(discountPercent))
                         .divide(oneHundred, 2, RoundingMode.HALF_UP);
@@ -534,7 +540,6 @@ public class CourseServiceImpl implements CourseService {
             return response;
         }).collect(Collectors.toList());
 
-        // 3. Return PageResponse
         return PageResponse.<CourseResponse>builder()
                 .content(courseResponses)
                 .pageNumber(discountPage.getNumber())
@@ -574,19 +579,19 @@ public class CourseServiceImpl implements CourseService {
             List<String> targetLevels = getNeighborLevels(userLevel);
 
             Page<Course> levelCourses = courseRepository.findByDifficultyLevelInAndCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
-                    targetLevels,
-                    enrolledCourseIds,
-                    CourseApprovalStatus.APPROVED,
-                    pageable
+                        targetLevels,
+                        enrolledCourseIds,
+                        CourseApprovalStatus.APPROVED,
+                        pageable
             );
             recommendedCourses.addAll(levelCourses.getContent());
         }
 
         if (recommendedCourses.isEmpty()) {
             Page<Course> fallbackCourses = courseRepository.findByCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
-                    enrolledCourseIds,
-                    CourseApprovalStatus.APPROVED,
-                    pageable
+                        enrolledCourseIds,
+                        CourseApprovalStatus.APPROVED,
+                        pageable
             );
             recommendedCourses.addAll(fallbackCourses.getContent());
         }
@@ -679,12 +684,10 @@ public class CourseServiceImpl implements CourseService {
         Course course = courseRepository.findById(version.getCourseId())
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 
-        // 1. Prepare Version (Status PUBLIC) & SAVE FIRST
         version.setStatus(VersionStatus.PUBLIC);
         version.setPublishedAt(OffsetDateTime.now());
         version = courseVersionRepository.save(version);
 
-        // 2. Handle Old Public
         if (course.getLatestPublicVersion() != null) {
             CourseVersion oldPublic = course.getLatestPublicVersion();
             if (!oldPublic.getVersionId().equals(version.getVersionId())) {
@@ -693,7 +696,6 @@ public class CourseServiceImpl implements CourseService {
             }
         }
 
-        // 3. Update Course & Save
         course.setLatestPublicVersion(version);
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         courseRepository.save(course);
