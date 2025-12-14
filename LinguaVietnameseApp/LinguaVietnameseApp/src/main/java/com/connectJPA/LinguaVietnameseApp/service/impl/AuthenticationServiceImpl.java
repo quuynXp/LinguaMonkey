@@ -212,6 +212,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
+        
+        // Single session enforcement
+        List<RefreshToken> existingTokens = refreshTokenRepository.findAllByUserId(user.getUserId());
+        existingTokens.forEach(t -> t.setRevoked(true));
+        refreshTokenRepository.saveAll(existingTokens);
+
         String accessToken = generateToken(user);
         String refreshToken = generateRefreshToken(user, 30);
         RefreshToken refreshTokenEntity = RefreshToken.builder()
@@ -753,6 +759,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     private AuthenticationResponse createAndSaveTokens(User user, String deviceId, String ip, String userAgent) {
+        // Enforce single session: Revoke all existing tokens for this user before creating a new one
+        List<RefreshToken> existingTokens = refreshTokenRepository.findAllByUserId(user.getUserId());
+        existingTokens.forEach(t -> t.setRevoked(true));
+        refreshTokenRepository.saveAll(existingTokens);
+
         String accessToken = generateToken(user);
         String refreshToken = generateRefreshToken(user, 30);
         RefreshToken refreshTokenEntity = RefreshToken.builder()

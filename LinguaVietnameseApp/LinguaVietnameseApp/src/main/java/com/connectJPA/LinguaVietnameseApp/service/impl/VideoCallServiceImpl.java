@@ -6,6 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.VideoCallResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCall;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCallParticipant;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.VideoCallParticipantId;
 import com.connectJPA.LinguaVietnameseApp.enums.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
@@ -74,6 +75,11 @@ public class VideoCallServiceImpl implements VideoCallService {
             throw new AppException(ErrorCode.ROOM_NOT_FOUND);
         }
 
+        User caller = userRepository.findById(callerId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        User receiver = userRepository.findById(receiverId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
         VideoCall videoCall = VideoCall.builder()
                 .roomId(roomId)
                 .callerId(callerId)
@@ -83,14 +89,14 @@ public class VideoCallServiceImpl implements VideoCallService {
                 .startTime(OffsetDateTime.now())
                 .build();
 
-        videoCall = videoCallRepository.save(videoCall);
+        videoCall = videoCallRepository.saveAndFlush(videoCall);
 
         List<VideoCallParticipant> participants = new ArrayList<>();
 
         participants.add(VideoCallParticipant.builder()
                 .id(new VideoCallParticipantId(videoCall.getVideoCallId(), callerId))
                 .videoCall(videoCall)
-                .user(userRepository.getReferenceById(callerId))
+                .user(caller)
                 .joinedAt(OffsetDateTime.now())
                 .role(VideoCallRole.HOST)
                 .status(VideoCallParticipantStatus.WAITING)
@@ -99,7 +105,7 @@ public class VideoCallServiceImpl implements VideoCallService {
         participants.add(VideoCallParticipant.builder()
                 .id(new VideoCallParticipantId(videoCall.getVideoCallId(), receiverId))
                 .videoCall(videoCall)
-                .user(userRepository.getReferenceById(receiverId))
+                .user(receiver)
                 .joinedAt(OffsetDateTime.now())
                 .role(VideoCallRole.GUEST)
                 .status(VideoCallParticipantStatus.WAITING)
@@ -155,50 +161,64 @@ public class VideoCallServiceImpl implements VideoCallService {
                 throw new AppException(ErrorCode.ROOM_NOT_FOUND);
             }
 
-            // 1. Create VideoCall directly linked to the existing Group Chat Room
+            // 1. Fetch User (caller)
+            User caller = userRepository.findById(request.getCallerId())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+            // 2. Tạo VideoCall
+            // LƯU Ý: calleeId set null ở đây yêu cầu DB column callee_id phải cho phép NULL
             VideoCall videoCall = VideoCall.builder()
                     .callerId(request.getCallerId())
                     .roomId(request.getRoomId())
-                    .calleeId(null)
-                    .videoCallType(request.getVideoCallType())
+                    .calleeId(null) // Group Call -> CalleeId is NULL
+                    .videoCallType(request.getVideoCallType()) // Use Type from request
                     .status(VideoCallStatus.INITIATED)
                     .startTime(OffsetDateTime.now())
                     .build();
 
-            videoCall = videoCallRepository.save(videoCall);
+            // Lưu và Flush ngay để bắt lỗi Constraint (nếu có) và lấy ID
+            videoCall = videoCallRepository.saveAndFlush(videoCall);
 
-            // 2. Only add the Caller as the HOST/CONNECTED participant
+            // 3. Add HOST
             List<VideoCallParticipant> participants = new ArrayList<>();
             VideoCallParticipant host = VideoCallParticipant.builder()
                     .id(new VideoCallParticipantId(videoCall.getVideoCallId(), request.getCallerId()))
                     .videoCall(videoCall)
-                    .user(userRepository.getReferenceById(request.getCallerId()))
+                    .user(caller)
                     .joinedAt(OffsetDateTime.now())
                     .role(VideoCallRole.HOST)
                     .status(VideoCallParticipantStatus.CONNECTED)
                     .build();
+
             participants.add(host);
-            
             videoCallParticipantRepository.saveAll(participants);
+            
+            // Set ngược lại vào Entity để Mapper có dữ liệu
             videoCall.setParticipants(participants);
 
-            // 3. Notify the Room
-            Map<String, Object> socketPayload = new HashMap<>();
-            socketPayload.put("type", "INCOMING_CALL");
-            socketPayload.put("roomId", request.getRoomId().toString());
-            socketPayload.put("videoCallId", videoCall.getVideoCallId());
-            socketPayload.put("callerId", request.getCallerId());
-            socketPayload.put("roomName", "Group Call");
-
-            // Send to everyone subscribed to /topic/room/{roomId}
-            messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
+            // 4. Bắn Socket
+            try {
+                Map<String, Object> socketPayload = new HashMap<>();
+                socketPayload.put("type", "INCOMING_CALL");
+                socketPayload.put("roomId", request.getRoomId().toString());
+                socketPayload.put("videoCallId", videoCall.getVideoCallId());
+                socketPayload.put("callerId", request.getCallerId());
+                socketPayload.put("roomName", "Group Call");
+                
+                messagingTemplate.convertAndSend("/topic/room/" + request.getRoomId(), socketPayload);
+            } catch (Exception e) {
+                log.warn("Failed to send WebSocket notification for group call: {}", e.getMessage());
+                // Không throw exception ở đây để không chặn luồng tạo call
+            }
 
             return videoCallMapper.toResponse(videoCall);
 
         } catch (AppException ae) {
             throw ae;
         } catch (Exception e) {
-            log.error("Error creating group video call", e);
+            // Log full stack trace để debug lỗi 500
+            log.error("CRITICAL ERROR creating group video call. Caller: {}, Room: {}", 
+                    request.getCallerId(), request.getRoomId(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -210,13 +230,16 @@ public class VideoCallServiceImpl implements VideoCallService {
                 .orElseThrow(() -> new AppException(ErrorCode.VIDEO_CALL_NOT_FOUND));
 
         if (videoCallParticipantRepository.existsById(new VideoCallParticipantId(videoCallId, userId))) {
-            return; // Already joined
+            return; 
         }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         VideoCallParticipant participant = VideoCallParticipant.builder()
                 .id(new VideoCallParticipantId(videoCallId, userId))
                 .videoCall(videoCall)
-                .user(userRepository.getReferenceById(userId))
+                .user(user)
                 .joinedAt(OffsetDateTime.now())
                 .role(VideoCallRole.GUEST)
                 .status(VideoCallParticipantStatus.CONNECTED)
@@ -242,7 +265,6 @@ public class VideoCallServiceImpl implements VideoCallService {
     public List<VideoCallResponse> getVideoCallHistoryByUser(UUID userId) {
         try {
             List<VideoCallParticipant> participantList = videoCallParticipantRepository.findByUser_UserId(userId);
-
             List<VideoCallResponse> responses = new ArrayList<>();
             for (VideoCallParticipant participant : participantList) {
                 VideoCall videoCall = participant.getVideoCall();
@@ -257,7 +279,6 @@ public class VideoCallServiceImpl implements VideoCallService {
                     responses.add(videoCallMapper.toResponse(vc));
                 }
             }
-
             return responses;
         } catch (Exception e) {
             log.error("Error fetching video call history for user {}", userId, e);
@@ -310,7 +331,6 @@ public class VideoCallServiceImpl implements VideoCallService {
                             dailyChallengeService.updateChallengeProgress(p.getId().getUserId(), ChallengeType.SPEAKING_PRACTICE, Math.max(1, durationMinutes));
                             dailyChallengeService.updateChallengeProgress(p.getId().getUserId(), ChallengeType.LEARNING_TIME, durationMinutes);
                         }
-
                         if (badgeService != null) {
                             badgeService.updateBadgeProgress(p.getId().getUserId(), BadgeType.VIDEO_CALL_COUNT, 1);
                         }

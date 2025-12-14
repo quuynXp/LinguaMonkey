@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Signed APK Build (Hermes & Fix OOM)
+name: LinguamonkeyFe - Signed APK Build (Production Ready)
 
 on:
   push:
@@ -44,11 +44,9 @@ jobs:
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
 
-      # --- BƯỚC PATCH QUAN TRỌNG: Sửa lỗi CMake Worklets ---
       - name: 🩹 Patch react-native-worklets (Remove jsctooling)
         run: |
           echo "🔧 Patching react-native-worklets CMakeLists.txt..."
-          # Tìm và xóa ReactAndroid::jsctooling khỏi file CMake vì nó gây lỗi
           if [ -f "node_modules/react-native-worklets/android/CMakeLists.txt" ]; then
             sed -i 's/ReactAndroid::jsctooling//g' node_modules/react-native-worklets/android/CMakeLists.txt
             echo "✅ Patched: Removed jsctooling dependency."
@@ -56,7 +54,6 @@ jobs:
             echo "⚠️ Warning: CMakeLists.txt not found, skipping patch."
           fi
 
-      # --- CẤU HÌNH BỘ NHỚ & WORKERS (GIỮ NGUYÊN VÌ NÓ HIỆU QUẢ) ---
       - name: 🚀 Configure Gradle Memory & Workers
         run: |
           # 1. Giảm Xmx xuống 3GB để dành RAM cho C++ compiler
@@ -65,11 +62,6 @@ jobs:
           echo "org.gradle.workers.max=1" >> ./android/gradle.properties
           echo "android.enableR8=true" >> ./android/gradle.properties
 
-      - name: 🧹 Clean up duplicate icon files
-        run: |
-          if [ -d "./android/app/src/main/res" ]; then
-            find ./android/app/src/main/res -name "*.webp" -delete
-          fi
 
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
@@ -83,9 +75,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-fe-v10-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-fe-v11-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-fe-v10-
+            ${{ runner.os }}-gradle-fe-v11-
 
       - name: 🔐 Setup Keystore
         run: |
@@ -101,7 +93,7 @@ jobs:
           cd android
           chmod +x gradlew
           
-          echo "🔨 Starting Build (Hermes + OOM Fix + Patched)..."
+          echo "🔨 Starting Build (Production Ready)..."
           
           ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=$(pwd)/app/my-release-key.keystore \

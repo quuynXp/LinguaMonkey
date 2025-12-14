@@ -9,7 +9,6 @@ import {
   LessonQuestionResponse,
   LessonQuestionRequest,
   QuizResponse,
-  RoomResponse,
   LessonProgressResponse,
   LessonProgressRequest,
   LessonProgressWrongItemResponse,
@@ -18,6 +17,7 @@ import {
 } from "../types/dto";
 import { courseKeys } from "./useCourses";
 import { SkillType } from "../types/enums";
+import { RoomResponse } from "../types/api";
 
 // --- Keys Factory ---
 export const lessonKeys = {
@@ -205,6 +205,7 @@ export const useLessons = () => {
       body: {
         answers: Record<string, any>;
         attemptNumber: number;
+        durationSeconds?: number; // ADDED THIS FIELD
       };
     }
 
@@ -221,10 +222,10 @@ export const useLessons = () => {
         queryClient.invalidateQueries({ queryKey: lessonKeys.test.start(variables.lessonId, variables.userId) });
         queryClient.invalidateQueries({ queryKey: lessonKeys.progress.all });
         queryClient.invalidateQueries({ queryKey: lessonKeys.wrongItems.all });
+        // Invalidate course queries to refresh progress
         queryClient.invalidateQueries({
           queryKey: courseKeys.enrollments({})
         });
-
         queryClient.invalidateQueries({
           queryKey: courseKeys.details()
         });

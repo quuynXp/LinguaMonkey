@@ -37,8 +37,7 @@ public class UserLearningActivity extends BaseEntity {
     @Column(name = "related_entity_id")
     private UUID relatedEntityId;
 
-    private Integer score;
+    private Float score;
 
-    private Integer maxScore;
-
+    private Float maxScore;
 }

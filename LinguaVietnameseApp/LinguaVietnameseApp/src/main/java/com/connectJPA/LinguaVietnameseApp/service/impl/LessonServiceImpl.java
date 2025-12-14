@@ -303,31 +303,24 @@ public class LessonServiceImpl implements LessonService {
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
-        // --- ENROLLMENT & FREE COURSE CHECK ---
         if (userId != null && lesson.getCourseVersions() != null && !lesson.getCourseVersions().isEmpty()) {
             boolean isEnrolled = false;
-            
-            // Check existing enrollments in any linked course version
             for (CourseVersionLesson link : lesson.getCourseVersions()) {
                 CourseVersion version = link.getCourseVersion();
                 boolean enrolled = courseVersionEnrollmentRepository.existsByCourseVersion_VersionIdAndUserIdAndStatus(
                         version.getVersionId(), userId, CourseVersionEnrollmentStatus.IN_PROGRESS)
                         || courseVersionEnrollmentRepository.existsByCourseVersion_VersionIdAndUserIdAndStatus(
                         version.getVersionId(), userId, CourseVersionEnrollmentStatus.COMPLETED);
-                
                 if (enrolled) {
                     isEnrolled = true;
                     break;
                 }
             }
-
-            // If not enrolled, try to auto-enroll if course is FREE
             if (!isEnrolled) {
+                // Check free courses auto-enroll
                 for (CourseVersionLesson link : lesson.getCourseVersions()) {
                     CourseVersion version = link.getCourseVersion();
                     Course course = version.getCourse();
-                    
-                    // Fix: Use BigDecimal.compareTo() for price check
                     if (course.getLatestPublicVersion().getPrice().compareTo(BigDecimal.ZERO) <= 0) {
                         CourseVersionEnrollment newEnrollment = CourseVersionEnrollment.builder()
                                 .courseVersion(version)
@@ -343,13 +336,10 @@ public class LessonServiceImpl implements LessonService {
                     }
                 }
             }
-            
-            // If still not enrolled and lesson is part of a course, deny access
             if (!isEnrolled) {
                 throw new AppException(ErrorCode.COURSE_NOT_ENROLLED);
             }
         }
-        // ---------------------------------------
 
         List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
         questions = questions.stream().filter(q -> !q.isDeleted()).collect(Collectors.toList());
@@ -364,13 +354,11 @@ public class LessonServiceImpl implements LessonService {
             m.put("lessonId", q.getLesson().getLessonId());
             m.put("question", q.getQuestion());
             m.put("questionType", q.getQuestionType());
-            
             m.put("optionA", q.getOptionA());
             m.put("optionB", q.getOptionB());
             m.put("optionC", q.getOptionC());
             m.put("optionD", q.getOptionD());
             m.put("correctOption", q.getCorrectOption());
-            
             m.put("mediaUrl", q.getMediaUrl());
             m.put("weight", q.getWeight());
             m.put("orderIndex", q.getOrderIndex());
@@ -383,44 +371,54 @@ public class LessonServiceImpl implements LessonService {
             return m;
         }).collect(Collectors.toList());
 
-    Map<String, Object> resp = new HashMap<>();
-    resp.put("lessonId", lessonId);
-    resp.put("questions", qDtos);
-    resp.put("durationSeconds", lesson.getDurationSeconds());
-    resp.put("allowedRetakeCount", lesson.getAllowedRetakeCount());
-    
-    int attemptNumber = 1;
-    Float latestScore = null;
-    List<String> wrongQuestionIds = new ArrayList<>();
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("lessonId", lessonId);
+        resp.put("questions", qDtos);
+        resp.put("durationSeconds", lesson.getDurationSeconds());
+        resp.put("allowedRetakeCount", lesson.getAllowedRetakeCount());
+        
+        int attemptNumber = 1;
+        Float latestScore = null;
+        List<String> wrongQuestionIds = new ArrayList<>();
 
-    if (userId != null) {
-        Optional<LessonProgress> existing = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId));
-        if (existing.isPresent()) {
-            LessonProgress lp = existing.get();
-            attemptNumber = lp.getAttemptNumber() + 1;
-            latestScore = lp.getScore(); 
+        if (userId != null) {
+            Optional<LessonProgress> existing = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId));
+            if (existing.isPresent()) {
+                LessonProgress lp = existing.get();
+                attemptNumber = lp.getAttemptNumber() + 1;
+                latestScore = lp.getScore(); 
+            }
+
+            List<LessonProgressWrongItem> wrongItems = lessonProgressWrongItemRepository
+                    .findById_LessonIdAndId_UserIdAndIsDeletedFalse(lessonId, userId);
+            
+            wrongQuestionIds = wrongItems.stream()
+                    .map(item -> item.getId().getLessonQuestionId().toString())
+                    .collect(Collectors.toList());
         }
 
-        List<LessonProgressWrongItem> wrongItems = lessonProgressWrongItemRepository
-                .findById_LessonIdAndId_UserIdAndIsDeletedFalse(lessonId, userId);
-        
-        wrongQuestionIds = wrongItems.stream()
-                .map(item -> item.getId().getLessonQuestionId().toString())
-                .collect(Collectors.toList());
+        resp.put("attemptNumber", attemptNumber);
+        resp.put("latestScore", latestScore); 
+        resp.put("wrongQuestionIds", wrongQuestionIds); 
+
+        return resp;
     }
 
-    resp.put("attemptNumber", attemptNumber);
-    resp.put("latestScore", latestScore); 
-    resp.put("wrongQuestionIds", wrongQuestionIds); 
-
-    return resp;
-}
     @Override
     @Transactional
     public Map<String, Object> submitTest(UUID lessonId, UUID userId, Map<String, Object> payload) {
         Map<String, Object> answers = (Map<String, Object>) payload.get("answers");
         Integer attemptNumber = payload.get("attemptNumber") != null ? (Integer) payload.get("attemptNumber") : 1;
         String token = (String) payload.get("token");
+
+        Integer durationSeconds = 0;
+        if (payload.containsKey("durationSeconds")) {
+            try {
+                durationSeconds = Integer.parseInt(payload.get("durationSeconds").toString());
+            } catch (Exception e) {
+                durationSeconds = 0;
+            }
+        }
 
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
@@ -484,16 +482,39 @@ public class LessonServiceImpl implements LessonService {
         boolean needsReview = questions.stream().anyMatch(q -> (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) && (percent < 100));
         lp.setNeedsReview(needsReview);
         
-        lessonProgressRepository.save(lp);
+        lessonProgressRepository.saveAndFlush(lp);
 
-        if (lesson.getCourseVersions() != null) {
-            for (CourseVersionLesson cvl : lesson.getCourseVersions()) {
+        UserLearningActivity activity = UserLearningActivity.builder()
+                .activityId(UUID.randomUUID())
+                .userId(userId)
+                .activityType(ActivityType.LESSON) 
+                .relatedEntityId(lessonId)
+                .durationInSeconds(durationSeconds > 0 ? durationSeconds : lesson.getDurationSeconds()) 
+                .score(percent)
+                .maxScore((float)totalMax)
+                .details("Completed lesson with score: " + percent)
+                .createdAt(OffsetDateTime.now())
+                .build();
+        userLearningActivityRepository.save(activity);
+        
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null) {
+            user.setLastActiveAt(OffsetDateTime.now());
+            if (percent >= 50) {
+               user.setExp(user.getExp() + lesson.getExpReward());
+            }
+            userRepository.save(user);
+        }
+
+        // CRITICAL FIX: Explicitly fetch CourseVersionLesson links to ensure list is populated
+        // Avoiding Lazy Initialization issues on lesson.getCourseVersions()
+        List<CourseVersionLesson> linkedVersions = courseVersionLessonRepository.findByLesson_LessonId(lessonId);
+        if (linkedVersions != null && !linkedVersions.isEmpty()) {
+            for (CourseVersionLesson cvl : linkedVersions) {
                 try {
                     courseEnrollmentService.syncEnrollmentProgress(userId, cvl.getCourseVersion().getVersionId());
                 } catch (AppException e) {
-                    if (!ErrorCode.ENROLLMENT_NOT_FOUND.equals(e.getErrorCode())) {
-                        log.warn("Failed to sync progress for version: " + cvl.getCourseVersion().getVersionId(), e);
-                    }
+                   log.warn("Failed to sync progress for version: " + cvl.getCourseVersion().getVersionId(), e);
                 }
             }
         }
@@ -504,13 +525,18 @@ public class LessonServiceImpl implements LessonService {
             ChallengeType skillChallenge = mapSkillToChallengeType(lesson.getSkillTypes());
             if (skillChallenge != null) dailyChallengeService.updateChallengeProgress(userId, skillChallenge, 1);
         }
-        dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LEARNING_TIME, lesson.getDurationSeconds() / 60);
+        
+        int minutes = (durationSeconds > 0 ? durationSeconds : lesson.getDurationSeconds()) / 60;
+        if (minutes > 0) {
+            dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LEARNING_TIME, minutes);
+        }
 
         int progressPercent = computeProgressVsUserGoal(userId, lesson, percent);
         Map<String, Object> result = new HashMap<>();
         result.put("lessonId", lessonId); result.put("totalScore", totalScore); result.put("maxScore", totalMax); result.put("percent", percent); result.put("needsReview", lp.getNeedsReview()); result.put("progressPercent", progressPercent);
         return result;
     }
+
     private ChallengeType mapSkillToChallengeType(SkillType skill) {
         if (skill == null) return null;
         switch (skill) {
@@ -595,11 +621,15 @@ public class LessonServiceImpl implements LessonService {
                     .score(score != null ? score : 0)
                     .completedAt(OffsetDateTime.now())
                     .build();
-            lessonProgressRepository.save(progress);
+            
+            // Fix flush here as well for consistency
+            lessonProgressRepository.saveAndFlush(progress);
 
             UserLearningActivity activity = UserLearningActivity.builder()
                     .userId(userId)
                     .activityType(ActivityType.LESSON_COMPLETE)
+                    .relatedEntityId(lessonId)
+                    .durationInSeconds(lesson.getDurationSeconds()) 
                     .createdAt(OffsetDateTime.now())
                     .build();
             userLearningActivityRepository.save(activity);
@@ -608,6 +638,18 @@ public class LessonServiceImpl implements LessonService {
             
             dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
             badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
+            
+            // Explicitly sync versions
+            List<CourseVersionLesson> linkedVersions = courseVersionLessonRepository.findByLesson_LessonId(lessonId);
+            if (linkedVersions != null) {
+                for (CourseVersionLesson cvl : linkedVersions) {
+                    try {
+                        courseEnrollmentService.syncEnrollmentProgress(userId, cvl.getCourseVersion().getVersionId());
+                    } catch (AppException e) {
+                        log.warn("Failed to sync progress for version: " + cvl.getCourseVersion().getVersionId(), e);
+                    }
+                }
+            }
 
         } catch (AppException e) {
             throw e;
@@ -786,62 +828,5 @@ public class LessonServiceImpl implements LessonService {
                     .subCategories(subCatDtos)
                     .build();
         }).collect(Collectors.toList());
-    }
-
-    private void updateCourseProgressIfApplicable(UUID userId, UUID lessonId) {
-        // 1. Find all active enrollments containing this lesson
-        List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository.findActiveEnrollmentsByUserIdAndLessonId(userId, lessonId);
-        
-        for (CourseVersionEnrollment enrollment : enrollments) {
-            UUID versionId = enrollment.getCourseVersion().getVersionId();
-            
-            // 2. Get all lessons in this version
-            List<CourseVersionLesson> versionLessons = courseVersionLessonRepository.findByCourseVersion_VersionIdOrderByOrderIndex(versionId);
-            
-            if (versionLessons.isEmpty()) continue;
-
-            int totalLessons = versionLessons.size();
-            int completedCount = 0;
-
-            // 3. Iterate to count completed lessons based on timestamps
-            for (CourseVersionLesson vl : versionLessons) {
-                Lesson lesson = vl.getLesson();
-                
-                // Fetch user progress for this lesson
-                Optional<LessonProgress> progressOpt = lessonProgressRepository.findById(new LessonProgressId(lesson.getLessonId(), userId));
-
-                if (progressOpt.isPresent()) {
-                    LessonProgress p = progressOpt.get();
-                    
-                    // Logic: Completed if Score >= 50 AND content is not outdated.
-                    // If Lesson.updatedAt > Progress.completedAt => User needs to retake.
-                    boolean isPassed = p.getScore() >= 50;
-                    boolean isUpToDate = true;
-                    
-                    if (lesson.getUpdatedAt() != null && p.getCompletedAt() != null) {
-                        isUpToDate = !p.getCompletedAt().isBefore(lesson.getUpdatedAt());
-                    }
-
-                    if (isPassed && isUpToDate) {
-                        completedCount++;
-                    }
-                }
-            }
-
-            // 4. Update Enrollment Progress
-            double progressPercent = Math.round(((double) completedCount / totalLessons) * 10000.0) / 100.0;
-            enrollment.setProgress(progressPercent);
-            
-            if (progressPercent >= 100.0) {
-                enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
-                if (enrollment.getCompletedAt() == null) {
-                    enrollment.setCompletedAt(OffsetDateTime.now());
-                }
-            } else {
-                enrollment.setStatus(CourseVersionEnrollmentStatus.IN_PROGRESS);
-            }
-            
-            courseVersionEnrollmentRepository.save(enrollment);
-        }
     }
 }

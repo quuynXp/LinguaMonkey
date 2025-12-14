@@ -75,6 +75,9 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
         for (CourseVersionLesson vl : versionLessons) {
             Lesson lesson = vl.getLesson();
             
+            // Critical check to avoid issues if lesson proxy is not initialized
+            if (lesson == null || lesson.getLessonId() == null) continue;
+
             Optional<LessonProgress> progressOpt = lessonProgressRepository
                 .findById(new LessonProgressId(lesson.getLessonId(), userId));
 
@@ -94,7 +97,10 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
             }
         }
 
-        double newProgress = ((double) completedCount / (double) totalLessons) * 100.0;
+        double newProgress = 0.0;
+        if (totalLessons > 0) {
+            newProgress = ((double) completedCount / (double) totalLessons) * 100.0;
+        }
         
         newProgress = Math.round(newProgress * 100.0) / 100.0;
         
@@ -111,7 +117,8 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
             enrollment.setStatus(CourseVersionEnrollmentStatus.IN_PROGRESS); 
         }
         
-        enrollmentRepository.save(enrollment);
+        // Use saveAndFlush to ensure immediate consistency
+        enrollmentRepository.saveAndFlush(enrollment);
     }
 
     @Transactional
@@ -146,7 +153,6 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
             
             CourseVersionEnrollmentResponse response = CourseVersionEnrollmentMapper.toResponse(enrollment);
             
-            // Logic tính toán completedLessonsCount
             if (enrollment.getCourseVersion() != null) {
                 long completedCount = courseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, enrollment.getCourseVersion().getVersionId());
                 response.setCompletedLessonsCount((int) completedCount);
@@ -223,6 +229,5 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
 
     @Override
     public void deleteCourseVersionEnrollmentsByCourseId(UUID courseId) {
-        // Logic handled via cascade or manual iteration if needed
     }
 }

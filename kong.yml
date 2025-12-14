@@ -168,7 +168,7 @@ services:
         protocols: [http, https]
 
   - name: python-service
-    url: http://pythonservice:8001
+    url: http://pythonservice:10000
     connect_timeout: 60000
     write_timeout: 300000
     read_timeout: 300000

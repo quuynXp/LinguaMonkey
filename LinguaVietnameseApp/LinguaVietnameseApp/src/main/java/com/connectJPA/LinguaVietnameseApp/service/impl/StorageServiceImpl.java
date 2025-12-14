@@ -35,12 +35,16 @@ public class StorageServiceImpl implements StorageService {
 
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
     
+    // FIX: Đổi link template ảnh sang định dạng direct link có chứa placeholder %s
+    // Link này (lh3) tối ưu hơn cho thẻ <Image> của React Native vì load trực tiếp không qua redirect
     private static final String IMAGE_URL_TEMPLATE = "https://lh3.googleusercontent.com/d/%s";
     
+    // Link cho file thường (download)
     private static final String BINARY_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
 
     private String generateUrl(String fileId, String mimeType) {
         if (mimeType != null && mimeType.startsWith("image/")) {
+            // FIX: String.format giờ sẽ hoạt động đúng vì template đã có %s
             return String.format(IMAGE_URL_TEMPLATE, fileId);
         }
         return String.format(BINARY_URL_TEMPLATE, fileId);
@@ -95,6 +99,7 @@ public class StorageServiceImpl implements StorageService {
 
             log.info("Uploaded {} to Drive. ID: {}", fileName, fileId);
             
+            // FIX: Truyền contentType vào để chọn đúng template URL cho ảnh
             return generateUrl(fileId, contentType);
             
         } catch (IOException e) {
@@ -107,7 +112,7 @@ public class StorageServiceImpl implements StorageService {
     @Override
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {
         try {
-            String fileId = extractFileId(tempPath); // Tách hàm extract ra cho gọn
+            String fileId = extractFileId(tempPath); 
 
             File driveFile = driveService.files().get(fileId).setFields("name").execute();
             String fileName = driveFile.getName();
@@ -134,15 +139,18 @@ public class StorageServiceImpl implements StorageService {
     // Hàm tách ID chuẩn xác
     private String extractFileId(String url) {
         String fileId = url;
+        if (url == null) return "";
+        
         if (url.contains("/file/d/")) {
             int start = url.indexOf("/file/d/") + 8;
             int end = url.indexOf("/", start);
             if (end == -1) end = url.indexOf("?", start);
             if (end == -1) end = url.length();
             fileId = url.substring(start, end);
-        } else if (url.contains("/d/")) { // Cho link lh3
+        } else if (url.contains("/d/")) { // Cho link lh3 hoặc link d/ rút gọn
             int start = url.indexOf("/d/") + 3;
             int end = url.indexOf("?", start); // lh3 thường không có params nhưng cứ check
+            if (end == -1) end = url.indexOf("/", start); // Check thêm slash
             if (end == -1) end = url.length();
             fileId = url.substring(start, end);
         } else if (url.contains("id=")) {
@@ -157,16 +165,26 @@ public class StorageServiceImpl implements StorageService {
     @Override
     public void deleteFile(String objectPath) {
         try {
-            driveService.files().delete(objectPath).execute();
-            log.info("Deleted file from Drive: {}", objectPath);
+            String fileId = extractFileId(objectPath);
+            // Nếu không extract được (do path là ID trần), dùng luôn path
+            if (fileId.equals(objectPath) && objectPath.contains("http")) {
+                 // Trường hợp path là url nhưng parse lỗi, log warning
+                 log.warn("Could not extract ID from path: {}", objectPath);
+            }
+            // Fallback nếu objectPath đã là ID
+            if (!objectPath.contains("/")) fileId = objectPath;
+
+            driveService.files().delete(fileId).execute();
+            log.info("Deleted file from Drive: {}", fileId);
         } catch (IOException e) {
-            log.error("Delete failed for File ID: {}", objectPath, e);
+            log.error("Delete failed for File path: {}", objectPath, e);
             throw new RuntimeException("Delete file failed", e);
         }
     }
 
     @Override
     public String getFileUrl(String fileId) {
+        // Mặc định trả về binary download link nếu không biết type
         return String.format(BINARY_URL_TEMPLATE, fileId);
     }
     

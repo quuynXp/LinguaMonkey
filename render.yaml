@@ -72,7 +72,7 @@ services:
       - key: GRPC_SERVER_ADDRESS
         value: 0.0.0.0
       - key: APP_BACKEND_URL
-        value: https://093ea1fb6d89.ngrok-free.app
+        value: https://kong-6i9w.onrender.com
       - key: PYTHON_GRPC_HOST
         value: pythonservice
       - key: PYTHON_GRPC_PORT
@@ -126,9 +126,9 @@ services:
       - key: GOOGLE_OAUTH_CLIENT_ID
         value: 691949892970-sifep58js9d5a79pfifs3ff471e34v5k.apps.googleusercontent.com
       - key: SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE
-        value: 200MB
+        value: 2048MB
       - key: SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE
-        value: 200MB
+        value: 2048MB
       - key: SERVER_TOMCAT_CONNECTION_TIMEOUT
         value: 120000
 

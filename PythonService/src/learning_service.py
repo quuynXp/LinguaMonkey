@@ -1,15 +1,16 @@
-# src/learning_service.py
 import os
 import grpc.aio
 from concurrent import futures
 import logging
 import jwt
+import asyncio
+import azure.cognitiveservices.speech as speechsdk 
+
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
-import asyncio
 from dotenv import load_dotenv
-from .api.matchmaking_service import match_users_with_gemini
 
+from .api.matchmaking_service import match_users_with_gemini
 from .core.grpc_auth_decorator import authenticated_grpc_method
 
 from src.grpc_generated import learning_service_pb2 as learning_pb2
@@ -18,17 +19,11 @@ from src.grpc_generated import learning_service_pb2_grpc as learning_pb2_grpc
 from .core.session import AsyncSessionLocal
 from .core.cache import get_redis_client, close_redis_client
 from .core.user_profile_service import get_user_profile
-
-from .api.speech_to_text import speech_to_text
 from .api.chat_ai import chat_with_ai
-# from .api.spelling_checker import check_spelling
-# from .api.pronunciation_checker import check_pronunciation
-from .api.image_text_analyzer import analyze_image_with_text
 from .api.passage_generator import generate_passage
 from .api.image_generator import generate_image
 from .api.text_generator import generate_text
 from .api.roadmap_generator import generate_roadmap
-from .api.translation_checker import check_translation
 from .api.translation import translate_text
 from .api.tts_generator import generate_tts
 from .api.quiz_generator import generate_quiz
@@ -41,7 +36,6 @@ from .core.translator import get_translator
 
 load_dotenv()
 
-
 class LearningService(learning_pb2_grpc.LearningServiceServicer):
     def __init__(self):
         try:
@@ -53,6 +47,8 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"Failed to load public key: {str(e)}")
             raise
         self.redis_client = get_redis_client()
+        # Init Translator with required redis_client argument
+        self.translator = get_translator(self.redis_client)
 
     def _verify_token(self, context):
         try:
@@ -125,7 +121,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                         graded_answer.feedback = "No audio provided"
                     else:
                         # Use existing pronunciation module
-                        feedback, score, error = await check_pronunciation(audio_data, answer.reference_text)
+                        feedback, score, error = await check_pronunciation_logic(audio_data, answer.reference_text, "en-US")
                         if error:
                             graded_answer.score = 0
                             graded_answer.feedback = f"Error: {error}"
@@ -183,11 +179,61 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     
     @authenticated_grpc_method
     async def SpeechToText(self, request, context, claims) -> learning_pb2.SpeechResponse:
-        audio_data = (
-            request.audio.inline_data if request.audio.inline_data else b""
-        )
-        text, error = speech_to_text(audio_data, request.language)
-        return learning_pb2.SpeechResponse(text=text, error=error)
+        """
+        Uses Azure Speech SDK directly for one-shot recognition (better for files/buffers).
+        This replaces the Streaming implementation used for video calls.
+        """
+        try:
+            audio_data = (
+                request.audio.inline_data if request.audio.inline_data else b""
+            )
+            if not audio_data:
+                return learning_pb2.SpeechResponse(text="", error="No audio data received")
+
+            speech_key = os.getenv("AZURE_SPEECH_KEY")
+            service_region = os.getenv("AZURE_SPEECH_REGION")
+
+            if not speech_key or not service_region:
+                return learning_pb2.SpeechResponse(text="", error="Azure Credentials missing")
+
+            # 1. Configuration
+            speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
+            # Adjust target language
+            target_lang = request.language if request.language else "en-US"
+            speech_config.speech_recognition_language = target_lang
+
+            # 2. Setup Audio Stream from Bytes
+            # We use PushAudioInputStream to write the buffer and close it immediately
+            stream_format = speechsdk.audio.AudioStreamFormat(samples_per_second=16000, bits_per_sample=16, channels=1)
+            push_stream = speechsdk.audio.PushAudioInputStream(stream_format=stream_format)
+            
+            # Write data and close to signal end of stream
+            push_stream.write(audio_data)
+            push_stream.close()
+
+            audio_config = speechsdk.audio.AudioConfig(stream=push_stream)
+
+            # 3. Create Recognizer
+            recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+
+            # 4. Recognize Once (Async wrapped in Future)
+            # recognize_once_async is optimal for single command/phrase recognition
+            future = recognizer.recognize_once_async()
+            result = future.get() # Wait for result
+
+            if result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                return learning_pb2.SpeechResponse(text=result.text, error="")
+            elif result.reason == speechsdk.ResultReason.NoMatch:
+                return learning_pb2.SpeechResponse(text="", error="No speech recognized")
+            elif result.reason == speechsdk.ResultReason.Canceled:
+                cancellation_details = result.cancellation_details
+                return learning_pb2.SpeechResponse(text="", error=f"Azure Cancelled: {cancellation_details.reason} - {cancellation_details.error_details}")
+            
+            return learning_pb2.SpeechResponse(text="", error="Unknown Azure result")
+
+        except Exception as e:
+            logging.error(f"SpeechToText Error: {e}", exc_info=True)
+            return learning_pb2.SpeechResponse(text="", error=f"Internal Error: {str(e)}")
 
     @authenticated_grpc_method
     async def GenerateTts(self, request, context, claims) -> learning_pb2.TtsResponse:
@@ -279,20 +325,6 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"Error during FindMatch: {e}", exc_info=True)
             return learning_pb2.FindMatchResponse(error=f"Internal error: {str(e)}")
 
-    # @authenticated_grpc_method
-    # async def CheckSpelling(self, request, context, claims) -> learning_pb2.SpellingResponse:
-    #     corrections, error = check_spelling(request.text, request.language)
-    #     return learning_pb2.SpellingResponse(corrections=corrections, error=error)
-
-    # @authenticated_grpc_method
-    # async def CheckTranslation(self, request, context, claims) -> learning_pb2.CheckTranslationResponse:
-    #     feedback, score, error = check_translation(
-    #         request.reference_text, request.translated_text, request.target_language
-    #     )
-    #     return learning_pb2.CheckTranslationResponse(
-    #         feedback=feedback, score=score, error=error
-    #     )
-
     # --- WRITING ---
 
     async def CheckWritingAssessment(self, request, context):
@@ -366,11 +398,17 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         logging.info(f"Generating Seed Data for topic: {request.topic}")
         
         # 1. Fix/Generate Text Data using Gemini
-        fixed_data, text_error = await improve_quiz_data(
-            request.raw_question, 
-            list(request.raw_options), 
-            request.topic
-        )
+        try:
+            from .api.quiz_generator import improve_quiz_data
+            fixed_data, text_error = await improve_quiz_data(
+                request.raw_question, 
+                list(request.raw_options), 
+                request.topic
+            )
+        except ImportError:
+            logging.error("improve_quiz_data missing")
+            fixed_data, text_error = None, "Function missing"
+
         
         if text_error or not fixed_data:
             return learning_pb2.SeedDataResponse(error=text_error or "Unknown error fixing data")
@@ -391,6 +429,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
 
         # 3. Generate Image
         image_bytes = b""
+        import aiohttp
         try:
             # Generate Image returns a URL usually. We need to download it to return bytes to Java.
             image_url, img_error = await generate_image("admin_seed", image_prompt, "en", None)
@@ -403,10 +442,10 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                         else:
                             logging.warning(f"Failed to download generated image from {image_url}")
             else:
-                 logging.warning(f"Image generation failed: {img_error}")
+                logging.warning(f"Image generation failed: {img_error}")
 
         except Exception as e:
-             logging.error(f"Image Seed Exception: {e}")
+            logging.error(f"Image Seed Exception: {e}")
 
         return learning_pb2.SeedDataResponse(
             fixed_question=fixed_question,
@@ -442,7 +481,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
                 # Assuming generate_image returns a URL string in the first return value
-                image_url, error = generate_image(
+                image_url, error = await generate_image(
                     user_id, request.prompt, request.language, user_profile
                 )
             
@@ -622,9 +661,6 @@ async def serve():
 
     try:
         await server.wait_for_termination()
-    # except KeyboardInterrupt:
-    #     logging.info("Stopping server...")
-    #     await server.stop(0)
     finally:
         await close_redis_client()
 
