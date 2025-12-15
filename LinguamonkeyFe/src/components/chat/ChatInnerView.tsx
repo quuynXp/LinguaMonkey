@@ -28,11 +28,13 @@ import FileUploader from "../common/FileUploader";
 
 const { width } = Dimensions.get('window');
 
+// ... (KEEP UIMessage TYPE and formatMessageTime AS IS) ...
 type UIMessage = {
     id: string;
     sender: 'user' | 'other';
     timestamp: string;
     text: string;
+    rawContent?: string;
     content?: string;
     mediaUrl?: string;
     messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
@@ -48,18 +50,8 @@ type UIMessage = {
     roomId?: string;
     isDeleted?: boolean;
     isEncrypted?: boolean;
+    decryptedContent?: string | null;
 };
-
-interface ChatInnerViewProps {
-    roomId: string;
-    initialRoomName?: string;
-    isBubbleMode?: boolean;
-    onCloseBubble?: () => void;
-    onMinimizeBubble?: () => void;
-    soundEnabled?: boolean;
-    initialFocusMessageId?: string | null;
-    members?: MemberResponse[];
-}
 
 const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en') => {
     const date = new Date(sentAt);
@@ -84,6 +76,17 @@ const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile }: any
         </Modal>
     );
 };
+
+interface ChatInnerViewProps {
+    roomId: string;
+    initialRoomName?: string;
+    isBubbleMode?: boolean;
+    onCloseBubble?: () => void;
+    onMinimizeBubble?: () => void;
+    soundEnabled?: boolean;
+    initialFocusMessageId?: string | null;
+    members?: MemberResponse[];
+}
 
 const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     roomId,
@@ -112,6 +115,9 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [isPopupVisible, setIsPopupVisible] = useState(false);
     const [translatingId, setTranslatingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+
+    // Track processed read receipts to prevent loops
+    const processedReadIds = useRef<Set<string>>(new Set());
 
     const membersMap = useMemo(() => {
         const map: Record<string, MemberResponse> = {};
@@ -146,20 +152,15 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 const finalTranslation = eagerTrans || dbMapTrans;
 
                 const senderProfile = msg.senderProfile || membersMap[senderId];
-
-                let displayContent = msg.decryptedContent || msg.content || '';
                 const isEncrypted = !!msg.senderEphemeralKey;
+                let displayContent = '';
 
-                // FIX: Đảm bảo tin nhắn tự gửi đã mã hóa luôn hiển thị plaintext từ decryptedContent.
-                // Sau khi load, decryptNewMessages/upsertMessage sẽ cập nhật decryptedContent.
-                if (isEncrypted) {
-                    if (senderId === currentUserId) {
-                        // Tin nhắn tự gửi đã mã hóa: ưu tiên decryptedContent (plaintext)
-                        displayContent = msg.decryptedContent || msg.content;
-                    } else {
-                        // Tin nhắn người khác đã mã hóa: hiển thị decryptedContent (sau decrypt) hoặc content (ciphertext)
-                        displayContent = msg.decryptedContent || msg.content;
-                    }
+                if (msg.decryptedContent) {
+                    displayContent = msg.decryptedContent;
+                } else if (isEncrypted) {
+                    displayContent = '';
+                } else {
+                    displayContent = msg.content || '';
                 }
 
                 return {
@@ -168,6 +169,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     senderId: senderId,
                     timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
                     text: displayContent,
+                    rawContent: msg.content,
                     content: msg.content || '',
                     mediaUrl: (msg as any).mediaUrl,
                     messageType: (msg as any).messageType || 'TEXT',
@@ -182,6 +184,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     roomId: roomId,
                     isDeleted: msg.isDeleted,
                     isEncrypted: isEncrypted,
+                    decryptedContent: msg.decryptedContent
                 } as UIMessage;
             }).sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
     }, [serverMessages, eagerTranslations, translationTargetLang, currentUserId, membersMap]);
@@ -197,9 +200,21 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         }
     }, [messages.length]);
 
+    // --- OPTIMIZED MARK READ EFFECT ---
     useEffect(() => {
-        messages.forEach(msg => { if (msg.sender === 'other' && !msg.isRead) markMessageAsRead(roomId, msg.id); });
-    }, [messages.length, roomId]);
+        const unreadMessages = messages.filter(msg =>
+            msg.sender === 'other' &&
+            !msg.isRead &&
+            !processedReadIds.current.has(msg.id)
+        );
+
+        if (unreadMessages.length > 0) {
+            unreadMessages.forEach(msg => {
+                processedReadIds.current.add(msg.id);
+                markMessageAsRead(roomId, msg.id);
+            });
+        }
+    }, [messages, roomId]); // Dependent on 'messages' array reference
 
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
@@ -213,12 +228,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     };
 
     const handleManualTranslate = async (id: string, text: string) => {
-        const messageToTranslate = serverMessages.find(m => m.id.chatMessageId === id);
-        const contentToTranslate = messageToTranslate?.decryptedContent || messageToTranslate?.content || text;
-        if (!contentToTranslate) return;
+        const msg = messages.find(m => m.id === id);
+        const textToTranslate = msg?.decryptedContent || msg?.content || text;
+        if (!textToTranslate) return;
 
         setTranslatingId(id);
-        await performEagerTranslation(id, contentToTranslate, translationTargetLang);
+        await performEagerTranslation(id, textToTranslate, translationTargetLang);
         setTranslatingId(null);
     };
 
@@ -227,8 +242,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         if (finalUrl) {
             sendMessage(roomId, '', type, finalUrl);
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-        } else {
-            console.warn("Upload success but no URL found in result:", result);
         }
     };
 
@@ -244,30 +257,19 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const showManualButton = !autoTranslate && !isMedia && !isUser;
         const isTranslating = translatingId === item.id;
 
-        const showDecryptionError = item.isEncrypted && !isUser && item.text?.includes('!! Decryption Failed');
+        const showDecryptionError = item.isEncrypted && item.decryptedContent?.includes('!! Decryption Failed');
 
         let primaryText = item.text;
+        let isWaitingForDecrypt = false;
 
         if (item.isEncrypted) {
-            if (isUser) {
-                // Tin nhắn tự gửi đã mã hóa
-                if (item.text === item.content) {
-                    // Đây là trường hợp hiếm nếu store bị lỗi hoặc message load lại chưa kịp update decryptedContent
-                    primaryText = t('chat.self_message_missing_plaintext');
-                } else {
-                    primaryText = item.text; // Đã là plaintext từ useMemo
-                }
-            } else {
-                // Tin nhắn người khác đã mã hóa
-                if (showDecryptionError) {
-                    primaryText = t('chat.decryption_failed');
-                } else if (item.text === item.content) {
-                    // Tin nhắn đang là ciphertext (hoặc chưa decrypt xong)
-                    primaryText = t('chat.encrypted_message');
-                }
+            if (showDecryptionError) {
+                primaryText = t('chat.decryption_failed');
+            } else if (!item.decryptedContent) {
+                primaryText = '🔒 ...';
+                isWaitingForDecrypt = true;
             }
         }
-
 
         return (
             <Pressable onLongPress={() => isUser && !isMedia && setEditingMessage(item)} style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther]}>
@@ -302,7 +304,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 </View>
                             )}
 
-                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>
+                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, isWaitingForDecrypt && { fontStyle: 'italic', opacity: 0.8 }]}>
                                 {primaryText}
                             </Text>
 
@@ -413,13 +415,11 @@ const styles = createScaledSheet({
     msgContent: { maxWidth: '75%' },
     senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2, marginLeft: 4 },
 
-    // Bubble for Text/Docs
     bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
     bubbleUser: { backgroundColor: '#3B82F6', borderBottomRightRadius: 4 },
     bubbleOther: { backgroundColor: '#F3F4F6', borderBottomLeftRadius: 4 },
     localBubble: { opacity: 0.7 },
 
-    // Media Styles (No Bubble)
     mediaContainer: { borderRadius: 12, overflow: 'hidden' },
     mediaUser: { alignSelf: 'flex-end' },
     mediaOther: { alignSelf: 'flex-start' },

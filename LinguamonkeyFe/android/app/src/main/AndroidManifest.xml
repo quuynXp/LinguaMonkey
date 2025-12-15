@@ -44,9 +44,10 @@
         android:allowBackup="false" 
         android:theme="@style/AppTheme" 
         android:supportsRtl="true" 
-        android:enableOnBackInvokedCallback="true" 
+        android:enableOnBackInvokedCallback="false" 
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true">
+
         
         <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
         <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { gotoTab } from "../../utils/navigationRef"
 import { SCREEN_WIDTH } from "../../constants/Dimensions"
+import { CourseType } from "../../types/enums"
 
 // Dữ liệu mẫu (chỉ lấy item đầu tiên để hiển thị)
 const PROMOTION_ITEM = {
@@ -37,7 +38,6 @@ const HomeSinglePromotion = ({ navigation }: any) => {
     const item = PROMOTION_ITEM
 
     useEffect(() => {
-        // --- Pulse Animation (Nhấp nháy nhẹ) ---
         const pulseAnimation = Animated.loop(
             Animated.sequence([
                 Animated.timing(pulseAnim, {
@@ -73,16 +73,11 @@ const HomeSinglePromotion = ({ navigation }: any) => {
     }, [pulseAnim, shakeAnim])
 
     const handlePress = () => {
-        if (navigation) {
-            navigation.navigate("SpecialOfferScreen", { type: item.type })
-        } else {
-            gotoTab("HomeStack", "SpecialOfferScreen", { type: item.type })
-        }
+        gotoTab("LearnStack", "StudentCoursesScreen", { initialType: CourseType.PAID });
     }
 
     const backgroundImage = getPromotionBackgroundImage(item.type)
 
-    // Interpolate cho hiệu ứng shake
     const translateX = shakeAnim.interpolate({
         inputRange: [-1, 0, 1],
         outputRange: [-2, 0, 2],

@@ -90,14 +90,21 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
-
-  // LOGIC FIX: Don't let roomData loading hide the button. Button shows based on access.
   const { data: roomData, isLoading: roomLoading } = useCourseRoom(courseId);
 
   const { data: versionHistory } = useCourseVersions(courseId);
   const { data: userProgressData, refetch: refetchUserProgress } = useLessonProgresses({ userId: user?.userId, size: 1000 });
 
   const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
+
+  const isCreator = user?.userId === course?.creatorId;
+
+  const handleLessonComplete = useCallback(() => {
+    setTimeout(() => {
+      refetchUserProgress();
+      refetchEnrollments();
+    }, 500);
+  }, [refetchUserProgress, refetchEnrollments]);
 
   useFocusEffect(
     useCallback(() => {
@@ -108,28 +115,23 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }, [user?.userId, refetchEnrollments, refetchUserProgress])
   );
 
-  // FIX: Add a handler to be passed to LessonScreen to refetch progress after test submission
-  const handleLessonComplete = useCallback(() => {
-    refetchUserProgress();
-    refetchEnrollments();
-  }, [refetchUserProgress, refetchEnrollments]);
-
   useEffect(() => {
-    // Priority: Explicitly selected -> Latest Public -> (Fallback logic handled later)
-    if (course?.latestPublicVersion) {
-      if (!viewingVersionId) {
+    if (course && !viewingVersionId) {
+      if (course.latestPublicVersion?.versionId) {
         setViewingVersionId(course.latestPublicVersion.versionId);
+      } else if (isCreator && course.latestDraftVersion?.versionId) {
+        setViewingVersionId(course.latestDraftVersion.versionId);
       }
     }
-  }, [course?.latestPublicVersion?.versionId]);
+  }, [course, isCreator, viewingVersionId]);
 
   const { data: selectedVersionData, isLoading: versionMetaLoading } = useGetVersion(viewingVersionId || "");
 
-  // LOGIC FIX: Robust activeVersion resolution. 
-  // If user is creator, they might see Draft if Public is missing.
-  const activeVersion = selectedVersionData || course?.latestPublicVersion || (user?.userId === course?.creatorId ? course?.latestDraftVersion : null);
-  const activeVersionId = activeVersion?.versionId;
+  const activeVersion = selectedVersionData
+    || course?.latestPublicVersion
+    || (isCreator ? course?.latestDraftVersion : null);
 
+  const activeVersionId = activeVersion?.versionId;
   const isViewingArchived = activeVersion?.status === "ARCHIVED";
   const isViewingDraft = activeVersion?.status === "DRAFT";
 
@@ -150,14 +152,26 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     return allLessons.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   }, [lessonsInfinite]);
 
+  const activeEnrollment = useMemo(() => {
+    return enrollments?.data?.find((e: any) =>
+      e.courseVersion?.courseId === courseId ||
+      e.courseVersion?.course?.courseId === courseId
+    ) as CourseVersionEnrollmentResponse | undefined;
+  }, [enrollments, courseId]);
+
+  const completedLessonIdsSet = useMemo(() => {
+    const ids = (activeEnrollment as any)?.completedLessonIds || [];
+    return new Set(ids.map((id: any) => String(id)));
+  }, [activeEnrollment]);
+
   const progressMap = useMemo(() => {
     const map: Record<string, { score: number; completedAt: string | null }> = {};
     if (!userProgressData?.data) return map;
 
     userProgressData.data.forEach((p: any) => {
-      const lId = p.id?.lessonId || p.lessonId;
-      if (lId) {
-        map[lId] = {
+      const rawId = p.lessonId || p.id?.lessonId;
+      if (rawId) {
+        map[String(rawId)] = {
           score: p.score,
           completedAt: p.completedAt
         };
@@ -166,39 +180,24 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     return map;
   }, [userProgressData]);
 
-  // LOGIC FIX: Safe Access to Price
-  // If activeVersion is null, default to 0 to prevent crash, but we should handle null version in UI
   const displayPriceRaw = activeVersion?.price ?? 0;
 
   const { data: discountsData } = useDiscounts({ versionId: activeVersionId, size: 1 });
   const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
 
   const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
-  const priceAfterDiscount = discountPercent > 0
-    ? displayPriceRaw * (1 - discountPercent / 100)
-    : displayPriceRaw;
+  const priceAfterDiscount = discountPercent > 0 ? displayPriceRaw * (1 - discountPercent / 100) : displayPriceRaw;
 
-  // LOGIC FIX: Explicit free check
   const isFreeCourse = priceAfterDiscount <= 0;
   const isPaidCourse = !isFreeCourse;
 
   const { data: reviewsData, refetch: refetchReviews } = useReviews({
-    courseId,
-    userId: user?.userId,
-    size: 5
+    courseId, userId: user?.userId, size: 5
   });
 
   const { mutateAsync: enrollAsync, isPending: isEnrolling } = useCreateEnrollment();
   const { mutateAsync: createReviewAsync, isPending: isCreatingReview } = useCreateReview();
 
-  const activeEnrollment = useMemo(() => {
-    return enrollments?.data?.find((e: any) =>
-      e.courseVersion?.courseId === courseId ||
-      e.courseVersion?.course?.courseId === courseId
-    ) as CourseVersionEnrollmentResponse | undefined;
-  }, [enrollments, courseId]);
-
-  const isCreator = user?.userId === course?.creatorId;
   const isEnrolled = !!activeEnrollment;
 
   const progressPercent = useMemo(() => {
@@ -206,11 +205,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     return activeEnrollment.progress || 0;
   }, [activeEnrollment]);
 
-  // LOGIC FIX: Access Logic
-  // Free courses -> Everyone has access
-  // Paid courses -> Only enrolled or creator
   const hasAccess = isEnrolled || isCreator || isFreeCourse;
-
   const reviews = (reviewsData?.data as any[]) || [];
 
   const displayThumbnail = activeVersion?.thumbnailUrl;
@@ -229,13 +224,15 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const handleLessonPress = async (lesson: LessonResponse, isLessonCompleted: boolean) => {
     const isAccessible = hasAccess || lesson.isFree;
 
-    // FIX 2: Check if lesson is completed and show action prompt
+    const progressItem = progressMap[String(lesson.lessonId)];
+    const latestScore = progressItem?.score;
+
     if (isLessonCompleted && isAccessible) {
-      // Navigate but pass the isCompleted flag, let LessonScreen handle the modal
       gotoTab("CourseStack", "LessonScreen", {
         lesson: lesson,
-        onComplete: handleLessonComplete, // Pass the refetch callback
-        isCompleted: true
+        onComplete: handleLessonComplete,
+        isCompleted: true,
+        latestScore: latestScore
       });
       return;
     }
@@ -254,17 +251,16 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       return;
     }
 
-    // Standard navigation for uncompleted lesson
     gotoTab("CourseStack", "LessonScreen", {
       lesson: lesson,
-      onComplete: handleLessonComplete, // Pass the refetch callback
-      isCompleted: false
+      onComplete: handleLessonComplete,
+      isCompleted: false,
+      latestScore: latestScore
     });
   };
 
   const handleFreeEnrollAndNavigate = async (lesson: LessonResponse) => {
     if (!user?.userId || !activeVersionId) return;
-
     try {
       await enrollAsync({
         userId: user.userId,
@@ -272,8 +268,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         status: CourseVersionEnrollmentStatus.ACTIVE
       });
       await refetchEnrollments();
-      // FIX: Also pass handleLessonComplete when enrolling via free
-      gotoTab("CourseStack", "LessonScreen", { lesson: lesson, onComplete: handleLessonComplete, isCompleted: false });
+      gotoTab("CourseStack", "LessonScreen", {
+        lesson: lesson,
+        onComplete: handleLessonComplete,
+        isCompleted: false
+      });
     } catch (error) {
       Alert.alert(t("error"), t("course.enrollmentFailed"));
     }
@@ -288,21 +287,14 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       Alert.alert(t("auth.required"), t("auth.loginToReview"));
       return;
     }
-
     if (!canReview) {
       Alert.alert(t("notice"), t("course.reviewNotAllowed", "Bạn chưa đủ điều kiện để đánh giá khóa học này."));
       return;
     }
-
     if (!courseId) return;
-
     try {
       const newReview = await createReviewAsync({
-        courseId: courseId,
-        userId: user.userId,
-        rating: rating,
-        comment: content,
-        parentId: parentId
+        courseId: courseId, userId: user.userId, rating: rating, comment: content, parentId: parentId
       });
       if (!parentId) {
         refetchReviews();
@@ -319,26 +311,25 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     console.log("Liked review:", reviewId);
   };
 
-  // LOGIC FIX: Join Room Logic
   const handleJoinRoom = () => {
-    if (roomLoading) {
-      Alert.alert(t("common.loading"), t("course.roomLoading", "Đang kết nối phòng chat..."));
-      return;
-    }
-    if (roomData?.roomId) {
+    const targetRoomId = course?.roomId || roomData?.roomId;
+    const targetRoomName = course?.title || roomData?.roomName;
+
+    if (targetRoomId) {
       gotoTab("Chat", "GroupChatScreen", {
-        roomId: roomData.roomId,
-        roomName: roomData.roomName || course?.title
+        roomId: targetRoomId,
+        roomName: targetRoomName
       });
     } else {
-      // Fallback: If hasAccess but no room, it might be a server issue or room wasn't created
-      Alert.alert(t("notice"), t("course.noRoomAvailable", "Phòng chat chưa sẵn sàng. Vui lòng thử lại sau."));
+      if (roomLoading || courseLoading) {
+        Alert.alert(t("common.loading"), t("course.roomLoading", "Đang kết nối phòng chat..."));
+      } else {
+        Alert.alert(t("notice"), t("course.noRoomAvailable", "Phòng chat chưa sẵn sàng. Vui lòng thử lại sau."));
+      }
     }
   };
 
-  const handleOpenSettings = () => {
-    setSettingsModalVisible(true);
-  };
+  const handleOpenSettings = () => setSettingsModalVisible(true);
 
   const handleNavigateToNotes = () => {
     setSettingsModalVisible(false);
@@ -395,7 +386,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
             {getCountryFlag(course.creatorCountry, 14)}
           </View>
         </View>
-
         <View style={styles.authorInfo}>
           <View style={styles.authorNameRow}>
             <Text style={styles.authorName} numberOfLines={1}>{displayName}</Text>
@@ -410,7 +400,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
             Level {course.creatorLevel || 1} • {t("common.teacher")}
           </Text>
         </View>
-
         <View style={styles.viewProfileBtn}>
           <Text style={styles.viewProfileText}>{t("common.view")}</Text>
           <Icon name="chevron-right" size={16} color="#4F46E5" />
@@ -424,14 +413,12 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <View style={styles.coverContainer}>
         <Image source={getCourseImage(displayThumbnail)} style={styles.coverImage} resizeMode="cover" />
         <View style={styles.coverOverlay} />
-
         <TouchableOpacity
           style={[styles.backBtn, { top: insets.top + 10 }]}
           onPress={() => navigation.goBack()}
         >
           <Icon name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
-
         {isEnrolled && (
           <TouchableOpacity
             style={[styles.settingsBtn, { top: insets.top + 10 }]}
@@ -440,13 +427,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
             <Icon name="settings" size={24} color="#FFF" />
           </TouchableOpacity>
         )}
-
         {discountPercent > 0 && !isViewingArchived && (
           <View style={styles.discountBadge}>
             <Text style={styles.discountBadgeText}>SALE -{discountPercent}%</Text>
           </View>
         )}
-
         {isViewingArchived && (
           <View style={[styles.statusBadge, { backgroundColor: '#6B7280' }]}>
             <Icon name="history" size={12} color="#FFF" style={{ marginRight: 4 }} />
@@ -463,7 +448,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
       <View style={styles.contentBody}>
         <Text style={styles.title}>{course?.title || t("common.loading")}</Text>
-
         <View style={styles.statsWrapper}>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
@@ -482,13 +466,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
               <Text style={styles.statValue}>{displayLanguage || "-"}</Text>
             </View>
           </View>
-
-          {/* LOGIC FIX: Button rendering logic fixed.
-              - Show Join Room if hasAccess (Free or Enrolled or Creator).
-              - Else if Paid -> Show Buy.
-              - Else if Creator (fallback) -> Creator View.
-              Moved roomData check into onPress to avoid hiding button when loading.
-          */}
           {hasAccess ? (
             <TouchableOpacity style={styles.headerBuyBtn} onPress={handleJoinRoom}>
               <Text style={styles.headerBuyText}>{t('chat.join_room', 'Join Room')}</Text>
@@ -587,20 +564,22 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     const isUnlocked = hasAccess || item.isFree;
     const isLocked = !isUnlocked;
 
-    const progressItem = progressMap[item.lessonId];
+    const progressItem = progressMap[String(item.lessonId)];
     const score = progressItem?.score;
 
-    const isOutdated = progressItem?.completedAt && item.updatedAt
-      && dayjs(item.updatedAt).isAfter(dayjs(progressItem.completedAt));
+    const isCompletedInEnrollment = completedLessonIdsSet.has(String(item.lessonId));
+    const hasPassingScore = score !== undefined && score >= 50;
+    const isLessonCompleted = isCompletedInEnrollment || hasPassingScore;
 
-    // FIX 1: The logic for completion (tích xanh) is correct.
-    const isLessonCompleted = score !== undefined && score >= 50 && !isOutdated;
+    let isOutdated = false;
+    if (progressItem?.completedAt && item.updatedAt) {
+      isOutdated = dayjs(item.updatedAt).isAfter(dayjs(progressItem.completedAt));
+    }
 
     return (
       <View style={{ paddingHorizontal: 20 }}>
         <TouchableOpacity
           style={[styles.lessonItem, isLocked && styles.lessonItemLocked]}
-          // FIX 2: Pass isLessonCompleted state to handleLessonPress
           onPress={() => handleLessonPress(item, isLessonCompleted)}
           activeOpacity={0.7}
         >
@@ -628,7 +607,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
                 </View>
               )}
 
-              {!isOutdated && score !== undefined && (
+              {score !== undefined && (
                 <View style={[styles.progressTag, { backgroundColor: isLessonCompleted ? '#ECFDF5' : '#FEF2F2' }]}>
                   <Icon name={isLessonCompleted ? "check-circle" : "cancel"} size={12} color={isLessonCompleted ? "#10B981" : "#EF4444"} />
                   <Text style={[styles.progressTagText, { color: isLessonCompleted ? "#10B981" : "#EF4444" }]}>
@@ -648,7 +627,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
           {isLocked ? (
             <Icon name="lock-outline" size={24} color="#9CA3AF" />
           ) : isLessonCompleted ? (
-            // FIX 1: Tích xanh khi hoàn thành
             <Icon name="check-circle" size={24} color="#10B981" />
           ) : isOutdated ? (
             <Icon name="published-with-changes" size={24} color="#F59E0B" />
@@ -688,9 +666,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     );
   }
 
-  // LOGIC FIX: PREVENT CRASH IF VERSION IS MISSING
-  // If course loaded but activeVersion is null (e.g., data inconsistency or deleted public version),
-  // show error instead of crashing on 'price' access.
   if (!activeVersion && !isCreator) {
     return (
       <View style={styles.loadingContainer}>
@@ -707,7 +682,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <FlatList
         data={displayLessons}
-        extraData={progressMap}
+        extraData={[progressMap, completedLessonIdsSet]}
         renderItem={renderLessonItem}
         keyExtractor={(item) => item.lessonId || String(item.orderIndex)}
         ListHeaderComponent={renderHeader}
@@ -729,7 +704,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         </View>
       )}
 
-      {/* LOGIC FIX: Prevent opening modal if course/version is invalid */}
       {activeVersion && (
         <CoursePurchaseModal
           visible={purchaseModalVisible}
@@ -744,7 +718,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSettingsModalVisible(false)}>
           <View style={styles.settingsPopup}>
             <Text style={styles.settingsTitle}>Course Options</Text>
-
             <TouchableOpacity style={styles.settingsOption} onPress={handleNavigateToNotes}>
               <Icon name="edit-note" size={24} color="#37352F" />
               <View style={{ marginLeft: 10 }}>
@@ -752,7 +725,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
                 <Text style={styles.optionSubtitle}>View or add notes for this course</Text>
               </View>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.settingsOption} onPress={handleOpenVersionHistory}>
               <Icon name="history" size={24} color="#37352F" />
               <View style={{ marginLeft: 10 }}>
@@ -760,7 +732,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
                 <Text style={styles.optionSubtitle}>Switch to older versions</Text>
               </View>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.settingsOption} onPress={handleOpenRefund}>
               <Icon name="settings-backup-restore" size={24} color="#EF4444" />
               <View style={{ marginLeft: 10 }}>
@@ -818,7 +789,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
                 <Icon name="close" size={24} color="#37352F" />
               </TouchableOpacity>
             </View>
-
             <Text style={styles.label}>Select Reason:</Text>
             <View style={styles.dropdownContainer}>
               {REFUND_REASONS.map((reason) => (
@@ -837,7 +807,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
                 </TouchableOpacity>
               ))}
             </View>
-
             <Text style={styles.label}>Additional Details:</Text>
             <TextInput
               style={styles.refundInput}
@@ -846,18 +815,15 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
               value={refundOtherText}
               onChangeText={setRefundOtherText}
             />
-
             <TouchableOpacity style={styles.submitRefundBtn} onPress={handleSubmitRefund}>
               {isRequestingRefund ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitRefundText}>Submit Request</Text>}
             </TouchableOpacity>
-
             <Text style={styles.disclaimer}>
               Standard requests (Accidental/Technical) are processed every 5 minutes. Complex requests may take longer.
             </Text>
           </View>
         </View>
       </Modal>
-
     </ScreenLayout>
   );
 };
@@ -931,7 +897,6 @@ const styles = StyleSheet.create({
   freeTagText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
   progressTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8, gap: 2 },
   progressTagText: { fontSize: 10, fontWeight: 'bold' },
-
   progressContainer: { backgroundColor: '#F9FAFB', padding: 16, borderRadius: 12, marginBottom: 24, borderWidth: 1, borderColor: '#E5E7EB' },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   progressTitle: { fontWeight: '600', color: '#374151' },
@@ -939,14 +904,12 @@ const styles = StyleSheet.create({
   progressBarBg: { height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
   progressBarFill: { height: '100%', backgroundColor: '#4F46E5' },
   progressSubtitle: { fontSize: 12, color: '#9CA3AF' },
-
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   settingsPopup: { width: '80%', backgroundColor: '#FFF', borderRadius: 12, padding: 20 },
   settingsTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#111827' },
   settingsOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   optionTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
   optionSubtitle: { fontSize: 12, color: '#9CA3AF' },
-
   refundModalContent: { width: '90%', backgroundColor: '#FFF', borderRadius: 16, padding: 20, maxHeight: '80%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
@@ -960,7 +923,6 @@ const styles = StyleSheet.create({
   submitRefundBtn: { backgroundColor: '#EF4444', padding: 14, borderRadius: 8, alignItems: 'center' },
   submitRefundText: { color: '#FFF', fontWeight: 'bold' },
   disclaimer: { fontSize: 11, color: '#6B7280', marginTop: 12, textAlign: 'center' },
-
   versionItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   versionItemSelected: { backgroundColor: '#EEF2FF' },
   versionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },

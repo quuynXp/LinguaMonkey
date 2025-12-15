@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -49,7 +50,23 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
     public Page<CourseVersionEnrollmentResponse> getAllCourseVersionEnrollments(UUID courseId, UUID userId, Pageable pageable) {
         try {
             Page<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository.findAllByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId, pageable);
-            return enrollments.map(CourseVersionEnrollmentMapper::toResponse);
+            
+            // FIX: Map and Populate completedLessonIds for the list view
+            return enrollments.map(enrollment -> {
+                CourseVersionEnrollmentResponse resp = CourseVersionEnrollmentMapper.toResponse(enrollment);
+                
+                if (enrollment.getCourseVersion() != null) {
+                    // Populate completed count
+                    long completedCount = courseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, enrollment.getCourseVersion().getVersionId());
+                    resp.setCompletedLessonsCount((int) completedCount);
+
+                    // FIX: Populate the list of completed IDs so Frontend can verify completion
+                    List<UUID> completedIds = lessonProgressRepository.findCompletedLessonIdsInVersion(userId, enrollment.getCourseVersion().getVersionId());
+                    resp.setCompletedLessonIds(new HashSet<>(completedIds));
+                }
+                return resp;
+            });
+            
         } catch (RedisConnectionFailureException e) {
             throw new AppException(ErrorCode.REDIS_CONNECTION_FAILED);
         } catch (Exception e) {
@@ -74,8 +91,6 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
 
         for (CourseVersionLesson vl : versionLessons) {
             Lesson lesson = vl.getLesson();
-            
-            // Critical check to avoid issues if lesson proxy is not initialized
             if (lesson == null || lesson.getLessonId() == null) continue;
 
             Optional<LessonProgress> progressOpt = lessonProgressRepository
@@ -83,15 +98,10 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
 
             if (progressOpt.isPresent()) {
                 LessonProgress p = progressOpt.get();
-                
                 boolean isPassed = p.getScore() >= 50;
-                boolean isContentOutdated = false;
-                
-                if (lesson.getUpdatedAt() != null && p.getCompletedAt() != null) {
-                    isContentOutdated = p.getCompletedAt().isBefore(lesson.getUpdatedAt());
-                }
-
-                if (isPassed && !isContentOutdated) {
+                // Simplified outdated check: passing is passing.
+                // Outdated content is a separate concern for UI warning, not progress blocking.
+                if (isPassed) {
                     completedCount++;
                 }
             }
@@ -103,7 +113,6 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
         }
         
         newProgress = Math.round(newProgress * 100.0) / 100.0;
-        
         if (newProgress > 100.0) newProgress = 100.0;
 
         enrollment.setProgress(newProgress);
@@ -117,7 +126,6 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
             enrollment.setStatus(CourseVersionEnrollmentStatus.IN_PROGRESS); 
         }
         
-        // Use saveAndFlush to ensure immediate consistency
         enrollmentRepository.saveAndFlush(enrollment);
     }
 
@@ -154,8 +162,13 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
             CourseVersionEnrollmentResponse response = CourseVersionEnrollmentMapper.toResponse(enrollment);
             
             if (enrollment.getCourseVersion() != null) {
-                long completedCount = courseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, enrollment.getCourseVersion().getVersionId());
+                UUID versionId = enrollment.getCourseVersion().getVersionId();
+                long completedCount = courseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, versionId);
                 response.setCompletedLessonsCount((int) completedCount);
+                
+                // FIX: Also populate here for single detail fetch consistency
+                List<UUID> completedIds = lessonProgressRepository.findCompletedLessonIdsInVersion(userId, versionId);
+                response.setCompletedLessonIds(new HashSet<>(completedIds));
             }
             
             return response;

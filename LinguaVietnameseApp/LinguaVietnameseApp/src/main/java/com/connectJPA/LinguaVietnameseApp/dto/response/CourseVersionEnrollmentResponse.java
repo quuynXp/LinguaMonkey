@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.Set;
 import java.util.UUID;
 
 @Data
@@ -18,6 +19,8 @@ public class CourseVersionEnrollmentResponse {
     private OffsetDateTime enrolledAt;
     private CourseResponse course;
     private CourseVersionResponse courseVersion;
-    private Double progress; // Lưu ý: Entity là Double, DTO nên để Double hoặc int tùy logic mapping
-    private int completedLessonsCount; // Field mới
+    private Double progress; 
+    private int completedLessonsCount;
+    
+    private Set<UUID> completedLessonIds;
 }

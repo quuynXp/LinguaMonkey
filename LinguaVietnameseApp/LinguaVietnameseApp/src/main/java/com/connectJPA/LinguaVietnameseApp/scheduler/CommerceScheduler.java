@@ -16,6 +16,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.http.HttpClient.Version;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -95,7 +96,7 @@ public class CommerceScheduler {
         int deactivated = CourseVersionDiscountRepository.deactivateDiscounts(now);
         if (deactivated > 0) log.info("Deactivated {} course discounts.", deactivated);
 
-        List<CourseVersion> versionsToPublish = courseVersionRepository.findByStatusAndPublishedAtBeforeAndIsDeletedFalse("DRAFT", now);
+        List<CourseVersion> versionsToPublish = courseVersionRepository.findByStatusAndPublishedAtBeforeAndIsDeletedFalse(VersionStatus.DRAFT, now);
 
         if (versionsToPublish.isEmpty()) return;
 

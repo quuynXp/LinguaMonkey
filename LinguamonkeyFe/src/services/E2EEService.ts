@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import instance from "../api/axiosClient";
-import type { ChatMessage } from "../types/entity";
 import {
     encryptAES,
     decryptAES,
@@ -19,6 +18,16 @@ import {
     CryptoKeyPair
 } from "../utils/crypto";
 
+export type DualEncryptionResult = {
+    content: string;
+    senderEphemeralKey: string;
+    initializationVector: string;
+    usedPreKeyId: number;
+    selfContent: string;
+    selfEphemeralKey: string;
+    selfInitializationVector: string;
+};
+
 type PreKeyBundleResponse = {
     identityPublicKey: string;
     signedPreKeyId: number;
@@ -36,11 +45,11 @@ type PreKeyBundleRequest = {
     oneTimePreKeys?: Record<number, string>;
 };
 
-type E2EEMetadata = {
-    senderEphemeralKey: string;
-    usedPreKeyId?: number;
-    initializationVector: string;
+type EncryptionResult = {
     ciphertext: string;
+    iv: string;
+    ephemeralKey: string;
+    preKeyId: number;
 };
 
 const STORAGE_KEYS = {
@@ -65,12 +74,11 @@ class E2EEService {
         const uploadedStatus = await AsyncStorage.getItem(STORAGE_KEYS.KEYS_UPLOADED + userId);
         if (uploadedStatus !== 'true') {
             try {
-                console.log(`[E2EE_DEBUG] Generating and uploading initial keys for user: ${userId}`);
+                console.log(`[E2EE] Initializing keys for user: ${userId}`);
                 await this.generateKeyBundleAndUpload(userId);
                 await AsyncStorage.setItem(STORAGE_KEYS.KEYS_UPLOADED + userId, 'true');
-                console.log(`[E2EE_DEBUG] Upload successful`);
             } catch (e) {
-                console.warn('[E2EE] Initial key upload failed', e);
+                console.warn('[E2EE] Key upload failed', e);
             }
         }
     }
@@ -88,6 +96,7 @@ class E2EEService {
                     this.signedPreKeyPair = await importKeyPair(JSON.parse(storedSignedPreKey));
                 }
             } else {
+                console.log("[E2EE] No keys found, generating new identity...");
                 this.identityKeyPair = await generateKeyPair();
                 this.signingKeyPair = await generateSigningKeyPair();
                 await this.saveKeysToStorage();
@@ -154,73 +163,149 @@ class E2EEService {
         await instance.post(`/api/v1/keys/upload/${userId}`, request);
     }
 
-    async encrypt(receiverId: string, content: string): Promise<E2EEMetadata> {
-        console.log(`[E2EE_DEBUG] Encrypting for Receiver: ${receiverId}`);
+    // ✅ UPDATED: Hỗ trợ dùng Local Key để mã hóa cho chính mình
+    private async encryptForTarget(targetId: string, content: string, localOverrideKey?: CryptoKey): Promise<EncryptionResult> {
+        let targetSignedPreKey: CryptoKey;
+        let preKeyId = 0;
 
-        let bundle: PreKeyBundleResponse;
         try {
-            const res = await instance.get<PreKeyBundleResponse>(`/api/v1/keys/fetch/${receiverId}`);
-            bundle = res.data;
+            if (localOverrideKey) {
+                // CASE 1: Mã hóa cho chính mình (Sender) -> Dùng Key Local (Luôn khớp)
+                console.log(`[E2EE] Encrypting for SELF (${targetId}) using LOCAL key.`);
+                targetSignedPreKey = localOverrideKey;
+            } else {
+                // CASE 2: Mã hóa cho người khác (Receiver) -> Lấy Key từ Server
+                console.log(`[E2EE] Fetching keys for TARGET (${targetId})...`);
+                const res = await instance.get<PreKeyBundleResponse>(`/api/v1/keys/fetch/${targetId}`);
+                const bundle = res.data;
+
+                if (!bundle.signedPreKeyPublicKey) throw new Error("Invalid Bundle from Server");
+
+                targetSignedPreKey = await importPublicKey(bundle.signedPreKeyPublicKey);
+                preKeyId = bundle.signedPreKeyId;
+            }
+
+            // Tạo Ephemeral Key cho tin nhắn này
+            const ephemeralKeyPair = await generateKeyPair();
+            const senderEphemeralKeyPub = await exportPublicKey(ephemeralKeyPair.publicKey);
+
+            // ECDH: My Ephemeral Private + Target Static Public
+            const sessionKey = await deriveSessionKey(
+                ephemeralKeyPair.privateKey,
+                targetSignedPreKey
+            );
+
+            // Encrypt AES
+            const [ivBase64, ciphertextBase64] = await encryptAES(content, sessionKey);
+
+            return {
+                ciphertext: ciphertextBase64,
+                iv: ivBase64,
+                ephemeralKey: senderEphemeralKeyPub,
+                preKeyId: preKeyId
+            };
+
         } catch (e: any) {
-            console.error(`[E2EE_DEBUG] Failed to fetch bundle for ${receiverId}`, e);
-            throw new Error(`Cannot fetch keys for ${receiverId}`);
+            console.error(`[E2EE] Encryption failed for target ${targetId}:`, e);
+            throw new Error(`Cannot encrypt for ${targetId}: ${e.message}`);
         }
+    }
 
-        if (!bundle.signedPreKeyPublicKey) {
-            console.error('[E2EE_DEBUG] Bundle missing signedPreKeyPublicKey:', bundle);
-            throw new Error("Invalid Bundle: Missing signedPreKeyPublicKey");
+    // ✅ FIXED: Hàm encrypt chính gọi hàm helper đã sửa ở trên
+    async encrypt(receiverId: string, senderId: string, content: string): Promise<DualEncryptionResult> {
+        if (!this.signedPreKeyPair) await this.loadKeys();
+
+        console.log(`[E2EE] Dual Encrypting: Receiver=${receiverId}, Sender=${senderId}`);
+
+        // 1. Mã hóa cho SENDER (Self Copy)
+        // QUAN TRỌNG: Truyền this.signedPreKeyPair!.publicKey để KHÔNG fetch từ server
+        const senderEnc = await this.encryptForTarget(senderId, content, this.signedPreKeyPair!.publicKey);
+
+        // 2. Mã hóa cho RECEIVER
+        let receiverEnc: EncryptionResult;
+        if (receiverId === senderId) {
+            receiverEnc = senderEnc; // Chat với chính mình
+        } else {
+            receiverEnc = await this.encryptForTarget(receiverId, content);
         }
-
-        // Debug log to catch format issues
-        // console.log(`[E2EE_DEBUG] Importing Key: ${bundle.signedPreKeyPublicKey.substring(0, 20)}...`);
-
-        const receiverSignedPreKey = await importPublicKey(bundle.signedPreKeyPublicKey);
-
-        const ephemeralKeyPair = await generateKeyPair();
-        const senderEphemeralKeyPub = await exportPublicKey(ephemeralKeyPair.publicKey);
-
-        const sessionKey = await deriveSessionKey(
-            ephemeralKeyPair.privateKey,
-            receiverSignedPreKey
-        );
-        console.log(`[E2EE_DEBUG] Session Key derived successfully`);
-
-        const [ivBase64, ciphertextBase64] = await encryptAES(content, sessionKey);
-        console.log(`[E2EE_DEBUG] AES Encryption complete.`);
 
         return {
-            senderEphemeralKey: senderEphemeralKeyPub,
-            initializationVector: ivBase64,
-            ciphertext: ciphertextBase64,
-            usedPreKeyId: bundle.signedPreKeyId
+            // Data cho người nhận
+            content: receiverEnc.ciphertext,
+            senderEphemeralKey: receiverEnc.ephemeralKey,
+            initializationVector: receiverEnc.iv,
+            usedPreKeyId: receiverEnc.preKeyId,
+
+            // Data cho người gửi (bản sao lưu)
+            selfContent: senderEnc.ciphertext,
+            selfEphemeralKey: senderEnc.ephemeralKey,
+            selfInitializationVector: senderEnc.iv
         };
     }
 
-    async decrypt(msg: ChatMessage): Promise<string> {
-        if (!this.signedPreKeyPair) await this.loadKeys();
+    // ✅ FIXED: Logic giải mã
+    async decrypt(msg: any): Promise<string> {
+        if (!this.signedPreKeyPair) {
+            await this.loadKeys();
+        }
 
-        if (!msg.senderEphemeralKey || !msg.initializationVector || !msg.content) {
-            return msg.content || "";
+        if (!this.userId) {
+            console.warn("[E2EE] decrypt called without userId set.");
+            return "!! Key Error !!";
+        }
+
+        let targetCiphertext = "";
+        let targetIV = "";
+        let targetEphemeralKey = "";
+
+        // Xác định nguồn dữ liệu để giải mã
+        if (msg.senderId === this.userId) {
+            // Tin nhắn DO TÔI GỬI -> Dùng cột 'self_'
+            if (msg.selfContent && msg.selfEphemeralKey && msg.selfInitializationVector) {
+                targetCiphertext = msg.selfContent;
+                targetEphemeralKey = msg.selfEphemeralKey;
+                targetIV = msg.selfInitializationVector;
+                // console.log(`[E2EE] Decrypting SELF message via self_ columns`);
+            } else {
+                // Fallback: Nếu thiếu self copy (rất hiếm nếu code trên chạy đúng)
+                console.warn("[E2EE] Self-message missing self-copy. Trying main content...");
+                targetCiphertext = msg.content;
+                targetEphemeralKey = msg.senderEphemeralKey;
+                targetIV = msg.initializationVector;
+            }
+        } else {
+            // Tin nhắn NGƯỜI KHÁC GỬI -> Dùng cột thường
+            targetCiphertext = msg.content;
+            targetEphemeralKey = msg.senderEphemeralKey;
+            targetIV = msg.initializationVector;
+        }
+
+        if (!targetCiphertext || !targetIV || !targetEphemeralKey) {
+            return "!! Corrupted Message !!";
         }
 
         try {
-            const senderEphemeralPub = await importPublicKey(msg.senderEphemeralKey);
+            // 1. Import Ephemeral Public Key từ tin nhắn
+            const senderEphemeralPub = await importPublicKey(targetEphemeralKey);
 
+            // 2. Derive Session Key
+            // Công thức: My Private Key * Message Ephemeral Public Key
             const sessionKey = await deriveSessionKey(
                 this.signedPreKeyPair!.privateKey,
                 senderEphemeralPub
             );
 
+            // 3. Decrypt AES
             const decryptedContent = await decryptAES(
-                msg.content,
-                msg.initializationVector,
+                targetCiphertext,
+                targetIV,
                 sessionKey
             );
 
             return decryptedContent;
 
         } catch (e) {
-            console.error("[E2EE_DEBUG] Decryption error", e);
+            console.error(`[E2EE] Decryption Failed for msg ${msg.id?.chatMessageId}:`, e);
             return "!! Decryption Failed !!";
         }
     }

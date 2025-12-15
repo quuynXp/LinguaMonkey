@@ -51,6 +51,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             public Message<?> preSend(Message<?> message, MessageChannel channel) {
                 StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
+                if (accessor != null && StompCommand.SEND.equals(accessor.getCommand())) {
+                    String destination = accessor.getDestination();
+                    log.info("🔵 [WS-INTERCEPTOR] RECEIVED MESSAGE");
+                    log.info("  📍 Destination: {}", destination);
+                    log.info("  📦 Payload: {}", new String((byte[]) message.getPayload()));
+                    log.info("  👤 User: {}", accessor.getUser() != null ? accessor.getUser().getName() : "NULL");
+                }
+                
                 if (StompCommand.CONNECT.equals(accessor.getCommand())) {
                     String authHeader = accessor.getFirstNativeHeader("X-Auth-Token");
 

@@ -29,18 +29,34 @@ class ConnectionManager:
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
 
-    async def broadcast_subtitle(self, payload: dict, room_id: str, exclude_ws: WebSocket = None):
+    async def broadcast_subtitle(self, original_full: str, detected_lang: str, room_id: str, sender_id: str, is_final: bool):
+        """
+        Gửi subtitle đến các client trong room.
+        Xử lý logic 4 mode hiển thị (Dual, Native, Original, Off) tại đây hoặc gửi data để FE tự xử lý.
+        Ở đây ta gửi data gốc, FE sẽ dựa vào settings để hiển thị, trừ trường hợp 'off' thì không gửi.
+        """
         if room_id not in self.active_connections: return
+        
+        payload = {
+            "type": "subtitle",
+            "originalFull": original_full,
+            "originalLang": detected_lang,
+            "senderId": sender_id,
+            "status": "complete" if is_final else "processing",
+            "isFiller": False
+        }
         
         msg_json = json.dumps(payload, ensure_ascii=False)
         tasks = []
 
         for meta in self.active_connections[room_id]:
             ws = meta["ws"]
-            if exclude_ws and ws == exclude_ws: continue
             
-            # Filter logic: Nếu user tắt subtitle thì không gửi
-            if meta.get("config", {}).get("subtitleMode") == "off": continue
+            config = meta.get("config", {})
+            mode = config.get("subtitleMode", "dual")
+
+            if mode == "off": 
+                continue
 
             tasks.append(self._safe_send(ws, msg_json))
         

@@ -31,11 +31,13 @@ public class ChatMessageRequest {
     private UUID receiverId;
 
     private boolean roomAutoTranslate;
-
+    private String selfContent;
+    private String selfEphemeralKey;
+    private String selfInitializationVector;
     private String senderEphemeralKey; // Public Key tạm thời của Người Gửi
     private Integer usedPreKeyId; // ID của One-Time PreKey được sử dụng (nếu là thiết lập phiên mới)
     private String initializationVector; // IV/Nonce
 
-    private boolean isRead = false;
-    private boolean isDeleted = false;
+    private Boolean isRead = false;
+    private Boolean isDeleted = false;
 }

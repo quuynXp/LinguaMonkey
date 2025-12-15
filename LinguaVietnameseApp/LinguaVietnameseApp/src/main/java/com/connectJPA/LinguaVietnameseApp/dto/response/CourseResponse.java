@@ -19,7 +19,7 @@ public class CourseResponse {
     private UUID courseId;
     private String title;
     private UUID creatorId;
-    private UUID RoomId;
+    private UUID roomId;
 
     // Creator Info
     private String creatorName;

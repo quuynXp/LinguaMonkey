@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
@@ -13,7 +14,6 @@ import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
-import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
@@ -55,7 +55,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final MessageTranslationRepository messageTranslationRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
-    private final GrpcClientService grpcClientService;
     private final UserService userService;
     private final RedisTemplate<String, Object> redisTemplate;
     
@@ -77,7 +76,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         response.setSenderEphemeralKey(entity.getSenderEphemeralKey());
         response.setUsedPreKeyId(entity.getUsedPreKeyId());
         response.setInitializationVector(entity.getInitializationVector());
-        
+        response.setSelfContent(entity.getSelfContent());
+        response.setSelfEphemeralKey(entity.getSelfEphemeralKey());
+        response.setSelfInitializationVector(entity.getSelfInitializationVector());
         return response;
     }
 
@@ -112,9 +113,13 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
         ChatMessage message = chatMessageMapper.toEntity(request);
         
+        // Manual mapping ensures these fields are set correctly regardless of MapStruct config
         message.setSenderEphemeralKey(request.getSenderEphemeralKey());
         message.setUsedPreKeyId(request.getUsedPreKeyId());
         message.setInitializationVector(request.getInitializationVector());
+        message.setSelfContent(request.getSelfContent());
+        message.setSelfEphemeralKey(request.getSelfEphemeralKey());
+        message.setSelfInitializationVector(request.getSelfInitializationVector());
         
         if (request.getMediaUrl() != null && !request.getMediaUrl().isEmpty()) {
             message.setMediaUrl(request.getMediaUrl());
@@ -125,18 +130,22 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
-        message.setTranslations(new HashMap<>());
+        if (message.getTranslations() == null) {
+            message.setTranslations(new HashMap<>());
+        }
         message.setRead(false);
 
+        // SAVE TO DB
         ChatMessage savedMessage = chatMessageRepository.save(message);
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);
 
+        // Update stats (Safe try-catch)
         if (!isAiBot) {
             try {
                 if (badgeService != null) badgeService.updateBadgeProgress(request.getSenderId(), BadgeType.MESSAGE_COUNT, 1);
                 if (dailyChallengeService != null) dailyChallengeService.updateChallengeProgress(request.getSenderId(), ChallengeType.VOCABULARY_REVIEW, 1);
-            } catch (Exception e) { log.warn("Stats update failed", e); }
+            } catch (Exception e) { log.warn("Stats update failed but ignored", e); }
         }
 
         ChatMessageResponse response = mapToResponse(savedMessage, room.getPurpose());
@@ -144,20 +153,31 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         if (isAiBot) response.setSenderProfile(null); 
         else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
+        // --- BROADCAST LOGIC (Isolated from DB Transaction) ---
+        // Critical Fix: Wrapped in try-catch so Redis/WS failures do not rollback the saved message
         try {
+            // 1. Send via WebSocket to Room Topic
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
             
             List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
                 .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(request.getSenderId())).toList();
 
+            // 2. Send to Redis (for cross-instance or analytics)
             Map<String, Object> event = new HashMap<>();
             event.put("type", "NEW_MESSAGE_EVENT");
             event.put("messageId", savedMessage.getId().getChatMessageId().toString());
             event.put("roomId", roomId.toString());
-            event.put("content", savedMessage.getContent()); // Ciphertext if encrypted
+            event.put("content", savedMessage.getContent());
             event.put("senderId", savedMessage.getSenderId().toString());
             
-            redisTemplate.convertAndSend("chat_events", event);
+            try {
+                redisTemplate.convertAndSend("chat_events", event);
+            } catch (Exception redisEx) {
+                log.error("Redis publish failed for message {}", savedMessage.getId().getChatMessageId(), redisEx);
+                // Do NOT rethrow, allow the method to complete successfully
+            }
+
+            // 3. Send Notifications
             for (UUID uId : memberIds) {
                 try {
                     messagingTemplate.convertAndSendToUser(uId.toString(), "/queue/notifications", response);
@@ -178,7 +198,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     notificationService.createPushNotification(nreq);
                 } catch (Exception pushEx) { log.error("Failed to create push notification for user {}", uId); }
             }
-        } catch (Exception e) { log.error("Delivery failed", e); }
+        } catch (Exception e) {
+            log.error("Broadcast/Notification failed for message {}", savedMessage.getId().getChatMessageId(), e);
+            // We do NOT throw here, so the DB transaction commits successfully.
+        }
 
         return response;
     }
@@ -228,7 +251,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             long minutesSinceSent = ChronoUnit.MINUTES.between(message.getId().getSentAt(), OffsetDateTime.now());
             if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
 
-            // Note: For E2EE, client must re-encrypt and send the new ciphertext as newContent
             message.setContent(newContent);
             message.setTranslations(new HashMap<>()); 
             
@@ -347,7 +369,13 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
             ChatMessageResponse response = mapToResponse(saved, room.getPurpose());
-            messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), response);
+            
+            // Try/Catch for notification
+            try {
+                messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), response);
+            } catch (Exception e) {
+                 log.error("Failed to broadcast translation update", e);
+            }
 
             return response;
         } catch (Exception e) {

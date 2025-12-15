@@ -717,7 +717,14 @@ async def audio_endpoint(websocket: WebSocket, token: str = Query(...), roomId: 
 
     async def handle_interim_async(text: str, detected_lang_code: str):
         if len(text) > 1:
-            await audio_manager.broadcast_subtitle(text=text, detected_lang=detected_lang_code, room_id=normalized_room_id, sender_id=user_id, is_final=False)
+            # CORRECTED: Changed 'original_text' to 'original_full'
+            await audio_manager.broadcast_subtitle(
+                original_full=text, 
+                detected_lang=detected_lang_code, 
+                room_id=normalized_room_id, 
+                sender_id=user_id, 
+                is_final=False
+            )
 
     async def handle_final_async(text: str, detected_lang_code: str):
         try:
@@ -742,7 +749,14 @@ async def audio_endpoint(websocket: WebSocket, token: str = Query(...), roomId: 
             if clean_text.endswith(('.', '?', '!', '。')) or len(new_full) > 200: 
                 user_text_cache[buffer_key] = ""
 
-            await audio_manager.broadcast_subtitle(text=clean_text, detected_lang=detected_lang_code, room_id=normalized_room_id, sender_id=user_id, is_final=True)
+            # CORRECTED: Changed 'original_text' to 'original_full'
+            await audio_manager.broadcast_subtitle(
+                original_full=clean_text, 
+                detected_lang=detected_lang_code, 
+                room_id=normalized_room_id, 
+                sender_id=user_id, 
+                is_final=True
+            )
         except Exception as e: logger.error(f"Handle final error: {e}")
 
     def handle_interim_sync(text: str, lang: str): asyncio.run_coroutine_threadsafe(handle_interim_async(text, lang), loop)

@@ -17,6 +17,7 @@ import { createScaledSheet } from "../../utils/scaledStyles";
 import HomeSinglePromotion from "../../components/home/HomeSinglePromotion";
 import RoadmapTimeline from "../../components/roadmap/RoadmapTimeline";
 import RoadmapSkeleton from "../../components/common/RoadmapSkeleton";
+import { CourseType } from "../../types/enums"; // Thêm import CourseType
 
 const HomeScreen = ({ navigation }: any) => {
   const { t } = useTranslation(["translation", "motivation"]);
@@ -29,14 +30,11 @@ const HomeScreen = ({ navigation }: any) => {
     user,
   } = useUserStore();
 
-  // --- LEADERBOARD LOGIC (MATCHING ENHANCED LEADERBOARD) ---
   const { useLeaderboardList, useEntries } = useLeaderboards();
 
-  // 1. Fetch Global Leaderboard Config
   const { data: leaderboardsPage, isLoading: configLoading, refetch: refetchConfig } = useLeaderboardList({ tab: "global" });
   const globalLeaderboardId = leaderboardsPage?.content?.[0]?.leaderboardId;
 
-  // 2. Fetch Top 3 Entries specifically from Global
   const { data: entriesData, isLoading: entriesLoading, refetch: refetchEntries } = useEntries(
     { leaderboardId: globalLeaderboardId, page: 0, size: 3 },
     { enabled: !!globalLeaderboardId }
@@ -45,14 +43,10 @@ const HomeScreen = ({ navigation }: any) => {
   const topThreeUsers = useMemo(() => {
     if (!entriesData?.data) return [];
     const rawData = entriesData.data;
-    // Data comes as [Rank1, Rank2, Rank3]
-    // We render as Left(2), Center(1), Right(3)
-    // Return raw array here, mapping handled in render
     return rawData;
   }, [entriesData]);
 
   const topThreeLoading = configLoading || entriesLoading;
-  // ---------------------------------------------------------
 
   const { data: challengesData, isLoading: dailyLoading, refetch: refetchChallenges } = useDailyChallenges(user?.userId);
   const { claimReward } = useClaimChallengeReward();
@@ -110,7 +104,6 @@ const HomeScreen = ({ navigation }: any) => {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // Initial fetch on focus
   useFocusEffect(
     useCallback(() => {
       refetchRoadmaps();
@@ -151,6 +144,10 @@ const HomeScreen = ({ navigation }: any) => {
   const handleNotificationPress = () => navigation.navigate('NotificationsScreen');
   const handleSeeAllChallenges = () => navigation.navigate('DailyChallengeBadgeScreen', { initialTab: 'DAILY' });
   const goToChatAISCreen = () => gotoTab("ChatStack", 'ChatAIScreen');
+
+  const handleGoToPaidCourses = () => {
+    gotoTab("LearnStack", "StudentCoursesScreen", { initialType: CourseType.PAID });
+  };
 
   const handleClaim = async (id: string) => {
     if (!user?.userId) return;
@@ -204,11 +201,6 @@ const HomeScreen = ({ navigation }: any) => {
   const renderPodiumItem = (user: LeaderboardEntryResponse, rank: number) => {
     if (!user) return <View style={styles.podiumItem} />;
 
-    // MATCHING ENHANCED LEADERBOARD STYLING LOGIC
-    // Rank 1: Height 90, Gold
-    // Rank 2: Height 65, Silver (Left)
-    // Rank 3: Height 40, Bronze (Right)
-
     let podiumStyle = {};
     let barStyle = {};
     let medalColor = "";
@@ -240,7 +232,6 @@ const HomeScreen = ({ navigation }: any) => {
           <Text style={styles.levelText}>{user.level || 1}</Text>
         </View>
 
-        {/* CORRECT GLOBAL EXP DISPLAY */}
         <Text style={styles.podiumScore}>{(user.exp || 0).toLocaleString()} XP</Text>
 
         <View style={[styles.podiumBar, barStyle]} />
@@ -252,7 +243,6 @@ const HomeScreen = ({ navigation }: any) => {
     if (topThreeLoading) return <ActivityIndicator style={{ margin: 20 }} color="#3B82F6" />;
     if (!topThreeUsers || topThreeUsers.length === 0) return null;
 
-    // Map API data (Rank 1, 2, 3) to Visual Order (Rank 2, 1, 3)
     const rank1 = topThreeUsers[0];
     const rank2 = topThreeUsers[1];
     const rank3 = topThreeUsers[2];
@@ -264,11 +254,8 @@ const HomeScreen = ({ navigation }: any) => {
           <Icon name="chevron-right" size={24} color="#9CA3AF" />
         </View>
         <View style={styles.podiumContainer}>
-          {/* Render Rank 2 (Left) */}
           {renderPodiumItem(rank2, 2)}
-          {/* Render Rank 1 (Center) */}
           {renderPodiumItem(rank1, 1)}
-          {/* Render Rank 3 (Right) */}
           {renderPodiumItem(rank3, 3)}
         </View>
       </TouchableOpacity>
@@ -331,6 +318,17 @@ const HomeScreen = ({ navigation }: any) => {
         </ScrollView>
       )}
     </View>
+  );
+
+  const renderBannerSection = () => (
+    <TouchableOpacity style={styles.bannerContainer} onPress={handleGoToPaidCourses} activeOpacity={0.9}>
+      <Icon name="diamond" size={24} color="#F59E0B" />
+      <View style={{ marginLeft: 12, flex: 1 }}>
+        <Text style={styles.bannerTitle}>{t("home.banner.paidTitle", "Khám phá khóa học trả phí")}</Text>
+        <Text style={styles.bannerSubtitle}>{t("home.banner.paidSubtitle", "Nâng cấp kiến thức với nội dung độc quyền")}</Text>
+      </View>
+      <Icon name="chevron-right" size={24} color="#1F2937" />
+    </TouchableOpacity>
   );
 
   return (
@@ -512,7 +510,7 @@ const styles = createScaledSheet({
   streakText: { fontSize: 14, fontWeight: "700", color: "#C2410C", marginLeft: 4 },
   leaderboardSection: {
     marginHorizontal: 24,
-    marginBottom: 0,
+    marginBottom: 24,
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 16,
@@ -529,7 +527,6 @@ const styles = createScaledSheet({
   podiumItem: { alignItems: "center", width: 90, position: 'relative' },
   podiumBar: { position: 'absolute', bottom: 0, width: 80, backgroundColor: '#E5E7EB', borderRadius: 8 },
 
-  // Updated Styles to match EnhancedLeaderboard
   podiumBarThird: { height: 40, backgroundColor: '#CD7C2F', zIndex: 0, opacity: 0.8 },
   podiumBarSecond: { height: 65, backgroundColor: '#9CA3AF', zIndex: 0, opacity: 0.8 },
   podiumBarFirst: { height: 90, backgroundColor: '#F59E0B', zIndex: 1, opacity: 0.9 },
@@ -566,6 +563,34 @@ const styles = createScaledSheet({
   emptyIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 16 },
   emptyStateTitle: { fontSize: 16, fontWeight: "600", color: "#374151" },
   emptyStateSub: { fontSize: 13, color: "#6B7280", marginTop: 2 },
+
+  // Custom styles for the new banner
+  bannerContainer: {
+    marginHorizontal: 24,
+    marginBottom: 24,
+    backgroundColor: "#FEF3C7", // Light Yellow/Gold background
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  bannerTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#92400E", // Darker text for contrast
+  },
+  bannerSubtitle: {
+    fontSize: 13,
+    color: "#A16207",
+    marginTop: 4,
+  }
 });
 
 export default HomeScreen;

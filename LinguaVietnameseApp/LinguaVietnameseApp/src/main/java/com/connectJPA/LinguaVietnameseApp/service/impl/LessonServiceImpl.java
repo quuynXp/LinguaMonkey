@@ -377,7 +377,6 @@ public class LessonServiceImpl implements LessonService {
         resp.put("allowedRetakeCount", lesson.getAllowedRetakeCount());
         
         int attemptNumber = 1;
-        // FIX 4: Thay đổi kiểu dữ liệu từ Float sang float (primitive) để tránh nhầm lẫn về null
         float latestScore = 0.0f; 
         List<String> wrongQuestionIds = new ArrayList<>();
 
@@ -386,7 +385,7 @@ public class LessonServiceImpl implements LessonService {
             if (existing.isPresent()) {
                 LessonProgress lp = existing.get();
                 attemptNumber = lp.getAttemptNumber() + 1;
-                latestScore = lp.getScore(); // Lấy giá trị float (không thể null)
+                latestScore = lp.getScore();
             }
 
             List<LessonProgressWrongItem> wrongItems = lessonProgressWrongItemRepository
@@ -398,7 +397,6 @@ public class LessonServiceImpl implements LessonService {
         }
 
         resp.put("attemptNumber", attemptNumber);
-        // FIX 4: latestScore (float) sẽ được auto-box thành Float khi đưa vào Map, và không phải là null (trừ khi latestScore=0.0f và được coi là null, nhưng ta đã khởi tạo nó là 0.0f)
         resp.put("latestScore", latestScore); 
         resp.put("wrongQuestionIds", wrongQuestionIds); 
 
@@ -476,8 +474,7 @@ public class LessonServiceImpl implements LessonService {
         LessonProgress lp = lessonProgressRepository.findById(pid)
                 .orElse(LessonProgress.builder().id(pid).score(0.0f).build()); 
         
-        // FIX 5: Loại bỏ việc kiểm tra lp.getScore() != null
-        float currentBestScore = lp.getScore(); // Lấy giá trị float hiện tại (khởi tạo là 0.0f nếu không tìm thấy)
+        float currentHighestScore = lp.getScore();
 
         try { 
             lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers)); 
@@ -490,15 +487,15 @@ public class LessonServiceImpl implements LessonService {
         boolean needsReview = questions.stream().anyMatch(q -> (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) && (percent < 100));
         lp.setNeedsReview(needsReview);
 
-        // Chỉ cập nhật điểm nếu điểm mới cao hơn hoặc điểm hiện tại là 0 (lần đầu nộp bài)
-        if (percent > currentBestScore || currentBestScore <= 0) { 
+        if (percent > currentHighestScore) { 
+            lp.setScore(percent);
+        } else if (currentHighestScore <= 0 && percent >= 0) {
             lp.setScore(percent);
         }
         
         if (percent >= 50) { 
             if (lp.getCompletedAt() == null) {
                 lp.setCompletedAt(OffsetDateTime.now()); 
-            } else {
             }
         }
         
@@ -644,7 +641,7 @@ public class LessonServiceImpl implements LessonService {
             
             LessonProgress progress = LessonProgress.builder()
                     .id(new LessonProgressId(lessonId, userId))
-                    .score(score != null ? score.floatValue() : 0.0f) // Assuming Float in Entity
+                    .score(score != null ? score.floatValue() : 0.0f) 
                     .completedAt(OffsetDateTime.now())
                     .build();
             

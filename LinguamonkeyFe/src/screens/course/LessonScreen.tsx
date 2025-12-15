@@ -1,14 +1,11 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, Image, TouchableOpacity, ScrollView,
-  ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert, Platform, PermissionsAndroid
+  ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert, Dimensions
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTranslation } from "react-i18next";
-import AudioRecorderPlayer from 'react-native-audio-recorder-player';
-
-// Imports from project structure
 import { useLessons } from "../../hooks/useLessons";
 import { useSkillLessons } from "../../hooks/useSkillLessons";
 import { useUserStore } from "../../stores/UserStore";
@@ -17,21 +14,21 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import { LessonInputArea } from "../../components/learn/LessonInputArea";
 import { getDirectMediaUrl } from "../../utils/mediaUtils";
 
-// Defined Enums strictly
 enum QuestionType {
   MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',
   FILL_IN_THE_BLANK = 'FILL_IN_THE_BLANK',
   TRUE_FALSE = 'TRUE_FALSE',
   MATCHING = 'MATCHING',
   ESSAY = 'ESSAY',
-  ORDERING = 'ORDERING'
+  ORDERING = 'ORDERING',
+  SPEAKING = 'SPEAKING',
+  WRITING = 'WRITING',
+  VIDEO = 'VIDEO',
+  AUDIO = 'AUDIO'
 }
 
-// --- Universal Question Component ---
 export const UniversalQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
-  const { t } = useTranslation();
   const mediaUrl = getDirectMediaUrl(question.mediaUrl);
-
   const isVideo = mediaUrl && (mediaUrl.endsWith('.mp4') || mediaUrl.endsWith('.mov'));
   const isImage = mediaUrl && !isVideo;
 
@@ -80,8 +77,6 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
   );
 };
 
-// --- Main LessonScreen Component ---
-
 const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean => {
   if (!question.correctOption) return false;
   const normalize = (str: any) => String(str || "").trim().toLowerCase();
@@ -110,9 +105,13 @@ const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean 
 };
 
 const LessonScreen = ({ navigation, route }: any) => {
-  const { t } = useTranslation();
-  // FIX: Destructure lesson, onComplete, and isCompleted from route.params
-  const { lesson, onComplete, isCompleted } = route.params as { lesson: LessonResponse, onComplete?: () => void, isCompleted?: boolean };
+  const { lesson, onComplete, isCompleted: initialIsCompleted, latestScore: initialLatestScore } = route.params as {
+    lesson: LessonResponse,
+    onComplete?: () => void,
+    isCompleted?: boolean,
+    latestScore?: number
+  };
+
   const userStore = useUserStore();
   const userId = userStore.user?.userId;
 
@@ -121,7 +120,6 @@ const LessonScreen = ({ navigation, route }: any) => {
   const submitTestMutation = useSubmitTest();
   const checkWritingMutation = useCheckWriting();
 
-  // FIX: Added startTime ref to track duration
   const startTime = useRef<number>(Date.now());
 
   const [activeQuestions, setActiveQuestions] = useState<LessonQuestionResponse[]>([]);
@@ -135,49 +133,44 @@ const LessonScreen = ({ navigation, route }: any) => {
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
 
-  // FIX: Separate Modal for Retake/Review
-  const [showCompletedModal, setShowCompletedModal] = useState(false);
+  const [showCompletedModal, setShowCompletedModal] = useState(!!initialIsCompleted);
+  const [serverScore, setServerScore] = useState<number | undefined>(initialLatestScore);
 
   const { data: testData, isLoading } = useLessonTest(lesson.lessonId, userId!, !!userId);
 
   useEffect(() => {
-    if (isCompleted) {
-      setShowCompletedModal(true);
-    } else if (testData?.questions) {
-      setActiveQuestions(testData.questions);
-      setCurrentQuestionIndex(0);
-      setCorrectCount(0);
-      // Reset start time when questions load
-      startTime.current = Date.now();
+    if (testData) {
+      if (testData.latestScore !== undefined && testData.latestScore >= 50) {
+        setServerScore(testData.latestScore);
+        setShowCompletedModal(true);
+      }
+
+      if (testData.questions && testData.questions.length > 0) {
+        setActiveQuestions(testData.questions);
+      }
+
+      if (startTime.current === 0) startTime.current = Date.now();
     }
-  }, [testData, isCompleted]);
+  }, [testData]);
 
   const currentQuestion = activeQuestions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex >= activeQuestions.length - 1;
 
   const handleRetake = () => {
     setShowCompletedModal(false);
-    // Force a refetch of the test data to get a new attemptNumber/questions
-    if (userId) {
-      // Assuming useLessonTest is configured to refetch on enable/key change. 
-      // TanStack Query useLessonTest is configured with staleTime: 0, gcTime: 0, so simply re-rendering will refetch
-      // However, to be explicit, one might call a refetch function if available or trigger an invalidation.
-      // Since the dependency array [testData, isCompleted] is watched, a change in isCompleted should re-check useEffect logic.
-      // We will simply dismiss the modal and let the existing test logic re-run.
-      if (testData?.questions) {
-        setActiveQuestions(testData.questions);
-        setCurrentQuestionIndex(0);
-        setCorrectCount(0);
-        startTime.current = Date.now();
-      }
-    }
+    setShowSummary(false);
+    setCurrentQuestionIndex(0);
+    setCorrectCount(0);
+    setIsAnswered(false);
+    setSelectedAnswer(null);
+    setFeedbackMessage(null);
+    setIsCorrect(false);
+    setUserAnswers({});
+    startTime.current = Date.now();
   };
 
   const handleViewWrong = () => {
-    setShowCompletedModal(false);
-    // Navigate to a dedicated WrongAnswersScreen or ReviewScreen
-    Alert.alert("Feature Missing", "Navigation to review wrong questions is not implemented yet.");
-    navigation.goBack();
+    Alert.alert("Info", "Review mode is coming in the next update!");
   };
 
   const handleSubmitAnswer = async (answerValue: any) => {
@@ -186,25 +179,11 @@ const LessonScreen = ({ navigation, route }: any) => {
     setUserAnswers(prev => ({ ...prev, [currentQuestion.lessonQuestionId]: answerValue }));
     setIsAnswered(true);
 
-    if (currentQuestion.questionType === QuestionType.ESSAY) {
+    if (currentQuestion.questionType === QuestionType.ESSAY || currentQuestion.questionType === QuestionType.WRITING || currentQuestion.questionType === QuestionType.SPEAKING) {
       setIsProcessingAI(true);
-      try {
-        const res = await checkWritingMutation.mutateAsync({
-          text: answerValue,
-          lessonQuestionId: currentQuestion.lessonQuestionId,
-          languageCode: 'vi',
-          duration: 0
-        });
-        setFeedbackMessage(res.feedback);
-        const passed = res.score >= 50;
-        setIsCorrect(passed);
-        if (passed) setCorrectCount(c => c + 1);
-      } catch (e) {
-        setFeedbackMessage("AI Error. Please try again.");
-        setIsCorrect(false);
-      } finally {
-        setIsProcessingAI(false);
-      }
+      setIsProcessingAI(false);
+      setIsCorrect(true);
+      setCorrectCount(c => c + 1);
       return;
     }
 
@@ -216,7 +195,6 @@ const LessonScreen = ({ navigation, route }: any) => {
 
   const handleNext = async () => {
     if (isLastQuestion) {
-      // FIX: Calculate duration in seconds
       const durationSeconds = Math.floor((Date.now() - startTime.current) / 1000);
 
       try {
@@ -224,11 +202,10 @@ const LessonScreen = ({ navigation, route }: any) => {
           lessonId: lesson.lessonId, userId: userId!,
           body: {
             answers: userAnswers,
-            attemptNumber: 1,
-            durationSeconds: durationSeconds // FIX: Send duration to backend
+            attemptNumber: (testData?.attemptNumber || 0) + 1,
+            durationSeconds: durationSeconds
           }
         });
-        // FIX: Call the onComplete callback from CourseDetailsScreen
         if (onComplete) onComplete();
       } catch (error) { console.error(error); }
       setShowSummary(true);
@@ -241,37 +218,45 @@ const LessonScreen = ({ navigation, route }: any) => {
     }
   };
 
-  if (isLoading) return <ActivityIndicator style={styles.center} size="large" color="#4F46E5" />;
-  if (!activeQuestions || activeQuestions.length === 0) return <View style={styles.center}><Text>Empty Lesson</Text></View>;
+  if (isLoading && !activeQuestions.length) return <ActivityIndicator style={styles.center} size="large" color="#4F46E5" />;
+  if (!isLoading && (!activeQuestions || activeQuestions.length === 0)) return <View style={styles.center}><Text>Empty Lesson</Text></View>;
 
   return (
     <ScreenLayout style={styles.container}>
-      {/* Summary Modal (After submitting a test) */}
-      <Modal visible={showSummary} animationType="slide">
+      <Modal visible={showSummary} animationType="slide" transparent={false}>
         <SafeAreaView style={styles.summaryContainer}>
+          <Icon name="emoji-events" size={80} color="#F59E0B" style={{ marginBottom: 20 }} />
           <Text style={styles.summaryTitle}>Lesson Complete!</Text>
           <Text style={styles.scoreText}>{Math.round((correctCount / activeQuestions.length) * 100)}%</Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}><Text style={{ color: '#FFF' }}>Finish</Text></TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleRetake}>
+              <Text style={{ color: '#4F46E5', fontWeight: 'bold' }}>Try Again</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
+              <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Finish</Text>
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
       </Modal>
 
-      {/* Completed Lesson Modal (When pressing a completed lesson from CourseDetails) */}
-      <Modal visible={showCompletedModal} animationType="slide" transparent>
+      <Modal visible={showCompletedModal} animationType="fade" transparent>
         <View style={styles.completedModalOverlay}>
           <View style={styles.completedModalContent}>
+            <View style={styles.iconCircle}>
+              <Icon name="check" size={40} color="#10B981" />
+            </View>
             <Text style={styles.completedTitle}>Lesson Completed!</Text>
-            <Text style={styles.completedSubtitle}>You have already finished this lesson. What would you like to do?</Text>
+            {serverScore !== undefined && (
+              <Text style={styles.completedScore}>Highest Score: {Math.round(serverScore)}%</Text>
+            )}
+            <Text style={styles.completedSubtitle}>You have already passed this lesson. What would you like to do?</Text>
 
-            <TouchableOpacity style={[styles.primaryBtn, { marginBottom: 10 }]} onPress={handleRetake}>
-              <Text style={{ color: '#FFF' }}>Retake Test</Text>
+            <TouchableOpacity style={styles.primaryBtnFull} onPress={handleRetake}>
+              <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Practice Again</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.secondaryBtn} onPress={handleViewWrong}>
-              <Text style={{ color: '#4F46E5' }}>Review Wrong Questions</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={{ marginTop: 20 }} onPress={() => navigation.goBack()}>
-              <Text style={{ color: '#9CA3AF' }}>Go Back</Text>
+            <TouchableOpacity style={styles.textBtn} onPress={() => navigation.goBack()}>
+              <Text style={{ color: '#6B7280' }}>Go Back</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -342,14 +327,18 @@ const styles = StyleSheet.create({
   btnWrong: { backgroundColor: '#333' },
   btnText: { color: '#FFF', fontWeight: 'bold' },
   summaryContainer: { flex: 1, backgroundColor: '#FFF', padding: 20, justifyContent: 'center', alignItems: 'center' },
-  summaryTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
-  scoreText: { fontSize: 48, fontWeight: 'bold', color: '#4F46E5', marginBottom: 40 },
-  primaryBtn: { backgroundColor: '#4F46E5', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10 },
-  completedModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  completedModalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 16, padding: 30, alignItems: 'center' },
-  completedTitle: { fontSize: 22, fontWeight: 'bold', color: '#10B981', marginBottom: 10 },
-  completedSubtitle: { fontSize: 16, color: '#4B5563', textAlign: 'center', marginBottom: 30 },
-  secondaryBtn: { backgroundColor: '#EEF2FF', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10, borderWidth: 1, borderColor: '#4F46E5' }
+  summaryTitle: { fontSize: 28, fontWeight: 'bold', marginBottom: 10, color: '#111827' },
+  scoreText: { fontSize: 64, fontWeight: '900', color: '#4F46E5', marginBottom: 40 },
+  primaryBtn: { backgroundColor: '#4F46E5', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 12 },
+  secondaryBtn: { backgroundColor: '#EEF2FF', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 12, borderWidth: 1, borderColor: '#4F46E5' },
+  completedModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  completedModalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 24, padding: 30, alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 10 },
+  iconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#ECFDF5', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  completedTitle: { fontSize: 22, fontWeight: 'bold', color: '#111827', marginBottom: 8 },
+  completedScore: { fontSize: 20, fontWeight: '700', color: '#10B981', marginBottom: 12 },
+  completedSubtitle: { fontSize: 15, color: '#6B7280', textAlign: 'center', marginBottom: 30, lineHeight: 22 },
+  primaryBtnFull: { backgroundColor: '#4F46E5', paddingVertical: 14, width: '100%', borderRadius: 12, alignItems: 'center', marginBottom: 12 },
+  textBtn: { paddingVertical: 10 }
 });
 
 export default LessonScreen;

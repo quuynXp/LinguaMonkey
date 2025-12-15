@@ -27,12 +27,14 @@ import type {
   CourseVersionEnrollmentResponse,
 } from "../../types/dto";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { getCourseImage } from "../../utils/courseUtils";
+import { getLessonImage } from "../../utils/courseUtils";
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
 import VipUpgradeModal from "../../components/modals/VipUpgradeModal";
 import { gotoTab } from "../../utils/navigationRef";
 
 const { width } = Dimensions.get("window");
+const PLACEHOLDER_IMAGE = require("../../assets/images/ImagePlacehoderCourse.png");
 
 const SCREEN_PADDING = 20;
 const COLUMN_GAP = 12;
@@ -83,7 +85,7 @@ const CategoryLessonsView = ({
       onPress={() => handleStartLesson(item)}
     >
       <Image
-        source={getCourseImage(item.thumbnailUrl)}
+        source={getLessonImage(item.thumbnailUrl)}
         style={styles.lessonThumbnailSmall}
       />
       <View style={styles.lessonRowContent}>
@@ -234,6 +236,8 @@ const TopSellingCoursesList = ({
     if (!item.latestPublicVersion) return null;
 
     const studentCount = item.totalStudents || 0;
+    const processedUrl = getDirectMediaUrl(item.latestPublicVersion.thumbnailUrl);
+    const thumbSource = processedUrl ? { uri: processedUrl } : PLACEHOLDER_IMAGE;
 
     return (
       <TouchableOpacity
@@ -241,7 +245,7 @@ const TopSellingCoursesList = ({
         onPress={() => handleCoursePress(item)}
       >
         <Image
-          source={getCourseImage(item.latestPublicVersion.thumbnailUrl)}
+          source={thumbSource}
           style={styles.gridCardImage}
           resizeMode="cover"
         />
@@ -316,7 +320,6 @@ const LearnScreen = ({ navigation }: any) => {
   const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
-    // If selected language is no longer in the list (e.g. user removed it in profile), revert to first one
     if (learningLanguages.length > 0 && !learningLanguages.find(lang => lang.code === selectedLanguage.code)) {
       setSelectedLanguage(learningLanguages[0]);
     }
@@ -342,7 +345,6 @@ const LearnScreen = ({ navigation }: any) => {
 
   const { data: topSellingData, isLoading: topSellingLoading, refetch: refetchTopSelling } = useTopSellingCourses(10);
 
-  // Old category data fetching - Not used for main display anymore but kept for logic structure
   const { refetch: refetchCats } = useCategories({
     lang: selectedLanguage.code,
     page: 0,
@@ -459,7 +461,7 @@ const LearnScreen = ({ navigation }: any) => {
               activeOpacity={0.9}
             >
               <ImageBackground
-                source={getCourseImage(undefined)}
+                source={PLACEHOLDER_IMAGE}
                 style={styles.certBigCardBg}
                 imageStyle={{ borderRadius: 16 }}
               >
@@ -515,6 +517,9 @@ const LearnScreen = ({ navigation }: any) => {
                   const key = courseVersion.versionId || `enroll-${index}`;
                   const dateEnrolled = enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : '';
 
+                  const processedUrl = getDirectMediaUrl(courseVersion.thumbnailUrl);
+                  const thumbSource = processedUrl ? { uri: processedUrl } : PLACEHOLDER_IMAGE;
+
                   return (
                     <TouchableOpacity
                       key={key}
@@ -522,7 +527,7 @@ const LearnScreen = ({ navigation }: any) => {
                       onPress={() => handleMyCoursePress(enrollment)}
                     >
                       <Image
-                        source={getCourseImage(courseVersion.thumbnailUrl)}
+                        source={thumbSource}
                         style={styles.myCourseImage}
                       />
                       <View style={styles.myCourseInfo}>
@@ -554,6 +559,8 @@ const LearnScreen = ({ navigation }: any) => {
                   if (!course.courseId) return null;
                   const rating = course.averageRating ? course.averageRating.toFixed(1) : "0.0";
                   const reviewCount = course.reviewCount || 0;
+                  const processedUrl = getDirectMediaUrl(course.latestPublicVersion?.thumbnailUrl);
+                  const thumbSource = processedUrl ? { uri: processedUrl } : PLACEHOLDER_IMAGE;
 
                   return (
                     <TouchableOpacity
@@ -562,7 +569,7 @@ const LearnScreen = ({ navigation }: any) => {
                       onPress={() => gotoTab("CourseStack", "CourseManagerScreen", { courseId: course.courseId })}
                     >
                       <Image
-                        source={getCourseImage(course.latestPublicVersion?.thumbnailUrl)}
+                        source={thumbSource}
                         style={styles.recCourseImage}
                       />
                       <View style={{ padding: 8 }}>
@@ -600,6 +607,9 @@ const LearnScreen = ({ navigation }: any) => {
 
                   if (!course.courseId) return null;
 
+                  const processedUrl = getDirectMediaUrl(course.latestPublicVersion?.thumbnailUrl);
+                  const thumbSource = processedUrl ? { uri: processedUrl } : PLACEHOLDER_IMAGE;
+
                   return (
                     <TouchableOpacity
                       key={`rec-${course.courseId}`}
@@ -607,7 +617,7 @@ const LearnScreen = ({ navigation }: any) => {
                       onPress={() => gotoTab("CourseStack", "CourseDetailsScreen", { courseId: course.courseId, isPurchased: false })}
                     >
                       <Image
-                        source={getCourseImage(course.latestPublicVersion?.thumbnailUrl)}
+                        source={thumbSource}
                         style={styles.recCourseImage}
                       />
                       <View style={{ padding: 8 }}>

@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 
 import { useCourses } from "../../hooks/useCourses";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -24,30 +24,39 @@ import { gotoTab } from "../../utils/navigationRef";
 
 const PAGE_SIZE = 20;
 
+// Định nghĩa kiểu cho Route Params của màn hình này
+type StudentCoursesRouteParams = {
+  initialType?: CourseType;
+};
+
+type StudentCoursesRouteProp = RouteProp<
+  { StudentCoursesScreen: StudentCoursesRouteParams },
+  'StudentCoursesScreen'
+>;
+
 const StudentCoursesScreen = () => {
   const { t } = useTranslation();
   const navigation = useNavigation();
+  const route = useRoute<StudentCoursesRouteProp>(); // Sử dụng kiểu đã định nghĩa
 
-  // Search & Filter State
+  const initialType = route.params?.initialType;
+
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedType, setSelectedType] = useState<CourseType | undefined>(undefined);
+  const [selectedType, setSelectedType] = useState<CourseType | undefined>(initialType);
 
-  // Pagination State
   const [page, setPage] = useState(0);
 
-  // Search Debounce Logic
   React.useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchText);
-      setPage(0); // Reset to first page on new search
+      setPage(0);
     }, 500);
     return () => clearTimeout(handler);
   }, [searchText]);
 
   const { useAllCourses } = useCourses();
 
-  // Fetch Data
   const {
     data,
     isLoading,
@@ -58,7 +67,7 @@ const StudentCoursesScreen = () => {
     size: PAGE_SIZE,
     title: debouncedSearch,
     type: selectedType,
-    isAdminCreated: undefined // Show all courses including admin and creators
+    isAdminCreated: undefined
   });
 
   const courses = useMemo(() => (data?.data as CourseResponse[]) || [], [data]);
@@ -84,7 +93,6 @@ const StudentCoursesScreen = () => {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <Icon name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
         <TextInput
@@ -101,7 +109,6 @@ const StudentCoursesScreen = () => {
         )}
       </View>
 
-      {/* Filter Chips */}
       <View style={styles.filterContainer}>
         <TouchableOpacity
           style={[styles.filterChip, !selectedType && styles.activeChip]}
@@ -129,8 +136,7 @@ const StudentCoursesScreen = () => {
     const rating = item.averageRating ? item.averageRating.toFixed(1) : "0.0";
     const reviewCount = item.reviewCount || 0;
     const price = item.latestPublicVersion?.price ?? 0;
-    // Using reviewCount or a specific enrollment count if available in DTO
-    const students = item.reviewCount ? item.reviewCount * 5 : 0; // Mock calculation if real count missing, or use real field
+    const students = item.reviewCount ? item.reviewCount * 5 : 0;
 
     return (
       <TouchableOpacity style={styles.courseCard} onPress={() => handleCoursePress(item)}>

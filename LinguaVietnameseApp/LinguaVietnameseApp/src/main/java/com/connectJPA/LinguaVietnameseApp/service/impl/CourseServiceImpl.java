@@ -16,6 +16,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionDiscount;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionEnrollment;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionLesson;
 import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
+import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.Role;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserRole;
@@ -35,6 +36,7 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionReviewRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoleRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRoleRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CourseVersionDiscountService;
@@ -61,6 +63,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -78,9 +81,10 @@ public class CourseServiceImpl implements CourseService {
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
     private final RoomService roomService;
+    private final RoomRepository roomRepository;
     private final CourseVersionDiscountRepository discountRepository;
+    
     private final CourseVersionMapper courseVersionMapper;
-
     private final CourseMapper courseMapper;
     private final CourseVersionMapper versionMapper;
 
@@ -90,11 +94,18 @@ public class CourseServiceImpl implements CourseService {
 
     private static final List<String> CEFR_LEVELS = Arrays.asList("A1", "A2", "B1", "B2", "C1", "C2");
 
-    // --- FIX QUAN TRỌNG: Cập nhật hàm enrichCourseResponse ---
     private CourseResponse enrichCourseResponse(CourseResponse response) {
         if (response != null && response.getCourseId() != null) {
             
-            // 1. Creator Info Enrichment (Giữ nguyên)
+            // 1. Room Enrichment
+            try {
+                roomRepository.findByCourseId(response.getCourseId())
+                    .ifPresent(room -> response.setRoomId(room.getRoomId()));
+            } catch (Exception e) {
+                // Log and ignore
+            }
+
+            // 2. Creator Info Enrichment
             if (response.getCreatorId() != null) {
                 try {
                     UUID creatorId = response.getCreatorId();
@@ -108,10 +119,11 @@ public class CourseServiceImpl implements CourseService {
                         response.setCreatorLevel(creator.getLevel());
                     }
                 } catch (IllegalArgumentException e) {
+                    // ignore
                 }
             }
 
-            // 2. Stats Enrichment (Giữ nguyên)
+            // 3. Stats Enrichment
             try {
                 Double avgRating = courseReviewRepository.getAverageRatingByCourseId(response.getCourseId());
                 long count = courseReviewRepository.countByCourseIdAndParentIsNullAndIsDeletedFalse(response.getCourseId());
@@ -120,29 +132,28 @@ public class CourseServiceImpl implements CourseService {
                 response.setReviewCount((int) count);
                 response.setTotalStudents((int) studentCount);
             } catch (Exception e) {
+                // ignore
             }
 
-            // 3. Populate DRAFT version (Giữ nguyên)
-            courseVersionRepository.findByCourseIdAndStatusAndIsDeletedFalse(response.getCourseId(), VersionStatus.DRAFT)
-                    .stream()
-                    .findFirst()
-                    .ifPresent(draft -> response.setLatestDraftVersion(versionMapper.toResponse(draft)));
+            // 4. Draft Version (Force Fetch)
+            courseVersionRepository.findTopByCourseIdAndStatusOrderByVersionNumberDesc(response.getCourseId(), VersionStatus.DRAFT)
+                    .ifPresent(draft -> {
+                         CourseVersionResponse vr = versionMapper.toResponse(draft);
+                         if (vr.getPrice() == null) vr.setPrice(BigDecimal.ZERO);
+                         response.setLatestDraftVersion(vr);
+                    });
             
-            // 4. FIX LOGIC: Populate PUBLIC version nếu bị Null do Lazy Loading
-            if (response.getLatestPublicVersion() == null) {
-                // Thay vì query Course (vẫn bị Lazy), query trực tiếp CourseVersionRepository
-                courseVersionRepository.findByCourseIdAndStatusAndIsDeletedFalse(response.getCourseId(), VersionStatus.PUBLIC)
-                    .stream()
-                    .findFirst() // Giả định mỗi course chỉ có 1 Public version active tại 1 thời điểm
-                    .ifPresent(publicVer -> 
-                        response.setLatestPublicVersion(versionMapper.toResponse(publicVer))
-                    );
-            }
+            // 5. Public Version (Force Fetch via Optimized Query)
+            // This fixes the async sync issue where student sees "No version available"
+            courseVersionRepository.findLatestPublicVersionByCourseId(response.getCourseId())
+                    .ifPresent(publicVer -> {
+                        CourseVersionResponse vr = versionMapper.toResponse(publicVer);
+                        if (vr.getPrice() == null) vr.setPrice(BigDecimal.ZERO);
+                        response.setLatestPublicVersion(vr);
+                    });
         }
         return response;
     }
-
-    // ... (Giữ nguyên các hàm override khác, không thay đổi) ...
 
     @Override
     public CourseVersionResponse getCourseVersionById(UUID versionId) {
@@ -262,14 +273,13 @@ public class CourseServiceImpl implements CourseService {
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         course = courseRepository.save(course); 
 
-        // Create first Version (Draft v1)
         CourseVersion version = new CourseVersion();
         version.setCourseId(course.getCourseId());
         version.setVersionNumber(1);
         version.setStatus(VersionStatus.DRAFT);
         version.setIsIntegrityValid(null);
         version.setIsContentValid(null);
-        version.setPrice(request.getPrice()); 
+        version.setPrice(request.getPrice() != null ? request.getPrice() : BigDecimal.ZERO); 
         
         courseVersionRepository.save(version);
         
@@ -297,7 +307,7 @@ public class CourseServiceImpl implements CourseService {
         if (request.getInstructionLanguage() != null) version.setInstructionLanguage(request.getInstructionLanguage());
 
         if (request.getLessonIds() != null) {
-            cvlRepository.deleteByCourseVersion_VersionId(versionId); // Ensure cleanup before adding new ones
+            cvlRepository.deleteByCourseVersion_VersionId(versionId); 
             if (version.getLessons() != null) {
                 version.getLessons().clear();
             } else {
@@ -347,7 +357,6 @@ public class CourseServiceImpl implements CourseService {
         Course course = courseRepository.findById(version.getCourseId())
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 
-        // Re-validate (Đã thêm logic kiểm tra description.length() >= 20 ở update, nhưng kiểm tra lại ở đây)
         if (version.getDescription() == null || version.getDescription().length() < 20 ||
             version.getThumbnailUrl() == null || version.getThumbnailUrl().isBlank() ||
             version.getLessons() == null || version.getLessons().isEmpty()) {
@@ -358,15 +367,12 @@ public class CourseServiceImpl implements CourseService {
             throw new AppException(ErrorCode.COURSE_VALIDATION_FAILED);
         }
 
-        // 1. Prepare new version state
         version.setReasonForChange(request.getReasonForChange());
         version.setStatus(VersionStatus.PUBLIC);
         version.setPublishedAt(OffsetDateTime.now());
         
-        // SAVE VERSION FIRST
         version = courseVersionRepository.save(version);
 
-        // 2. Handle Old Version Archival
         if (course.getLatestPublicVersion() != null) {
             CourseVersion oldPublic = course.getLatestPublicVersion();
             if (!oldPublic.getVersionId().equals(version.getVersionId())) {
@@ -375,12 +381,10 @@ public class CourseServiceImpl implements CourseService {
             }
         }
 
-        // 3. Update Course Reference
         course.setLatestPublicVersion(version);
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         courseRepository.save(course); 
 
-        // Notifications
         sendLearnerUpdateNotification(
             course,
             version,
@@ -419,9 +423,7 @@ public class CourseServiceImpl implements CourseService {
             newDraft.setLanguageCode(publicVersion.getLanguageCode());
             newDraft.setDifficultyLevel(publicVersion.getDifficultyLevel());
             newDraft.setCategoryCode(publicVersion.getCategoryCode());
-            // START FIX: Sao chép instructionLanguage từ phiên bản public
             newDraft.setInstructionLanguage(publicVersion.getInstructionLanguage());
-            // END FIX
             
             newDraft.setLessons(new ArrayList<>());
             List<CourseVersionLesson> oldLessons = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(publicVersion.getVersionId());
@@ -431,6 +433,7 @@ public class CourseServiceImpl implements CourseService {
             }
         } else {
              newDraft.setLessons(new ArrayList<>());
+             newDraft.setPrice(BigDecimal.ZERO);
         }
 
         newDraft = courseVersionRepository.save(newDraft);
@@ -520,7 +523,13 @@ public class CourseServiceImpl implements CourseService {
             Course course = version.getCourse();
             CourseResponse response = courseMapper.toResponse(course);
             
-            response.setLatestPublicVersion(versionMapper.toResponse(version));
+            response = enrichCourseResponse(response);
+            
+            // Override latestPublicVersion to match the discount context
+            CourseVersionResponse vr = versionMapper.toResponse(version);
+            if (vr.getPrice() == null) vr.setPrice(BigDecimal.ZERO);
+            response.setLatestPublicVersion(vr);
+            
             response.setActiveDiscountPercentage(discount.getDiscountPercentage());
 
             if (version.getPrice() != null) {

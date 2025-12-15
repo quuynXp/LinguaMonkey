@@ -15,7 +15,7 @@ import java.util.UUID;
 @Repository
 public interface CourseVersionRepository extends JpaRepository<CourseVersion, UUID> {
 
-    Optional<CourseVersion> findByVersionIdAndStatus(UUID versionId, VersionStatus status);
+   Optional<CourseVersion> findByVersionIdAndStatus(UUID versionId, VersionStatus status);
 
     Optional<CourseVersion> findTopByCourseIdAndStatusOrderByVersionNumberDesc(UUID courseId, VersionStatus status);
 
@@ -30,7 +30,7 @@ public interface CourseVersionRepository extends JpaRepository<CourseVersion, UU
             "ORDER BY cv.versionNumber DESC")
     Optional<CourseVersion> findLatestPublicVersionByCourseId(@Param("courseId") UUID courseId);
 
-    List<CourseVersion> findByStatusAndPublishedAtBeforeAndIsDeletedFalse(String status, OffsetDateTime now);
+    List<CourseVersion> findByStatusAndPublishedAtBeforeAndIsDeletedFalse(VersionStatus status, OffsetDateTime now);
 
     boolean existsByCourseIdAndStatus(UUID courseId, VersionStatus status);
 

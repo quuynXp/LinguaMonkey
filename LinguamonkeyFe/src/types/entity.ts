@@ -187,7 +187,11 @@ export interface ChatMessage {
     senderEphemeralKey?: string;
     usedPreKeyId?: number;
     initializationVector?: string;
+    selfContent?: string;
+    selfEphemeralKey?: string;
+    selfInitializationVector?: string;
     isLocal?: boolean;
+    translatedText?: string | null;
     decryptedContent?: string;
 }
 export interface Couple extends BaseEntity {

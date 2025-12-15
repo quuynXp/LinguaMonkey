@@ -99,6 +99,9 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
                                                              @Param("purpose") RoomPurpose purpose,
                                                              Pageable pageable);
 
+                                                             @Query("SELECT r FROM Room r WHERE r.courseId = :courseId AND r.isDeleted = false")
+    Optional<Room> findByCourseId(UUID courseId);
+    
     boolean existsByRoomCode(String roomCode);
 
     @Query("UPDATE Room r SET r.isDeleted = true, r.deletedAt = CURRENT_TIMESTAMP WHERE r.roomId = :roomId")

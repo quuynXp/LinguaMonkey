@@ -1,7 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.ChatMessageBody;
-import com.connectJPA.LinguaVietnameseApp.dto.TranslationEvent;
 import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
@@ -34,6 +33,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault; // ✅ ADDED MISSING IMPORT
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -46,9 +46,8 @@ import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @RestController
@@ -68,14 +67,13 @@ public class ChatController {
     private final UserRepository userRepository;
     private final RedisTemplate<String, Object> redisTemplate;
 
-    // --- Inner Class for Status Request ---
     @Data
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
     public static class UserStatusRequest {
         private UUID userId;
-        private String status; // ONLINE or OFFLINE
+        private String status;
     }
 
     @GetMapping("/status/{userId}")
@@ -94,7 +92,7 @@ public class ChatController {
     @GetMapping("/room/{roomId}/messages")
     public AppApiResponse<Page<ChatMessageResponse>> getMessagesByRoom(
             @PathVariable UUID roomId,
-            Pageable pageable,
+            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable,
             Locale locale) {
         Page<ChatMessageResponse> messages = chatMessageService.getMessagesByRoom(roomId, pageable);
         return AppApiResponse.<Page<ChatMessageResponse>>builder()
@@ -140,7 +138,6 @@ public class ChatController {
             Locale locale) {
         ChatMessageResponse updatedMessage = chatMessageService.editChatMessage(id, request.getContent());
         
-        // Notify socket clients about the update
         messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId(), updatedMessage);
         
         return AppApiResponse.<ChatMessageResponse>builder()
@@ -156,28 +153,34 @@ public class ChatController {
             @Payload ChatMessageRequest messageRequest,
             Principal principal,
             SimpMessageHeaderAccessor headerAccessor) {
+        
+        log.info("📥 [STOMP] Received message for room: {}", roomId);
+        
         String authorization = headerAccessor.getFirstNativeHeader("Authorization");
         String token = extractToken(authorization, headerAccessor);
 
-        UUID senderId = UUID.fromString(principal.getName());
-        messageRequest = ChatMessageRequest.builder()
-                .roomId(roomId)
-                .senderId(senderId)
-                .content(messageRequest.getContent())
-                .mediaUrl(messageRequest.getMediaUrl())
-                .messageType(messageRequest.getMessageType())
-                .purpose(messageRequest.getPurpose())
-                .receiverId(messageRequest.getReceiverId())
-                .isRead(messageRequest.isRead())
-                .isDeleted(messageRequest.isDeleted())
-                .build();
+        UUID senderId = messageRequest.getSenderId();
+        
+        if (senderId == null) {
+            log.error("❌ [STOMP] senderId is NULL in request!");
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
 
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
+        log.info("✅ [STOMP] Saving message with senderId: {}", senderId);
+        
         ChatMessageResponse message = chatMessageService.saveMessage(roomId, messageRequest);
 
-        UUID messageId = message.getChatMessageId();
+        // --- CRITICAL FIX: ENSURE E2EE FIELDS ARE PASSED BACK TO RECEIVER ---
+        if (message.getPurpose() == RoomPurpose.PRIVATE_CHAT && messageRequest.getSenderEphemeralKey() != null) {
+            log.info("🔐 [E2EE] Patching response with keys for receiver");
+            message.setSenderEphemeralKey(messageRequest.getSenderEphemeralKey());
+            message.setInitializationVector(messageRequest.getInitializationVector());
+            message.setUsedPreKeyId(messageRequest.getUsedPreKeyId());
+        }
+        // -------------------------------------------------------------------
 
         if (message.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
             messagingTemplate.convertAndSendToUser(
@@ -203,8 +206,6 @@ public class ChatController {
             Pageable pageable = PageRequest.of(0, 10);
             Page<ChatMessageResponse> historyPage = chatMessageService.getMessagesByRoom(roomId, pageable);
             
-            // Fix: Directly use the Content from Page. No need to remap to ChatMessageResponse again 
-            // as this caused the constructor mismatch error with translations field.
             List<ChatMessageResponse> history = historyPage.getContent();
 
             try {
@@ -235,31 +236,6 @@ public class ChatController {
                 log.error("AI Chat processing failed", e);
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             }
-
-            // if (messageRequest.isRoomAutoTranslate()) {
-            //     String targetLang = "vi";
-            //     CompletableFuture.runAsync(() -> {
-            //         try {
-            //             var tr = grpcClientService.callTranslateAsync(token, message.getContent(), "", targetLang).get();
-
-            //             if (!tr.getError().isEmpty()) {
-            //                 log.warn("Translate returned error: {}", tr.getError());
-            //                 return;
-            //             }
-
-            //             ChatMessageResponse translatedResp = chatMessageService.saveTranslation(messageId, targetLang, tr.getTranslatedText());
-
-            //             TranslationEvent evt = new TranslationEvent();
-            //             evt.setMessageId(messageId);
-            //             evt.setTargetLang(targetLang);
-            //             evt.setTranslatedText(tr.getTranslatedText());
-
-            //             messagingTemplate.convertAndSend("/topic/room/" + roomId + "/translations", evt);
-            //         } catch (Exception e) {
-            //             log.error("Translation async failed for message {}: {}", messageId, e.getMessage());
-            //         }
-            //     }, Executors.newCachedThreadPool());
-            // }
         }
     }
 
@@ -275,11 +251,15 @@ public class ChatController {
     @MessageMapping("/chat/message/{messageId}/read")
     public void markMessageAsRead (
             @DestinationVariable UUID messageId,
-            @Payload String reaction, // Placeholder to match signature if needed
+            @Payload Map<String, Object> payload, 
             Principal principal){
-        ChatMessageResponse updatedMessage = chatMessageService.markAsRead(messageId, UUID.fromString(principal.getName()));
-        // Broadcast the update so the sender sees the read status change
-        messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId(), updatedMessage);
+        
+        UUID userId = UUID.fromString(principal.getName());
+        ChatMessageResponse updatedMessage = chatMessageService.markAsRead(messageId, userId);
+        
+        if (updatedMessage != null) {
+            messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId(), updatedMessage);
+        }
     }
 
     @MessageMapping("/chat/room/{roomId}/typing")
@@ -307,17 +287,14 @@ public class ChatController {
         }
     }
     
-    // --- NEW: Real-time Status Handler ---
     @MessageMapping("/chat/room/{roomId}/status")
     public void handleUserStatus(
             @DestinationVariable UUID roomId,
             @Payload UserStatusRequest request,
             Principal principal) {
         
-        // Ensure the sender is who they say they are (security)
         request.setUserId(UUID.fromString(principal.getName()));
         
-        // Broadcast to everyone in the room
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/status", request);
     }
 

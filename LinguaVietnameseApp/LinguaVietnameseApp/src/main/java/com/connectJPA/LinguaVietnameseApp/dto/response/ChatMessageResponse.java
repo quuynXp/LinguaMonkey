@@ -27,7 +27,9 @@ public class ChatMessageResponse {
     private String senderEphemeralKey;
     private Integer usedPreKeyId;
     private String initializationVector;
-    
+    private String selfContent;
+    private String selfEphemeralKey;
+    private String selfInitializationVector;
     private Map<String, String> translations;
     
     private RoomPurpose purpose;

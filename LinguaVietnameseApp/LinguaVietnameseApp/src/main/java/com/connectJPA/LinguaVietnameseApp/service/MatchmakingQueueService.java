@@ -44,7 +44,6 @@ public class MatchmakingQueueService {
     private static final int REDUCTION_STEP = 10;
 
     public void addToQueue(UUID userId, CallPreferencesRequest prefs) {
-        // Clear any stale pending matches when re-joining queue
         pendingMatches.remove(userId);
         waitingUsers.compute(userId, (k, v) -> new QueueItem(userId, prefs, Instant.now()));
     }
@@ -75,7 +74,6 @@ public class MatchmakingQueueService {
     }
 
     public void notifyPartner(UUID partnerId, MatchResult result) {
-        // Utility method to manually set a match if needed
         pendingMatches.put(partnerId, result);
         waitingUsers.remove(partnerId);
     }
@@ -88,6 +86,8 @@ public class MatchmakingQueueService {
         }
 
         QueueItem currentUser = waitingUsers.get(currentUserId);
+        if (currentUser == null) return null;
+
         int queueSize = waitingUsers.size();
         int currentThreshold = (queueSize < 5) ? 0 : getCurrentCriteriaThreshold(currentUserId);
 
@@ -110,22 +110,17 @@ public class MatchmakingQueueService {
             .findFirst();
 
         if (bestMatch.isPresent()) {
-        QueueItem partner = bestMatch.get();
-        UUID partnerId = partner.getUserId();
+            QueueItem partner = bestMatch.get();
+            UUID partnerId = partner.getUserId();
 
-        if (waitingUsers.remove(partnerId) != null) {
-            waitingUsers.remove(currentUserId);
+            if (waitingUsers.remove(partnerId) != null) {
+                waitingUsers.remove(currentUserId);
 
-            UUID roomId = UUID.randomUUID();
-            String roomName = "Room-" + roomId.toString().substring(0, 8);
-            int score = calculateCompatibilityScore(currentUser.getPreferences(), partner.getPreferences());
+                int score = calculateCompatibilityScore(currentUser.getPreferences(), partner.getPreferences());
 
-            MatchResult partnerResult = new MatchResult(currentUserId, score, roomId, roomName);
-            pendingMatches.put(partnerId, partnerResult); 
-
-            return new MatchResult(partnerId, score, roomId, roomName);
+                return new MatchResult(partnerId, score, null, null);
+            }
         }
-    }
         return null;
     }
 

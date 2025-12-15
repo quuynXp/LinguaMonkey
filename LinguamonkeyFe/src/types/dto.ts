@@ -180,6 +180,12 @@ export interface ChatMessageRequest {
     roomId: string;
     senderId: string;
     receiverId: string;
+    senderEphemeralKey?: string;
+    usedPreKeyId?: number;
+    initializationVector?: string;
+    selfContent?: string;
+    selfEphemeralKey?: string;
+    selfInitializationVector?: string;
     content: string;
     mediaUrl: string;
     messageType: Enums.MessageType;
@@ -1004,6 +1010,12 @@ export interface ChatMessageResponse {
     content: string;
     mediaUrl: string;
     messageType: Enums.MessageType;
+    senderEphemeralKey?: string;
+    usedPreKeyId?: number;
+    initializationVector?: string;
+    selfContent?: string;
+    selfEphemeralKey?: string;
+    selfInitializationVector?: string;
     translatedText: string;
     translatedLang: string;
     purpose: Enums.RoomPurpose;
@@ -1072,6 +1084,7 @@ export interface CourseLessonResponse {
     title?: string;
     duration?: string;
     LessonSummaryResponse?: LessonSummaryResponse[];
+    completedLessonIds?: string[];
 }
 
 export interface CoursePerformanceResponse {

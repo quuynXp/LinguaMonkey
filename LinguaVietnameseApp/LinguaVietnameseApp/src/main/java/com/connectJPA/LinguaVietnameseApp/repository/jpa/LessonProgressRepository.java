@@ -30,6 +30,17 @@ public interface LessonProgressRepository extends JpaRepository<LessonProgress, 
 
     long countById_UserIdAndCompletedAtIsNotNull(UUID userId);
 
+    @Query("""
+        SELECT lp.id.lessonId
+        FROM LessonProgress lp
+        JOIN CourseVersionLesson cvl ON lp.id.lessonId = cvl.id.lessonId
+        WHERE lp.id.userId = :userId
+        AND cvl.id.versionId = :versionId
+        AND lp.score >= 50
+        AND lp.isDeleted = false
+    """)
+    List<UUID> findCompletedLessonIdsInVersion(@Param("userId") UUID userId, @Param("versionId") UUID versionId);
+    
     @Query("SELECT COUNT(lp) FROM LessonProgress lp " +
            "WHERE lp.id.userId = :userId " +
            "AND lp.completedAt >= :startDate AND lp.completedAt <= :endDate")

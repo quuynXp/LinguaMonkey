@@ -132,8 +132,11 @@ const RootNavigation = () => {
 
     const boot = async () => {
       try {
+        console.log("--- BOOT SEQUENCE START ---");
         setIsLoading(true);
         await initializeTokens();
+        console.log(`[BOOT] Tokens Initialized. Current Token: ${useTokenStore.getState().accessToken ? 'PRESENT' : 'MISSING'}`);
+
         const isHealthy = await waitForConnectivity();
         if (!mounted || !isHealthy) return;
 
@@ -152,23 +155,39 @@ const RootNavigation = () => {
           const userIsAdmin = isAdmin(currentToken);
           setIsUserAdmin(userIsAdmin);
           const payload = decodeToken(currentToken);
+
           if (payload?.userId) {
             try {
+              console.log(`[BOOT] Fetching user data for ID: ${payload.userId}`);
+
               const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
               const rawUser = userRes.data.result || {};
-              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: userIsAdmin ? ["ROLE_ADMIN"] : ["ROLE_USER"] }, savedLanguage);
-              notificationService.registerTokenToBackend();
 
-              // FIX: Đọc hasFinishedSetup từ Store sau khi setUser chạy để đảm bảo giá trị đã được chuẩn hóa.
+              console.log(`[DEBUG] Raw hasFinishedSetup from BE: ${rawUser.hasFinishedSetup}`);
+
+              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: userIsAdmin ? ["ROLE_ADMIN"] : ["ROLE_USER"] }, savedLanguage);
+
+              // Đọc giá trị từ Store ngay sau khi cập nhật (cần thiết nếu zustand sync chậm)
               const hasSetupFinished = useUserStore.getState().hasFinishedSetup || false;
 
+              console.log(`[DEBUG] Store hasFinishedSetup (after setUser): ${hasSetupFinished}`);
+
+              notificationService.registerTokenToBackend();
+
+              let nextRoute: keyof MainStackParamList = "TabApp";
+
               if (userIsAdmin) {
-                setInitialMainRoute("AdminStack");
+                nextRoute = "AdminStack";
               } else if (hasSetupFinished === false) {
-                setInitialMainRoute("SetupInitScreen");
+                nextRoute = "SetupInitScreen";
               } else {
-                setInitialMainRoute("TabApp");
+                nextRoute = "TabApp";
               }
+
+              setInitialMainRoute(nextRoute);
+              console.log(`[BOOT] DECISION: Setting Initial Route to ${nextRoute}`);
+
+
             } catch (userErr) {
               console.error("Fetch user failed", userErr);
               setInitialMainRoute("TabApp");
@@ -178,7 +197,10 @@ const RootNavigation = () => {
       } catch (e) {
         console.error("Boot error:", e);
       } finally {
-        if (mounted) setIsLoading(false);
+        if (mounted) {
+          console.log("--- BOOT SEQUENCE END / Setting isLoading=false ---");
+          setIsLoading(false);
+        }
       }
     };
     boot();
@@ -189,6 +211,7 @@ const RootNavigation = () => {
     if (Platform.OS !== 'android') return;
 
     const debugLog = (...args: any[]) => {
+      // console.log('[onBackPress]', ...args);
     };
 
     const getRootStateSafely = () => {

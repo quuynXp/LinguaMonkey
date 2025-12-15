@@ -41,7 +41,7 @@ spring:
   mail:
     host: ${MAIL_HOST}
     port: ${MAIL_PORT}
-    USERNAME: ${MAIL_USERNAME}
+    username: ${MAIL_USERNAME}
     password: ${MAIL_PASSWORD}
     properties:
       mail:
@@ -138,6 +138,12 @@ management:
   endpoint:
     health:
       show-details: always
+      groups:
+        render:
+          include: diskSpace, ping
+          exclude: mail, redis, db, datastore, kafka, elasticsearch
+          show-components: always
+
 # Logging
 logging:
   level:
