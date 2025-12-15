@@ -21,15 +21,28 @@ import { stompService } from "../../services/stompService";
 import { gotoTab } from "../../utils/navigationRef";
 import type { Room } from "../../types/entity";
 
+type ReturnToParams = {
+    tab: string;
+    screen: string;
+    params: any;
+}
+
 type ChatRoomParams = {
-    ChatRoom: { roomId: string; roomName: string; initialFocusMessageId?: string; partnerIsOnline?: boolean; partnerLastActiveText?: string; };
+    ChatRoom: {
+        roomId: string;
+        roomName: string;
+        initialFocusMessageId?: string;
+        partnerIsOnline?: boolean;
+        partnerLastActiveText?: string;
+        returnTo?: ReturnToParams; // Added param
+    };
 };
 
 const GroupChatScreen = () => {
     const route = useRoute<RouteProp<ChatRoomParams, 'ChatRoom'>>();
     const navigation = useNavigation<any>();
     const { t } = useTranslation();
-    const { roomId, roomName: initialRoomName, initialFocusMessageId, partnerIsOnline: initialIsOnline, partnerLastActiveText: initialLastActive } = route.params;
+    const { roomId, roomName: initialRoomName, initialFocusMessageId, partnerIsOnline: initialIsOnline, partnerLastActiveText: initialLastActive, returnTo } = route.params;
 
     const { user } = useUserStore();
     const { showToast } = useToast();
@@ -73,6 +86,22 @@ const GroupChatScreen = () => {
             setActiveCallPopup(null);
         }
     }, [incomingCallRequest, roomId, members, user?.userId]);
+
+    // LOGIC FIX: Handle Back Gesture / Button when coming from another Tab (e.g. CourseDetails)
+    useEffect(() => {
+        if (!returnTo) return;
+
+        const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+            // Only intercept 'GO_BACK' action (which includes swipe back)
+            if (e.data.action.type === 'GO_BACK') {
+                e.preventDefault(); // Stop default pop
+                // Redirect to the source Tab/Screen
+                gotoTab(returnTo.tab, returnTo.screen, returnTo.params);
+            }
+        });
+
+        return unsubscribe;
+    }, [navigation, returnTo]);
 
     const handleJoinActiveCall = () => {
         if (!activeCallPopup) return;
@@ -146,6 +175,17 @@ const GroupChatScreen = () => {
 
     const handleLeaveRoom = () => Alert.alert(t('common.confirm'), t('chat.leave_confirm'), [{ text: t('common.cancel'), style: 'cancel' }, { text: t('chat.leave'), style: 'destructive', onPress: () => leaveRoom({ roomId }, { onSuccess: () => { setShowSettings(false); navigation.navigate('ChatRoomListScreen'); } }) }]);
 
+    // Function to trigger back manually (for back button in header)
+    const handleGoBack = () => {
+        if (returnTo) {
+            gotoTab(returnTo.tab, returnTo.screen, returnTo.params);
+        } else if (navigation.canGoBack()) {
+            navigation.goBack();
+        } else {
+            navigation.navigate('ChatRoomListScreen');
+        }
+    };
+
     const renderMemberItem = ({ item }: { item: MemberResponse }) => {
         const displayName = item.nickNameInRoom || item.nickname || item.fullname;
         const isSelf = item.userId === user?.userId;
@@ -194,6 +234,10 @@ const GroupChatScreen = () => {
             )}
 
             <View style={styles.header}>
+                <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
+                    <Icon name="arrow-back" size={26} color="#4F46E5" />
+                </TouchableOpacity>
+
                 <View style={styles.headerContent}>
                     {isPrivateRoom && targetMember && (<View style={{ position: 'relative', marginRight: 10 }}><Image source={targetMember.avatarUrl ? { uri: targetMember.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={{ width: 36, height: 36, borderRadius: 18 }} />{renderHeaderStatusDot()}</View>)}
                     <View style={{ alignItems: isPrivateRoom ? 'flex-start' : 'center', flex: 1 }}><Text style={styles.headerTitle} numberOfLines={1}>{displayRoomName}</Text><Text style={styles.headerSubtitle}>{getHeaderStatusText()}</Text></View>
@@ -235,6 +279,7 @@ const styles = StyleSheet.create({
     headerTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937' },
     headerSubtitle: { fontSize: 12, color: '#10B981', fontWeight: '500' },
     headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#FFF' },
+    backButton: { padding: 8, marginRight: 4 },
     modalContainer: { flex: 1, backgroundColor: '#F9FAFB', paddingTop: 30 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
     modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1F2937' },

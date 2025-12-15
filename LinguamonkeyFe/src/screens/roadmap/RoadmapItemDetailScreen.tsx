@@ -7,8 +7,8 @@ import { useRoadmap } from "../../hooks/useRoadmap";
 import { RoadmapItem } from "../../types/entity";
 import { createScaledSheet } from "../../utils/scaledStyles";
 
-const RoadmapItemDetailScreen = ({ navigation, route }) => {
-  const { itemId, roadmapId } = route.params;
+const RoadmapItemDetailScreen = ({ navigation, route }: any) => {
+  const { itemId, roadmapId } = route.params || {}; // Safe access
   const { t } = useTranslation();
   const [selectedTab, setSelectedTab] = useState<"overview" | "guidance" | "resources">("overview");
   const [refreshing, setRefreshing] = useState(false);
@@ -18,8 +18,8 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
 
   const { useRoadmapItemDetail, useStartRoadmapItem, useCompleteRoadmapItem } = useRoadmap();
 
-  // item có kiểu RoadmapItem (từ entity.ts). Nó KHÔNG có status, progress, prerequisites.
-  const { data: item, isLoading, error, refetch } = useRoadmapItemDetail(itemId);
+  // Handle case where itemId might be undefined/null from the previous screen
+  const { data: item, isLoading, error, refetch } = useRoadmapItemDetail(itemId || "");
   const startMut = useStartRoadmapItem();
   const completeMut = useCompleteRoadmapItem();
 
@@ -91,7 +91,6 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
     );
   };
 
-  // Cần sửa đổi các hàm này để nhận trạng thái hợp lệ hoặc trạng thái mặc định
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed": return "#10B981";
@@ -191,7 +190,6 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
       style={styles.relatedItem}
       onPress={() => navigation.push("RoadmapItemDetail", { itemId: related.id, roadmapId })}
     >
-      {/* Vì related.status không có, ta dùng mặc định 'available' */}
       <View style={[styles.relatedItemIcon, { backgroundColor: getStatusColor(related.status || "available") }]}>
         <Icon name={getTypeIcon(related.type)} size={16} color="#FFFFFF" />
       </View>
@@ -265,13 +263,11 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
         <Animated.View style={[styles.itemHeader, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.itemHeaderTop}>
             <View style={styles.itemTypeContainer}>
-              {/* Dùng inferredStatus để tránh lỗi item.status */}
               <Icon name={getTypeIcon(item.type)} size={24} color={getStatusColor(inferredStatus)} />
               <Text style={[styles.itemType, { color: getStatusColor(inferredStatus) }]}>
                 {t(`roadmap.types.${item.type}`)}
               </Text>
             </View>
-            {/* Dùng inferredStatus để tránh lỗi item.status */}
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor(inferredStatus) }]}>
               <Icon name={getStatusIcon(inferredStatus)} size={16} color="#FFFFFF" />
               <Text style={styles.statusText}>{t(`roadmap.status.${inferredStatus}`)}</Text>
@@ -288,7 +284,6 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
             </View>
             <View style={styles.metricItem}>
               <Icon name="star" size={20} color="#F59E0B" />
-              {/* Sửa lỗi exp_reward thành expReward */}
               <Text style={styles.metricText}>{item.expReward} XP</Text>
             </View>
             <View style={styles.metricItem}>
@@ -296,8 +291,6 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
               <Text style={styles.metricText}>{t(`roadmap.difficulty.${item.difficulty}`)}</Text>
             </View>
           </View>
-
-          {/* item.status và item.progress KHÔNG có, nên ta xóa khối progress Container */}
 
           {item.skills?.length && item.skills.length > 0 && (
             <View style={styles.skillsContainer}>
@@ -313,7 +306,6 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
           )}
         </Animated.View>
 
-        {/* Dùng inferredStatus thay cho item.status */}
         {inferredStatus !== "locked" && (
           <View style={styles.actionButtons}>
             {inferredStatus === "available" && (
@@ -328,20 +320,6 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
                 </Text>
               </TouchableOpacity>
             )}
-            {/* item.status không có, nên ta ẩn nút Complete */}
-            {/*             {inferredStatus === "in_progress" && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.completeButton, completeMut.isPending && styles.disabledButton]}
-                onPress={handleCompleteItem}
-                disabled={completeMut.isPending}
-              >
-                <Icon name="check" size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>
-                  {completeMut.isPending ? t("common.completing") : t("roadmap.markComplete")}
-                </Text>
-              </TouchableOpacity>
-            )} 
-            */}
           </View>
         )}
 
@@ -362,20 +340,6 @@ const RoadmapItemDetailScreen = ({ navigation, route }) => {
         <View style={styles.tabContent}>
           {selectedTab === "overview" && (
             <View>
-              {/* item.prerequisites KHÔNG có, xóa khối prerequisite container */}
-              {/*               {item.prerequisites?.length > 0 && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>{t("roadmap.prerequisites")}</Text>
-                  {item.prerequisites.map((prereq: string, index: number) => (
-                    <View key={index} style={styles.prerequisiteItem}>
-                      <Icon name="check-circle" size={16} color="#10B981" />
-                      <Text style={styles.prerequisiteText}>{prereq}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            */}
-
               {(nextItems.length > 0 || relatedItems.length > 0) && (
                 <>
                   {nextItems.length > 0 && (

@@ -17,13 +17,14 @@ import { useTranslation } from "react-i18next";
 import { useUserStore } from "../../stores/UserStore";
 import { useUsers } from "../../hooks/useUsers";
 import { useFriendships } from "../../hooks/useFriendships";
+import { useCouples } from "../../hooks/useCouples";
 import { useGetStudyHistory } from "../../hooks/useUserActivity";
 import { useCourses } from "../../hooks/useCourses";
 import { useRooms } from "../../hooks/useRoom";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useToast } from "../../utils/useToast";
-import { FriendshipStatus } from "../../types/enums";
+import { FriendshipStatus, CoupleStatus } from "../../types/enums";
 import type { UserProfileResponse } from "../../types/dto";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
@@ -222,6 +223,7 @@ const UserProfileViewScreen = () => {
 
   const { useUserProfile, useAdmireUser } = useUsers();
   const { useCreateFriendship, useUpdateFriendship, useDeleteFriendship } = useFriendships();
+  const { useCreateCouple, useUpdateCouple, useDeleteCouple } = useCouples();
   const { useCreatorCourses } = useCourses();
   const { useFindOrCreatePrivateRoom } = useRooms();
 
@@ -234,6 +236,9 @@ const UserProfileViewScreen = () => {
   const createFriendshipMutation = useCreateFriendship();
   const updateFriendshipMutation = useUpdateFriendship();
   const deleteFriendshipMutation = useDeleteFriendship();
+  const createCoupleMutation = useCreateCouple();
+  const updateCoupleMutation = useUpdateCouple();
+  const deleteCoupleMutation = useDeleteCouple();
   const admireMutation = useAdmireUser();
   const findOrCreateRoomMutation = useFindOrCreatePrivateRoom();
 
@@ -276,14 +281,14 @@ const UserProfileViewScreen = () => {
     });
   };
 
-  const handleCancelRequest = () => {
+  const handleCancelFriendRequest = () => {
     Alert.alert(t("profile.cancelRequest"), t("profile.cancelRequestConfirm"), [
       { text: t("common.cancel"), style: "cancel" },
       { text: t("common.yes"), style: "destructive", onPress: () => deleteFriendshipMutation.mutate({ user1Id: currentUser!.userId, user2Id: profileData!.userId }, { onSuccess: () => refetch() }) }
     ]);
   };
 
-  const handleAcceptRequest = () => {
+  const handleAcceptFriendRequest = () => {
     updateFriendshipMutation.mutate({ user1Id: profileData!.userId, user2Id: currentUser!.userId, req: { requesterId: profileData!.userId, receiverId: currentUser!.userId, status: FriendshipStatus.ACCEPTED } }, {
       onSuccess: () => { showToast({ type: "success", message: t("profile.friendAccepted") }); refetch(); }
     });
@@ -294,6 +299,53 @@ const UserProfileViewScreen = () => {
       { text: t("common.cancel"), style: "cancel" },
       { text: t("common.yes"), style: "destructive", onPress: () => deleteFriendshipMutation.mutate({ user1Id: currentUser!.userId, user2Id: profileData!.userId }, { onSuccess: () => refetch() }) }
     ]);
+  };
+
+  // --- COUPLE LOGIC ---
+
+  const handleSendCoupleRequest = () => {
+    if (!currentUser || !profileData) return;
+    Alert.alert("Start Dating?", "Send a couple request to " + (profileData.nickname || profileData.fullname) + "?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Send Love",
+        onPress: () => {
+          createCoupleMutation.mutate({
+            user1Id: currentUser.userId,
+            user2Id: profileData.userId,
+            status: CoupleStatus.PENDING, // FIX: Use Enum
+            startDate: new Date().toISOString()
+          }, { onSuccess: () => { showToast({ type: 'success', message: 'Request sent!' }); refetch(); } });
+        }
+      }
+    ]);
+  };
+
+  const handleCancelCoupleRequest = () => {
+    if (!currentUser || !profileData) return;
+    Alert.alert("Cancel", "Cancel couple request?", [
+      { text: "No", style: "cancel" },
+      { text: "Yes", style: "destructive", onPress: () => deleteCoupleMutation.mutate({ user1Id: currentUser.userId, user2Id: profileData.userId }, { onSuccess: () => refetch() }) }
+    ]);
+  };
+
+  const handleAcceptCoupleRequest = () => {
+    if (!currentUser || !profileData) return;
+    updateCoupleMutation.mutate({
+      user1Id: profileData.userId, // They sent it
+      user2Id: currentUser.userId,
+      req: {
+        user1Id: profileData.userId,
+        user2Id: currentUser.userId,
+        status: CoupleStatus.IN_LOVE, // FIX: Use Enum
+        startDate: new Date().toISOString()
+      }
+    }, { onSuccess: () => { showToast({ type: 'success', message: "You are now a couple!" }); refetch(); } });
+  };
+
+  const handleRejectCoupleRequest = () => {
+    if (!currentUser || !profileData) return;
+    deleteCoupleMutation.mutate({ user1Id: profileData.userId, user2Id: currentUser.userId }, { onSuccess: () => refetch() });
   };
 
   const handleAdmire = () => {
@@ -317,9 +369,24 @@ const UserProfileViewScreen = () => {
   }
 
   const { isFriend, friendRequestStatus, canSendFriendRequest, teacherCourses, badges, languages, stats, character3d, coupleInfo, friendshipDurationDays } = profileData;
-  const hasSent = friendRequestStatus?.hasSentRequest;
-  const hasReceived = friendRequestStatus?.hasReceivedRequest;
+  const hasSentFriend = friendRequestStatus?.hasSentRequest;
+  const hasReceivedFriend = friendRequestStatus?.hasReceivedRequest;
   const canChat = isFriend || profileData.allowStrangerChat;
+
+  // -- Determine Couple Status --
+
+  // 1. Check Active Relationship
+  const isCoupleActive = coupleInfo && [CoupleStatus.IN_LOVE, CoupleStatus.EXPLORING].includes(coupleInfo.status as CoupleStatus);
+
+  // 2. Check Pending Status (Using datingInviteSummary from DTO)
+  const datingInvite = profileData.datingInviteSummary;
+  const isCouplePending = datingInvite && datingInvite.status === 'PENDING';
+
+  const didISendCoupleReq = isCouplePending && datingInvite.viewerIsSender;
+  const didIReceiveCoupleReq = isCouplePending && !datingInvite.viewerIsSender;
+
+  // 3. Check if None/Available
+  const isCoupleNone = !isCoupleActive && !isCouplePending && (!coupleInfo || [CoupleStatus.EXPIRED, CoupleStatus.BREAK_UP].includes(coupleInfo.status as CoupleStatus));
 
   return (
     <ScreenLayout style={styles.screenBackground}>
@@ -336,8 +403,8 @@ const UserProfileViewScreen = () => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* SECTION 1: COUPLE BANNER */}
-        {coupleInfo && (
+        {/* SECTION 1: COUPLE BANNER (Only if Active) */}
+        {isCoupleActive && (
           <CoupleBadge
             coupleInfo={coupleInfo}
             currentUserName={profileData.nickname || profileData.fullname}
@@ -408,16 +475,45 @@ const UserProfileViewScreen = () => {
               </TouchableOpacity>
 
               {isFriend ? (
-                <TouchableOpacity style={[styles.iconActionBtn, styles.unfriendBtn]} onPress={handleUnfriend}>
-                  <Icon name="person-remove" size={22} color="#EF4444" />
-                </TouchableOpacity>
-              ) : hasReceived ? (
-                <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={handleAcceptRequest}>
+                <>
+                  {/* --- COUPLE ACTIONS FOR FRIENDS --- */}
+                  {isCoupleNone && (
+                    <TouchableOpacity style={[styles.actionBtn, styles.dateBtn]} onPress={handleSendCoupleRequest}>
+                      <Icon name="favorite" size={20} color="#FFF" />
+                      <Text style={styles.btnText}>Date</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {didISendCoupleReq && (
+                    <TouchableOpacity style={[styles.actionBtn, styles.cancelBtn]} onPress={handleCancelCoupleRequest}>
+                      <Icon name="timelapse" size={20} color="#6B7280" />
+                      <Text style={[styles.btnText, { color: '#6B7280' }]}>Waiting...</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {didIReceiveCoupleReq && (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity style={[styles.iconActionBtn, { backgroundColor: '#FEE2E2' }]} onPress={handleRejectCoupleRequest}>
+                        <Icon name="close" size={20} color="#EF4444" />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#E11D48', minWidth: 80 }]} onPress={handleAcceptCoupleRequest}>
+                        <Text style={styles.btnText}>Accept Love</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Unfriend */}
+                  <TouchableOpacity style={[styles.iconActionBtn, styles.unfriendBtn]} onPress={handleUnfriend}>
+                    <Icon name="person-remove" size={22} color="#EF4444" />
+                  </TouchableOpacity>
+                </>
+              ) : hasReceivedFriend ? (
+                <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={handleAcceptFriendRequest}>
                   <Icon name="check" size={20} color="#FFF" />
                   <Text style={styles.btnText}>{t("profile.accept")}</Text>
                 </TouchableOpacity>
-              ) : hasSent ? (
-                <TouchableOpacity style={[styles.actionBtn, styles.cancelBtn]} onPress={handleCancelRequest}>
+              ) : hasSentFriend ? (
+                <TouchableOpacity style={[styles.actionBtn, styles.cancelBtn]} onPress={handleCancelFriendRequest}>
                   <Icon name="close" size={20} color="#6B7280" />
                   <Text style={[styles.btnText, { color: '#6B7280' }]}>{t("profile.cancelRequest")}</Text>
                 </TouchableOpacity>
@@ -591,12 +687,14 @@ const styles = createScaledSheet({
   statNumber: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
   statLabel: { fontSize: 12, color: '#9CA3AF', marginTop: 2, textTransform: 'uppercase' },
   verticalDivider: { width: 1, height: '80%', backgroundColor: '#E5E7EB' },
-  buttonRow: { flexDirection: 'row', marginTop: 24, gap: 12, width: '100%', justifyContent: 'center' },
+  buttonRow: { flexDirection: 'row', marginTop: 24, gap: 12, width: '100%', justifyContent: 'center', flexWrap: 'wrap' },
   actionBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 24, gap: 8, justifyContent: 'center', minWidth: 100 },
   chatBtn: { backgroundColor: '#8B5CF6' },
   addBtn: { backgroundColor: '#3B82F6' },
   acceptBtn: { backgroundColor: '#10B981' },
   cancelBtn: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB' },
+  // New Date Button
+  dateBtn: { backgroundColor: '#E11D48' },
   disabledBtn: { backgroundColor: '#9CA3AF' },
   btnText: { color: '#FFF', fontWeight: '600', fontSize: 14 },
   iconActionBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },

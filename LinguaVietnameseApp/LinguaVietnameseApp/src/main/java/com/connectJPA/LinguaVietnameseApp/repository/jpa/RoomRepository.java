@@ -43,8 +43,8 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             "r.purpose != 'AI_CHAT' AND " +
             "r.isDeleted = false " +
             "ORDER BY " +
-            "   CASE WHEN rm.id.userId IS NOT NULL THEN 1 ELSE 0 END DESC, " + // Đã tham gia lên đầu
-            "   (SELECT COALESCE(MAX(cm.id.sentAt), r.updatedAt) FROM ChatMessage cm WHERE cm.roomId = r.roomId) DESC") // Sort theo tin nhắn mới nhất
+            "   CASE WHEN rm.id.userId IS NOT NULL THEN 1 ELSE 0 END DESC, " + 
+            "   (SELECT COALESCE(MAX(cm.id.sentAt), r.updatedAt) FROM ChatMessage cm WHERE cm.roomId = r.roomId) DESC") 
     Page<Room> findAllPublicRoomsWithPriority(
             @Param("roomName") String roomName,
             @Param("creatorId") UUID creatorId,
@@ -73,16 +73,12 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     @Query("SELECT COUNT(rm) FROM RoomMember rm WHERE rm.room.roomId = :roomId AND rm.isDeleted = false")
     long countMembersByRoomId(@Param("roomId") UUID roomId);
 
-    // FIXED: Query này quan trọng.
-    // 1. Tìm Room PRIVATE_CHAT chưa bị xóa.
-    // 2. Chứa member user1 và user2.
-    // 3. LƯU Ý: Không check rm.isDeleted = false trong subquery. Lý do: Nếu user đã rời phòng (soft delete), ta vẫn muốn tìm thấy phòng này để khôi phục lại họ.
     @Query("SELECT r FROM Room r " +
             "WHERE r.purpose = 'PRIVATE_CHAT' " +
             "AND r.isDeleted = false " +
             "AND EXISTS (SELECT rm1 FROM RoomMember rm1 WHERE rm1.room = r AND rm1.id.userId = :userId1) " +
             "AND EXISTS (SELECT rm2 FROM RoomMember rm2 WHERE rm2.room = r AND rm2.id.userId = :userId2)")
-    Optional<Room> findPrivateRoomBetweenUsers(@Param("userId1") UUID userId1, @Param("userId2") UUID userId2);
+    List<Room> findPrivateRoomsBetweenUsers(@Param("userId1") UUID userId1, @Param("userId2") UUID userId2);
 
     @Query("SELECT r FROM Room r WHERE r.purpose = :purpose AND r.roomType = :roomType AND r.isDeleted = false " +
             "AND (SELECT COUNT(rm) FROM RoomMember rm WHERE rm.room.roomId = r.roomId AND rm.isDeleted = false) < r.maxMembers")
@@ -120,7 +116,7 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     Page<Room> findJoinedRoomsStrict(
             @Param("userId") UUID userId,
             @Param("purpose") RoomPurpose purpose,
-            Pageable pageable);
+            @Param("pageable") Pageable pageable);
 
     @Query("SELECT r FROM Room r WHERE " +
             "(:roomName IS NULL OR r.roomName LIKE %:roomName%) AND " +
@@ -145,7 +141,7 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     Page<Room> findJoinedRoomsExcludingAi(
             @Param("userId") UUID userId,
             @Param("purpose") RoomPurpose purpose,
-            Pageable pageable);
+            @Param("pageable") Pageable pageable);
 
     Optional<Room> findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(UUID userId, RoomPurpose purpose, RoomType roomType);
 

@@ -58,7 +58,6 @@ public class RoomServiceImpl implements RoomService {
     private final ChatMessageRepository chatMessageRepository;
     private final NotificationService notificationService;
 
-    // Helper to safely get UUID from Security Context
     private UUID getCurrentUserUUID() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
@@ -79,7 +78,6 @@ public class RoomServiceImpl implements RoomService {
 
         List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId());
 
-        // 1. Map danh sách thành viên
         List<UserProfileResponse> memberProfiles = members.stream()
             .map(RoomMember::getUser)
             .map(user -> UserProfileResponse.builder()
@@ -92,19 +90,16 @@ public class RoomServiceImpl implements RoomService {
 
         response.setMembers(memberProfiles);
 
-        // 2. LOGIC MỚI: Tính toán Partner Online/Offline cho Private Room
         if (room.getRoomType() == RoomType.PRIVATE) {
             try {
                 UUID currentUserId = getCurrentUserUUID();
                 if (currentUserId != null) {
-                    // Tìm partner (người không phải là mình)
                     Optional<RoomMember> partnerOpt = members.stream()
                             .filter(m -> !m.getId().getUserId().equals(currentUserId))
                             .findFirst();
 
                     if (partnerOpt.isPresent()) {
                         User partner = partnerOpt.get().getUser();
-                        // Set các thông tin quan trọng cho Client hiển thị
                         response.setPartnerIsOnline(UserStatusUtils.isOnline(partner.getLastActiveAt()));
                         response.setPartnerLastActiveText(UserStatusUtils.formatLastActive(partner.getLastActiveAt()));
                     }
@@ -181,7 +176,7 @@ public class RoomServiceImpl implements RoomService {
                 creatorId, 
                 purpose, 
                 roomType, 
-                currentUserId, // Truyền userId vào để check joined
+                currentUserId,
                 pageable
         );
 
@@ -224,7 +219,6 @@ public class RoomServiceImpl implements RoomService {
             log.info("Created Course Room for Course ID: {}", courseId);
         }
 
-        // 2. ALWAYS Check if Creator is in the room. If not, Add them.
         boolean isCreatorInRoom = roomMemberRepository.existsById_RoomIdAndId_UserIdAndIsDeletedFalse(room.getRoomId(), creatorId);
         
         if (!isCreatorInRoom) {
@@ -275,7 +269,6 @@ public class RoomServiceImpl implements RoomService {
         room.setUpdatedAt(OffsetDateTime.now());
         room = roomRepository.save(room);
 
-        // 1. Thêm Creator (Admin)
         RoomMember creatorMember = RoomMember.builder()
                 .id(new RoomMemberId(room.getRoomId(), request.getCreatorId()))
                 .room(room)
@@ -286,19 +279,16 @@ public class RoomServiceImpl implements RoomService {
                 .build();
         roomMemberRepository.save(creatorMember);
 
-        // Danh sách các thành viên (bao gồm cả creator)
         List<User> initialMembers = new ArrayList<>();
         initialMembers.add(creator);
 
-        // 2. Thêm các thành viên được mời (memberIds)
         if (request.getMemberIds() != null && !request.getMemberIds().isEmpty()) {
             List<UUID> memberIdsToAdd = request.getMemberIds().stream()
-                .filter(id -> !id.equals(request.getCreatorId())) // Loại bỏ creator nếu có
+                .filter(id -> !id.equals(request.getCreatorId())) 
                 .distinct()
                 .collect(Collectors.toList());
 
             if (!memberIdsToAdd.isEmpty()) {
-                // Lấy User Entity của tất cả thành viên được mời
                 List<User> invitedUsers = userRepository.findAllById(memberIdsToAdd);
 
                 for (User user : invitedUsers) {
@@ -322,7 +312,6 @@ public class RoomServiceImpl implements RoomService {
             }
         }
 
-        // Trả về response thông qua hàm chuẩn hóa đã fix
         return toRoomResponseWithMembers(room);
     }
 
@@ -333,13 +322,36 @@ public class RoomServiceImpl implements RoomService {
             throw new AppException(ErrorCode.INVALID_KEY);
         }
 
-        Optional<Room> existingRoom = roomRepository.findPrivateRoomBetweenUsers(userId1, userId2);
-        if (existingRoom.isPresent()) {
-            Room room = existingRoom.get();
-            restoreMemberIfDeleted(room, userId1);
-            restoreMemberIfDeleted(room, userId2);
-            // Cập nhật để trả về response đầy đủ thành viên
-            return toRoomResponseWithMembers(room);
+        // Changed logic to handle multiple existing private rooms
+        List<Room> existingRooms = roomRepository.findPrivateRoomsBetweenUsers(userId1, userId2);
+        
+        if (!existingRooms.isEmpty()) {
+            Room selectedRoom = existingRooms.get(0);
+            OffsetDateTime maxTime = selectedRoom.getUpdatedAt();
+
+            // Check for room with the nearest message
+            if (existingRooms.size() > 1) {
+                for (Room r : existingRooms) {
+                     Optional<ChatMessage> lastMsg = chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(r.getRoomId());
+                     if (lastMsg.isPresent()) {
+                         OffsetDateTime msgTime = lastMsg.get().getId().getSentAt();
+                         if (maxTime == null || msgTime.isAfter(maxTime)) {
+                             maxTime = msgTime;
+                             selectedRoom = r;
+                         }
+                     } else {
+                         // Fallback to updatedAt if no messages
+                         if (r.getUpdatedAt() != null && (maxTime == null || r.getUpdatedAt().isAfter(maxTime))) {
+                             maxTime = r.getUpdatedAt();
+                             selectedRoom = r;
+                         }
+                     }
+                }
+            }
+
+            restoreMemberIfDeleted(selectedRoom, userId1);
+            restoreMemberIfDeleted(selectedRoom, userId2);
+            return toRoomResponseWithMembers(selectedRoom);
         }
 
         User user1 = userRepository.findByUserIdAndIsDeletedFalse(userId1).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -377,7 +389,6 @@ public class RoomServiceImpl implements RoomService {
                 .joinedAt(OffsetDateTime.now())
                 .build());
 
-        // Cập nhật để trả về response đầy đủ thành viên
         return toRoomResponseWithMembers(room);
     }
 
@@ -461,7 +472,7 @@ public class RoomServiceImpl implements RoomService {
 
         if (!room.getCreatorId().equals(currentUserId)) {
              RoomMember requester = roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, currentUserId)
-                          .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
+                           .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
              if(!Boolean.TRUE.equals(requester.getIsAdmin())) {
                  throw new AppException(ErrorCode.UNAUTHORIZED);
              }
@@ -578,12 +589,12 @@ public class RoomServiceImpl implements RoomService {
 
                 if (hoursSinceLastMessage < 8) {
                     log.info("Reusing AI room {} (Last active {} hours ago)", latestRoom.getRoomId(), hoursSinceLastMessage);
-                    return toRoomResponseWithMembers(latestRoom); // <-- Cập nhật để trả về response đầy đủ
+                    return toRoomResponseWithMembers(latestRoom); 
                 }
             } else {
                  long hoursSinceCreation = ChronoUnit.HOURS.between(latestRoom.getCreatedAt(), OffsetDateTime.now());
                  if (hoursSinceCreation < 8) {
-                     return toRoomResponseWithMembers(latestRoom); // <-- Cập nhật để trả về response đầy đủ
+                     return toRoomResponseWithMembers(latestRoom);
                  }
             }
         }
@@ -612,7 +623,6 @@ public class RoomServiceImpl implements RoomService {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-            // Hàm này bây giờ đã bao gồm logic tính toán online/offline và members
             return toRoomResponseWithMembers(room);
         } catch (Exception e) {
             log.error("Error while fetching room by ID {}: {}", id, e.getMessage());
@@ -643,7 +653,6 @@ public class RoomServiceImpl implements RoomService {
         Room room = roomRepository.findByCourseIdAndIsDeletedFalse(courseId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-        // Hàm toRoomResponseWithMembers đã bao gồm memberCount, creator info (nếu cần) và members.
         RoomResponse response = toRoomResponseWithMembers(room);
         
         userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
@@ -683,7 +692,7 @@ public class RoomServiceImpl implements RoomService {
         }
 
         if (roomMemberRepository.existsById(new RoomMemberId(room.getRoomId(), userId))) {
-            return toRoomResponseWithMembers(room); // <-- Cập nhật để trả về response đầy đủ
+            return toRoomResponseWithMembers(room); 
         }
 
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
@@ -699,7 +708,6 @@ public class RoomServiceImpl implements RoomService {
                 .build();
         roomMemberRepository.save(member);
 
-        // Cập nhật để trả về response đầy đủ thành viên
         return toRoomResponseWithMembers(room);
     }
 

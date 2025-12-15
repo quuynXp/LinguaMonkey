@@ -5,7 +5,6 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
@@ -73,7 +72,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         response.setTranslations(entity.getTranslations()); 
         response.setPurpose(purpose);
         response.setMediaUrl(entity.getMediaUrl());
-        // Ensure E2EE metadata is returned to FE
         response.setSenderEphemeralKey(entity.getSenderEphemeralKey());
         response.setUsedPreKeyId(entity.getUsedPreKeyId());
         response.setInitializationVector(entity.getInitializationVector());
@@ -114,7 +112,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
         ChatMessage message = chatMessageMapper.toEntity(request);
         
-        // Manual mapping ensures these fields are set correctly regardless of MapStruct config
         message.setSenderEphemeralKey(request.getSenderEphemeralKey());
         message.setUsedPreKeyId(request.getUsedPreKeyId());
         message.setInitializationVector(request.getInitializationVector());
@@ -126,9 +123,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             message.setMediaUrl(request.getMediaUrl());
         }
 
-        // --- MEDIA TEXT CONTENT FALLBACK LOGIC ---
-        // If message is Media but content is empty, fill it for Notifications/LastMessage purposes.
-        // The Mobile App will hide this text if messageType is IMAGE/VIDEO, so it's safe to store.
         if (message.getContent() == null || message.getContent().trim().isEmpty()) {
             if (message.getMessageType() == MessageType.IMAGE) {
                 message.setContent("📷 [Hình ảnh]"); 
@@ -151,12 +145,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
         message.setRead(false);
 
-        // SAVE TO DB
         ChatMessage savedMessage = chatMessageRepository.save(message);
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);
 
-        // Update stats (Safe try-catch)
         if (!isAiBot) {
             try {
                 if (badgeService != null) badgeService.updateBadgeProgress(request.getSenderId(), BadgeType.MESSAGE_COUNT, 1);
@@ -169,15 +161,12 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         if (isAiBot) response.setSenderProfile(null); 
         else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
-        // --- BROADCAST LOGIC (Isolated from DB Transaction) ---
         try {
-            // 1. Send via WebSocket to Room Topic
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
             
             List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
                 .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(request.getSenderId())).toList();
 
-            // 2. Send to Redis (for cross-instance or analytics)
             Map<String, Object> event = new HashMap<>();
             event.put("type", "NEW_MESSAGE_EVENT");
             event.put("messageId", savedMessage.getId().getChatMessageId().toString());
@@ -191,7 +180,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 log.error("Redis publish failed for message {}", savedMessage.getId().getChatMessageId(), redisEx);
             }
 
-            // 3. Send Notifications
             for (UUID uId : memberIds) {
                 try {
                     messagingTemplate.convertAndSendToUser(uId.toString(), "/queue/notifications", response);
@@ -210,18 +198,16 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     String contentForNotification;
                     
                     if (isEncrypted) {
-                        contentForNotification = "🔒 Tin nhắn được mã hóa";
+                        contentForNotification = "🔒 Tin nhắn bí mật";
                         dataPayload.put("isEncrypted", "true");
                         dataPayload.put("ciphertext", savedMessage.getContent()); 
                         dataPayload.put("senderEphemeralKey", savedMessage.getSenderEphemeralKey());
                         dataPayload.put("initializationVector", savedMessage.getInitializationVector());
-                        
-                        if (savedMessage.getSelfContent() != null) {
-                        }
-                    
+                        dataPayload.put("content", "🔒 Tin nhắn bí mật"); 
                     } else {
                         contentForNotification = savedMessage.getContent();
                         dataPayload.put("isEncrypted", "false");
+                        dataPayload.put("content", savedMessage.getContent());
                     }
                     
                     String payloadJson = gson.toJson(dataPayload);

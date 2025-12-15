@@ -304,33 +304,41 @@ public class LessonServiceImpl implements LessonService {
 
         if (userId != null && lesson.getCourseVersions() != null && !lesson.getCourseVersions().isEmpty()) {
             boolean isEnrolled = false;
+            
             for (CourseVersionLesson link : lesson.getCourseVersions()) {
                 CourseVersion version = link.getCourseVersion();
-                boolean enrolled = courseVersionEnrollmentRepository.existsByCourseVersion_VersionIdAndUserIdAndStatus(
-                        version.getVersionId(), userId, CourseVersionEnrollmentStatus.IN_PROGRESS)
-                        || courseVersionEnrollmentRepository.existsByCourseVersion_VersionIdAndUserIdAndStatus(
-                        version.getVersionId(), userId, CourseVersionEnrollmentStatus.COMPLETED);
+                boolean enrolled = courseVersionEnrollmentRepository.existsByUserIdAndCourseVersion_VersionId(userId, version.getVersionId());
+                
                 if (enrolled) {
                     isEnrolled = true;
                     break;
                 }
             }
+
             if (!isEnrolled) {
-                // Check free courses auto-enroll
                 for (CourseVersionLesson link : lesson.getCourseVersions()) {
                     CourseVersion version = link.getCourseVersion();
                     Course course = version.getCourse();
+                    
                     if (course.getLatestPublicVersion().getPrice().compareTo(BigDecimal.ZERO) <= 0) {
-                        CourseVersionEnrollment newEnrollment = CourseVersionEnrollment.builder()
-                                .courseVersion(version)
-                                .user(userRepository.getReferenceById(userId))
-                                .userId(userId)
-                                .enrolledAt(OffsetDateTime.now())
-                                .status(CourseVersionEnrollmentStatus.IN_PROGRESS)
-                                .progress(0.0)
-                                .build();
-                        courseVersionEnrollmentRepository.save(newEnrollment);
-                        isEnrolled = true;
+                        
+                        Optional<CourseVersionEnrollment> existingEnrollment = courseVersionEnrollmentRepository
+                                .findByCourseVersion_VersionIdAndUserId(version.getVersionId(), userId);
+
+                        if (existingEnrollment.isPresent()) {
+                            isEnrolled = true;
+                        } else {
+                            CourseVersionEnrollment newEnrollment = CourseVersionEnrollment.builder()
+                                    .courseVersion(version)
+                                    .user(userRepository.getReferenceById(userId))
+                                    .userId(userId)
+                                    .enrolledAt(OffsetDateTime.now())
+                                    .status(CourseVersionEnrollmentStatus.IN_PROGRESS) // Set IN_PROGRESS để lần sau check status cũ cũng pass
+                                    .progress(0.0)
+                                    .build();
+                            courseVersionEnrollmentRepository.save(newEnrollment);
+                            isEnrolled = true;
+                        }
                         break; 
                     }
                 }

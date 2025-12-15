@@ -1,11 +1,11 @@
 import { Platform } from 'react-native';
-import { Image as CompressorImage, Video as CompressorVideo, Audio as CompressorAudio } from 'react-native-compressor';
+import { Image as CompressorImage, Video as CompressorVideo } from 'react-native-compressor';
 import { API_BASE_URL } from "../api/apiConfig";
 import { useTokenStore } from '../stores/tokenStore';
 
 export interface FileUploadResponse {
   fileId: string;
-  fileUrl: string;
+  fileUrl: string; // Đây sẽ là link lh3.googleusercontent... siêu nhanh
   fileName: string;
   fileType: string;
   size: number;
@@ -23,18 +23,16 @@ const compressMedia = async (uri: string, type: string): Promise<string> => {
       });
     } if (type.startsWith('video/')) {
       console.log("⏳ Starting video compression...");
-      // Với bài giảng online: 720p và Bitrate thấp là đủ nét và nhẹ.
       const result = await CompressorVideo.compress(uri, {
         compressionMethod: 'manual',
         maxSize: 1280, // 720p
-        bitrate: 1000 * 1000, // Giới hạn 1Mbps (Video 1 tiếng ~ 450MB) -> Upload rất nhanh
+        bitrate: 1000 * 1000,
       }, (progress) => {
         console.log(`Compression: ${(progress * 100).toFixed(0)}%`);
       });
       console.log("✅ Compression done:", result);
       return result;
     }
-    // Audio compression is tricky due to formats, usually skip or use specific lib
     return uri;
   } catch (error) {
     console.warn("Compression failed, using original file:", error);
@@ -48,18 +46,15 @@ export async function uploadTemp(file: { uri: string; name: string; type: string
 
   let fileUri = file.uri;
 
-  // Fix URI for Android
   if (Platform.OS === 'android') {
     if (!fileUri.startsWith('file://') && !fileUri.startsWith('content://')) {
       fileUri = `file://${fileUri}`;
     }
   }
 
-  // 1. Optimize before upload
   console.log("🚀 [UPLOAD] Optimizing file...");
   const optimizedUri = await compressMedia(fileUri, file.type);
 
-  // Handle case where compressor removes file:// prefix on Android
   let finalUri = optimizedUri;
   if (Platform.OS === 'android' && !finalUri.startsWith('file://') && !finalUri.startsWith('content://')) {
     finalUri = `file://${finalUri}`;
@@ -75,28 +70,30 @@ export async function uploadTemp(file: { uri: string; name: string; type: string
   form.append("file", fileToUpload);
 
   const url = `${API_BASE_URL}/api/v1/files/upload-temp`;
-  console.log("🚀 [UPLOAD] Starting upload to:", url);
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
-        // 'Content-Type': 'multipart/form-data', // Don't set this manually with fetch + FormData
       },
       body: form,
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.log("🔥 [UPLOAD ERROR] Status:", response.status);
-      console.log("🔥 [UPLOAD ERROR] Body:", errorText);
       throw new Error(`Upload failed: ${response.status} - ${errorText}`);
     }
 
     const data: FileUploadResponse = await response.json();
-    console.log("✅ [UPLOAD SUCCESS] ID:", data.fileId);
+    console.log("✅ [UPLOAD SUCCESS] URL:", data.fileUrl);
     return data;
 
   } catch (err: any) {

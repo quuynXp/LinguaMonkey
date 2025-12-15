@@ -21,6 +21,8 @@ import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -35,27 +37,9 @@ public class StorageServiceImpl implements StorageService {
 
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
     
-    // FIX: Đổi link template ảnh sang định dạng direct link có chứa placeholder %s
-    // Link này (lh3) tối ưu hơn cho thẻ <Image> của React Native vì load trực tiếp không qua redirect
-    private static final String IMAGE_URL_TEMPLATE = "https://lh3.googleusercontent.com/d/%s";
-    
-    // Link cho file thường (download)
+    // Fallback template
+    private static final String THUMBNAIL_URL_TEMPLATE = "https://drive.google.com/thumbnail?id=%s&sz=w1920";
     private static final String BINARY_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
-
-    private String generateUrl(String fileId, String mimeType) {
-        if (mimeType != null && mimeType.startsWith("image/")) {
-            // FIX: String.format giờ sẽ hoạt động đúng vì template đã có %s
-            return String.format(IMAGE_URL_TEMPLATE, fileId);
-        }
-        return String.format(BINARY_URL_TEMPLATE, fileId);
-    }
-    
-    private String generateUrl(String fileId, MediaType mediaType) {
-        if (mediaType == MediaType.IMAGE) {
-            return String.format(IMAGE_URL_TEMPLATE, fileId);
-        }
-        return String.format(BINARY_URL_TEMPLATE, fileId);
-    }
 
     @Transactional
     @Override
@@ -85,7 +69,7 @@ public class StorageServiceImpl implements StorageService {
             InputStreamContent mediaContent = new InputStreamContent(contentType, inputStream);
 
             File uploadedFile = driveService.files().create(fileMetadata, mediaContent)
-                    .setFields("id")
+                    .setFields("id, thumbnailLink, webContentLink") 
                     .execute();
 
             String fileId = uploadedFile.getId();
@@ -99,8 +83,13 @@ public class StorageServiceImpl implements StorageService {
 
             log.info("Uploaded {} to Drive. ID: {}", fileName, fileId);
             
-            // FIX: Truyền contentType vào để chọn đúng template URL cho ảnh
-            return generateUrl(fileId, contentType);
+            if (contentType != null && contentType.startsWith("image/") && uploadedFile.getThumbnailLink() != null) {
+                return uploadedFile.getThumbnailLink().replace("=s220", "=s1920");
+            }
+
+            return uploadedFile.getWebContentLink() != null 
+                    ? uploadedFile.getWebContentLink() 
+                    : String.format(BINARY_URL_TEMPLATE, fileId);
             
         } catch (IOException e) {
             log.error("Google Drive stream upload failed", e);
@@ -113,67 +102,71 @@ public class StorageServiceImpl implements StorageService {
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {
         try {
             String fileId = extractFileId(tempPath); 
+            log.info("Committing file with Extracted ID: {}", fileId);
 
-            File driveFile = driveService.files().get(fileId).setFields("name").execute();
+            File driveFile = driveService.files().get(fileId)
+                    .setFields("id, name, thumbnailLink, webContentLink")
+                    .execute();
+            
             String fileName = driveFile.getName();
 
             UserMedia media = UserMedia.builder()
-                    .filePath(fileId) // Chỉ lưu ID sạch vào DB
+                    .filePath(fileId) // Chỉ lưu File ID vào filePath
                     .fileName(fileName)
                     .userId(userId)
                     .mediaType(mediaType)
                     .createdAt(OffsetDateTime.now())
                     .build();
-
-            UserMedia savedMedia = mediaRepo.save(media);
             
-            savedMedia.setFileUrl(generateUrl(fileId, mediaType)); 
+            String optimizedUrl;
+            if (mediaType == MediaType.IMAGE && driveFile.getThumbnailLink() != null) {
+                optimizedUrl = driveFile.getThumbnailLink().replace("=s220", "=s1920");
+            } else {
+                optimizedUrl = driveFile.getWebContentLink() != null 
+                        ? driveFile.getWebContentLink() 
+                        : String.format(BINARY_URL_TEMPLATE, fileId);
+            }
             
-            return savedMedia;
+            media.setFileUrl(optimizedUrl); 
+            
+            return mediaRepo.save(media);
         } catch (IOException e) {
-            log.error("Commit Drive file failed", e);
+            log.error("Commit Drive file failed. TempPath: {}", tempPath, e);
             throw new RuntimeException("Commit Drive file failed", e);
         }
     }
 
-    // Hàm tách ID chuẩn xác
     private String extractFileId(String url) {
-        String fileId = url;
         if (url == null) return "";
         
-        if (url.contains("/file/d/")) {
-            int start = url.indexOf("/file/d/") + 8;
-            int end = url.indexOf("/", start);
-            if (end == -1) end = url.indexOf("?", start);
-            if (end == -1) end = url.length();
-            fileId = url.substring(start, end);
-        } else if (url.contains("/d/")) { // Cho link lh3 hoặc link d/ rút gọn
-            int start = url.indexOf("/d/") + 3;
-            int end = url.indexOf("?", start); // lh3 thường không có params nhưng cứ check
-            if (end == -1) end = url.indexOf("/", start); // Check thêm slash
-            if (end == -1) end = url.length();
-            fileId = url.substring(start, end);
-        } else if (url.contains("id=")) {
-            int start = url.indexOf("id=") + 3;
-            int end = url.indexOf("&", start);
-            if (end == -1) end = url.length();
-            fileId = url.substring(start, end);
+        Pattern pattern = Pattern.compile("([a-zA-Z0-9_-]{25,})");
+        Matcher matcher = pattern.matcher(url);
+
+        if (url.contains("/file/d/") || url.contains("/d/") || url.contains("id=")) {
+             while (matcher.find()) {
+                 String candidate = matcher.group(1);
+                 if (!candidate.contains("http") && !candidate.contains("google")) {
+                     return candidate;
+                 }
+             }
         }
-        return fileId;
+
+        if (url.matches("^[a-zA-Z0-9_-]+$")) {
+            return url;
+        }
+        
+        log.warn("Could not extract clean Drive ID from: {}", url);
+        return url;
     }
 
     @Override
     public void deleteFile(String objectPath) {
         try {
             String fileId = extractFileId(objectPath);
-            // Nếu không extract được (do path là ID trần), dùng luôn path
-            if (fileId.equals(objectPath) && objectPath.contains("http")) {
-                 // Trường hợp path là url nhưng parse lỗi, log warning
-                 log.warn("Could not extract ID from path: {}", objectPath);
+            if (fileId.contains("http")) {
+                 log.warn("Aborting delete. Invalid ID extraction from path: {}", objectPath);
+                 return; 
             }
-            // Fallback nếu objectPath đã là ID
-            if (!objectPath.contains("/")) fileId = objectPath;
-
             driveService.files().delete(fileId).execute();
             log.info("Deleted file from Drive: {}", fileId);
         } catch (IOException e) {
@@ -184,12 +177,14 @@ public class StorageServiceImpl implements StorageService {
 
     @Override
     public String getFileUrl(String fileId) {
-        // Mặc định trả về binary download link nếu không biết type
-        return String.format(BINARY_URL_TEMPLATE, fileId);
+        return String.format(THUMBNAIL_URL_TEMPLATE, fileId);
     }
     
     public String getFileUrl(String fileId, MediaType type) {
-        return generateUrl(fileId, type);
+        if (type == MediaType.IMAGE) {
+            return String.format(THUMBNAIL_URL_TEMPLATE, fileId);
+        }
+        return String.format(BINARY_URL_TEMPLATE, fileId);
     }
 
     @Override

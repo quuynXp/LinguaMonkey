@@ -10,6 +10,7 @@ import {
     TextInput,
     Modal,
     ScrollView,
+    Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
@@ -22,9 +23,9 @@ import { useFriendships } from '../../hooks/useFriendships';
 import { useCouples } from '../../hooks/useCouples';
 import { getAvatarSource } from '../../utils/avatarUtils';
 import { getCountryFlag } from '../../utils/flagUtils';
-import { UserResponse, UserProfileResponse } from '../../types/dto';
+import { UserResponse, UserProfileResponse, CoupleResponse } from '../../types/dto';
 import { gotoTab } from '../../utils/navigationRef';
-import { FriendshipStatus, Country, AgeRange } from '../../types/enums';
+import { FriendshipStatus, Country, AgeRange, CoupleStatus } from '../../types/enums';
 
 type RouteParams = {
     SuggestedUsersScreen: {
@@ -32,7 +33,7 @@ type RouteParams = {
     };
 };
 
-// --- Filter Modal Component ---
+// --- Filter Modal Component (Unchanged) ---
 const FilterModal = ({ visible, onClose, onApply, currentFilters }: any) => {
     const { t } = useTranslation();
     const [country, setCountry] = useState<Country | undefined>(currentFilters.country);
@@ -115,10 +116,14 @@ const SuggestedUsersScreen = () => {
     // Hooks
     const { useSearchPublicUsers, useSuggestedUsers } = useUsers();
     const { useAllFriendships, useCreateFriendship, useUpdateFriendship } = useFriendships();
-    const { useAllCouples } = useCouples();
+    const { useAllCouples, useUpdateCouple, useDeleteCouple } = useCouples();
 
     const createFriendshipMutation = useCreateFriendship();
     const updateFriendshipMutation = useUpdateFriendship();
+
+    // Couple Mutations
+    const updateCoupleMutation = useUpdateCouple();
+    const deleteCoupleMutation = useDeleteCouple();
 
     // --- DATA FETCHING ---
 
@@ -133,7 +138,6 @@ const SuggestedUsersScreen = () => {
         user?.userId || '', 0, 20
     );
 
-    // FIX TYPE ERROR: Explicitly type the useMemo return to allow mixed types in FlatList
     const exploreUsers = useMemo((): (UserResponse | UserProfileResponse)[] => {
         if (isSearching) return (searchData?.data || []);
         return (suggestedData?.content || []);
@@ -143,42 +147,40 @@ const SuggestedUsersScreen = () => {
 
 
     // TAB 1: Requests (Couple Pending + Friend Sent/Received)
+    // Fetch Couple Requests
     const { data: coupleReqData, refetch: refetchCoupleReq } = useAllCouples({
-        user1Id: user?.userId,
-        status: 'PENDING',
+        status: CoupleStatus.PENDING,
         page: 0, size: 20
     });
 
     const { data: friendSentData, refetch: refetchFriendSent } = useAllFriendships({
         requesterId: user?.userId,
-        status: 'PENDING',
+        status: FriendshipStatus.PENDING,
         page: 0, size: 20
     });
 
     const { data: friendRecData, refetch: refetchFriendRec } = useAllFriendships({
         receiverId: user?.userId,
-        status: 'PENDING',
+        status: FriendshipStatus.PENDING,
         page: 0, size: 20
     });
 
     // TAB 2: Friends & Active Couple
     const { data: friendsData, refetch: refetchFriends, isLoading: loadingFriends } = useAllFriendships({
         requesterId: user?.userId,
-        status: 'ACCEPTED',
+        status: FriendshipStatus.ACCEPTED,
         page: 0, size: 100
     });
 
-    // Fetch Active Couple (In Love)
+    // Fetch Active Couple (IN_LOVE) or Exploring
     const { data: activeCoupleData, refetch: refetchActiveCouple } = useAllCouples({
-        user1Id: user?.userId,
-        status: 'IN_LOVE',
-        page: 0, size: 1
+        status: CoupleStatus.IN_LOVE,
+        page: 0, size: 10
     });
-    // Fallback for EXPLORING status if needed
+
     const { data: exploringCoupleData, refetch: refetchExploringCouple } = useAllCouples({
-        user1Id: user?.userId,
-        status: 'EXPLORING',
-        page: 0, size: 1
+        status: CoupleStatus.EXPLORING,
+        page: 0, size: 10
     });
 
 
@@ -193,8 +195,13 @@ const SuggestedUsersScreen = () => {
             return match;
         };
 
-        const couples = (coupleReqData?.content || []).map(c => {
-            const isMeUser1 = c.user1?.userId === user?.userId;
+        // Filter couples involving current user
+        const rawCouples = coupleReqData?.content || [];
+        const myCouples = rawCouples.filter(c => c.user1Id === user?.userId || c.user2Id === user?.userId);
+
+        const couples = myCouples.map(c => {
+            const isMeUser1 = c.user1Id === user?.userId;
+            // If I am User1, I sent it. If I am User2, I received it.
             return {
                 ...c,
                 type: isMeUser1 ? 'COUPLE_SENT' : 'COUPLE_RECEIVED',
@@ -209,22 +216,30 @@ const SuggestedUsersScreen = () => {
     }, [coupleReqData, friendSentData, friendRecData, keyword, user?.userId]);
 
     const tab2Data = useMemo(() => {
+        // 1. Get Base Friends
         const list = (friendsData?.content || []).map(f => {
             const isMeRequester = f.requester?.userId === user?.userId;
             return { ...f, targetUser: isMeRequester ? f.receiver : f.requester, type: 'FRIEND' };
         }).filter(item => item.targetUser !== null);
 
-        const activeCouple = (activeCoupleData?.content && activeCoupleData.content.length > 0)
-            ? activeCoupleData.content[0]
-            : (exploringCoupleData?.content && exploringCoupleData.content.length > 0 ? exploringCoupleData.content[0] : null);
+        // 2. Determine Active Couple (Priority: IN_LOVE > EXPLORING)
+        // Filter out couples that don't belong to me just in case API returns public
+        const myInLove = (activeCoupleData?.content || []).find(c => c.user1Id === user?.userId || c.user2Id === user?.userId);
+        const myExploring = (exploringCoupleData?.content || []).find(c => c.user1Id === user?.userId || c.user2Id === user?.userId);
+
+        const activeCouple = myInLove || myExploring;
 
         let finalList: any[] = list;
 
         if (activeCouple) {
-            const isMeUser1 = activeCouple.user1?.userId === user?.userId;
+            const isMeUser1 = activeCouple.user1Id === user?.userId;
             const partner = isMeUser1 ? activeCouple.user2 : activeCouple.user1;
+
             if (partner) {
+                // Remove partner from regular friends list to avoid duplication
                 finalList = list.filter(f => f.targetUser.userId !== partner.userId);
+
+                // Add partner to TOP of list with special type
                 finalList.unshift({
                     ...activeCouple,
                     targetUser: partner,
@@ -287,16 +302,54 @@ const SuggestedUsersScreen = () => {
         } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
     };
 
+    // --- COUPLE ACTIONS ---
+    const handleAcceptCouple = async (coupleReq: CoupleResponse) => {
+        if (!user?.userId) return;
+        setActionLoadingId(coupleReq.user1Id); // Assuming user1 is the sender
+        try {
+            // Determine correct status flow based on business logic, usually straight to EXPLORING or IN_LOVE?
+            // For now, assuming PENDING -> IN_LOVE based on standard flow
+            await updateCoupleMutation.mutateAsync({
+                user1Id: coupleReq.user1Id,
+                user2Id: coupleReq.user2Id,
+                req: {
+                    user1Id: coupleReq.user1Id,
+                    user2Id: coupleReq.user2Id,
+                    status: CoupleStatus.IN_LOVE,
+                    startDate: new Date().toISOString()
+                }
+            });
+            refetchCoupleReq();
+            refetchActiveCouple();
+            Alert.alert(t('common.success'), "You are now a couple!");
+        } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
+    };
+
+    const handleRejectCouple = async (coupleReq: CoupleResponse) => {
+        Alert.alert("Reject Request", "Are you sure?", [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: "Reject",
+                style: "destructive",
+                onPress: async () => {
+                    try {
+                        await deleteCoupleMutation.mutateAsync({ user1Id: coupleReq.user1Id, user2Id: coupleReq.user2Id });
+                        refetchCoupleReq();
+                    } catch (e) { console.error(e); }
+                }
+            }
+        ]);
+    };
+
     const handleChat = (targetUser: any) => {
-        console.log("Navigating to chat with", targetUser.userId);
         // navigation.navigate('ChatDetail', { partner: targetUser });
+        console.log("Chat with", targetUser.userId);
     };
 
     // --- RENDER ---
 
     const renderActionButton = (item: UserResponse | UserProfileResponse, isActionLoading: boolean) => {
         const profile = item as UserProfileResponse;
-
         const isFriend = profile.isFriend;
         const hasSent = profile.friendRequestStatus?.hasSentRequest;
         const hasReceived = profile.friendRequestStatus?.hasReceivedRequest;
@@ -332,17 +385,24 @@ const SuggestedUsersScreen = () => {
     const renderUserItem = ({ item, type, coupleStatus }: { item: any, type: string, coupleStatus?: string }) => {
         let displayUser = item;
 
+        // Resolve display user from relationship objects
         if (['COUPLE_SENT', 'COUPLE_RECEIVED', 'FRIEND_SENT', 'FRIEND_RECEIVED'].includes(type)) displayUser = item.target;
         if (type === 'FRIEND' || type === 'COUPLE_PARTNER') displayUser = item.targetUser;
 
         if (!displayUser) return null;
 
-        const isActionLoading = actionLoadingId === displayUser.userId;
+        const isActionLoading = actionLoadingId === displayUser.userId || actionLoadingId === item.user1Id; // Check both user ID and potential couple sender ID
         const isCouplePartner = type === 'COUPLE_PARTNER';
+        const isCoupleReq = type.includes('COUPLE');
+
+        // Special Styling for Couple Items (Pink Theme)
+        const cardStyle = (isCouplePartner || isCoupleReq) ? styles.coupleCard : styles.userCard;
+        const nameColor = (isCouplePartner || isCoupleReq) ? '#BE123C' : '#111827';
+        const subtextColor = (isCouplePartner || isCoupleReq) ? '#9F1239' : '#6B7280';
 
         return (
             <TouchableOpacity
-                style={[styles.userCard, isCouplePartner && styles.coupleCard]}
+                style={cardStyle}
                 onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: displayUser.userId })}
             >
                 <View style={styles.avatarContainer}>
@@ -352,7 +412,8 @@ const SuggestedUsersScreen = () => {
                             <Text style={{ fontSize: 10 }}>{getCountryFlag(displayUser.country)}</Text>
                         </View>
                     )}
-                    {isCouplePartner && (
+                    {/* Heart Badge for Couple related items */}
+                    {(isCouplePartner || isCoupleReq) && (
                         <View style={styles.heartBadge}>
                             <Icon name="favorite" size={12} color="#FFF" />
                         </View>
@@ -361,17 +422,17 @@ const SuggestedUsersScreen = () => {
 
                 <View style={styles.userInfo}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={[styles.userName, isCouplePartner && { color: '#BE123C' }]} numberOfLines={1}>
+                        <Text style={[styles.userName, { color: nameColor }]} numberOfLines={1}>
                             {displayUser.fullname || displayUser.nickname}
                         </Text>
                         {displayUser.vip && <Icon name="verified" size={14} color="#F59E0B" style={{ marginLeft: 4 }} />}
                     </View>
-                    <Text style={styles.userSubtext} numberOfLines={1}>
-                        {type === 'COUPLE_SENT' && `Waiting couple response...`}
-                        {type === 'COUPLE_RECEIVED' && `Wants to be your couple`}
+                    <Text style={[styles.userSubtext, { color: subtextColor }]} numberOfLines={1}>
+                        {type === 'COUPLE_SENT' && `Waiting for love...`}
+                        {type === 'COUPLE_RECEIVED' && `Invites you to date ❤️`}
                         {type === 'FRIEND_SENT' && `Request sent`}
                         {type === 'FRIEND_RECEIVED' && `Wants to be friends`}
-                        {type === 'COUPLE_PARTNER' && `Your Partner (${coupleStatus})`}
+                        {type === 'COUPLE_PARTNER' && `My Love (${coupleStatus})`}
                         {['FRIEND', 'PUBLIC'].includes(type) && `@${displayUser.nickname}`}
                     </Text>
                 </View>
@@ -380,20 +441,35 @@ const SuggestedUsersScreen = () => {
 
                 {type === 'PUBLIC' && renderActionButton(displayUser, isActionLoading)}
 
-                {(type === 'FRIEND_RECEIVED' || type === 'COUPLE_RECEIVED') && (
+                {/* Friend Request Received */}
+                {type === 'FRIEND_RECEIVED' && (
                     <TouchableOpacity style={styles.acceptButton} onPress={() => handleAcceptRequestGeneric(displayUser.userId)} disabled={isActionLoading}>
                         {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.acceptButtonText}>{t('common.accept')}</Text>}
                     </TouchableOpacity>
                 )}
 
+                {/* Couple Request Received - High Priority UI */}
+                {type === 'COUPLE_RECEIVED' && (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => handleRejectCouple(item)} disabled={isActionLoading}>
+                            <Icon name="close" size={20} color="#EF4444" />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.acceptButton, { backgroundColor: '#E11D48' }]} onPress={() => handleAcceptCouple(item)} disabled={isActionLoading}>
+                            {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.acceptButtonText}>Yes I Do</Text>}
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Friend / Couple Partner - Chat */}
                 {(type === 'FRIEND' || type === 'COUPLE_PARTNER') && (
-                    <TouchableOpacity style={styles.messageButton} onPress={() => handleChat(displayUser)}>
-                        <Icon name="chat-bubble-outline" size={20} color="#4F46E5" />
+                    <TouchableOpacity style={[styles.messageButton, isCouplePartner && { backgroundColor: '#FFF1F2' }]} onPress={() => handleChat(displayUser)}>
+                        <Icon name="chat-bubble-outline" size={20} color={isCouplePartner ? "#E11D48" : "#4F46E5"} />
                     </TouchableOpacity>
                 )}
 
+                {/* Sent States */}
                 {(type === 'COUPLE_SENT' || type === 'FRIEND_SENT') && (
-                    <View style={[styles.addButton, styles.sentButton]}>
+                    <View style={[styles.addButton, styles.sentButton, isCoupleReq && { backgroundColor: '#FDA4AF' }]}>
                         <Icon name="access-time" size={20} color="#FFF" />
                     </View>
                 )}
@@ -426,7 +502,7 @@ const SuggestedUsersScreen = () => {
                 data={flattenedData}
                 keyExtractor={(item, index) => (item as any).id || index.toString()}
                 renderItem={({ item }: { item: any }) => {
-                    if (item.header) return <Text style={styles.sectionHeader}>{item.header}</Text>;
+                    if (item.header) return <Text style={[styles.sectionHeader, item.header.includes('Couple') && { color: '#E11D48' }]}>{item.header}</Text>;
                     return renderUserItem({ item, type: item.type });
                 }}
                 contentContainerStyle={styles.listContent}
@@ -504,7 +580,8 @@ const styles = createScaledSheet({
     activeTabText: { color: '#4F46E5', fontWeight: '700' },
     listContent: { padding: 16, paddingBottom: 40 },
     userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 12, borderRadius: 16, marginBottom: 12, elevation: 1 },
-    coupleCard: { backgroundColor: '#FFF1F2', borderColor: '#FECDD3', borderWidth: 1 },
+    // PINK THEME FOR COUPLES
+    coupleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF1F2', padding: 12, borderRadius: 16, marginBottom: 12, elevation: 2, borderWidth: 1, borderColor: '#FECDD3' },
     avatarContainer: { position: 'relative', width: 50, height: 50 },
     avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E5E7EB' },
     flagBadge: { position: 'absolute', top: -2, left: -2, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 8, padding: 1, elevation: 2 },
@@ -517,6 +594,7 @@ const styles = createScaledSheet({
     messageButton: { padding: 10, backgroundColor: '#EEF2FF', borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
     acceptButton: { backgroundColor: '#10B981', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
     acceptButtonText: { color: '#FFF', fontWeight: '600', fontSize: 13 },
+    actionIconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
     sectionHeader: { fontSize: 14, fontWeight: '800', color: '#6B7280', marginTop: 10, marginBottom: 8, textTransform: 'uppercase' },
     searchBarContainer: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 10 },
     searchInputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 12, height: 44, elevation: 1 },

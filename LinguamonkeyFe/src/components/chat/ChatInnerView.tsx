@@ -12,8 +12,6 @@ import {
     Pressable,
     Modal,
     Dimensions,
-    SafeAreaView,
-    Keyboard
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
@@ -25,10 +23,12 @@ import { MemberResponse, UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getAvatarSource } from "../../utils/avatarUtils";
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
 import { useAppStore } from "../../stores/appStore";
 import FileUploader from "../common/FileUploader";
 import Video from 'react-native-video';
-import { useHeaderHeight } from '@react-navigation/elements'; // Use this for accurate offset
+import { useHeaderHeight } from '@react-navigation/elements';
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const { width, height } = Dimensions.get('window');
 
@@ -63,10 +63,11 @@ const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en'
     return date.toLocaleTimeString(locale, timeOptions);
 };
 
-// ... [MediaViewerModal & QuickProfilePopup components keep same code as provided] ...
-
+// --- MODIFIED MEDIA MODAL WITH DEBUG LOGS ---
 const MediaViewerModal = ({ visible, url, type, onClose }: { visible: boolean; url: string | null; type: 'IMAGE' | 'VIDEO' | null; onClose: () => void }) => {
     if (!visible || !url) return null;
+    const finalUrl = getDirectMediaUrl(url, type);
+
     return (
         <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
             <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
@@ -76,9 +77,23 @@ const MediaViewerModal = ({ visible, url, type, onClose }: { visible: boolean; u
                     </TouchableOpacity>
                 </SafeAreaView>
                 {type === 'VIDEO' ? (
-                    <Video source={{ uri: url }} style={{ width: width, height: height * 0.8 }} controls={true} resizeMode="contain" paused={false} />
+                    <Video
+                        source={{ uri: finalUrl }}
+                        style={{ width: width, height: height * 0.8 }}
+                        controls={true}
+                        resizeMode="contain"
+                        paused={false}
+                        onError={(e) => {
+                            console.error("[MediaViewer] Video Error:", e);
+                            if (finalUrl !== url) console.log("Try raw url if needed:", url);
+                        }}
+                    />
                 ) : (
-                    <Image source={{ uri: url }} style={{ width: width, height: height, resizeMode: 'contain' }} />
+                    <Image
+                        source={{ uri: finalUrl }}
+                        style={{ width: width, height: height, resizeMode: 'contain' }}
+                        onError={(e) => console.error("[MediaViewer] Image Error:", e.nativeEvent.error)}
+                    />
                 )}
             </View>
         </Modal>
@@ -122,7 +137,9 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const { showToast } = useToast();
     const navigation = useNavigation<any>();
     const { user } = useUserStore();
-    const headerHeight = useHeaderHeight();
+    const navHeaderHeight = useHeaderHeight();
+
+    const keyboardOffset = Platform.OS === 'ios' ? (navHeaderHeight > 0 ? navHeaderHeight : 90) : 0;
 
     const chatSettings = useAppStore(state => state.chatSettings);
     const nativeLanguage = useAppStore(state => state.nativeLanguage);
@@ -134,6 +151,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const setCurrentViewedRoomId = useChatStore(s => s.setCurrentViewedRoomId);
     const userStatuses = useChatStore(s => s.userStatuses);
     const eagerTranslations = useChatStore(s => s.eagerTranslations);
+
+    const pageByRoom = useChatStore(s => s.pageByRoom);
+    const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
+    const loadingByRoom = useChatStore(s => s.loadingByRoom);
 
     const [inputText, setInputText] = useState("");
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
@@ -148,6 +169,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const processedReadIds = useRef<Set<string>>(new Set());
     const flatListRef = useRef<FlatList>(null);
+    const lastSentRef = useRef<number>(0);
 
     const membersMap = useMemo(() => {
         const map: Record<string, MemberResponse> = {};
@@ -168,6 +190,9 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const performEagerTranslation = useChatStore(s => s.performEagerTranslation);
 
     const serverMessages = messagesByRoom[roomId] || [];
+    const isLoading = loadingByRoom[roomId] || false;
+    const hasMore = hasMoreByRoom[roomId] || false;
+    const currentPage = pageByRoom[roomId] || 0;
 
     const messages: UIMessage[] = useMemo(() => {
         return serverMessages
@@ -186,6 +211,9 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 else if (isEncrypted) displayContent = '';
                 else displayContent = msg.content || '';
 
+                // Ensure mediaUrl is extracted from the correct place
+                const rawMediaUrl = msg.mediaUrl || (msg as any).media_url || null;
+
                 return {
                     id: messageId,
                     sender: senderId === currentUserId ? 'user' : 'other',
@@ -194,7 +222,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     text: displayContent,
                     rawContent: msg.content,
                     content: msg.content || '',
-                    mediaUrl: (msg as any).mediaUrl, // Assuming fix in ChatMessageServiceImpl
+                    mediaUrl: rawMediaUrl,
                     messageType: (msg as any).messageType || 'TEXT',
                     translatedText: finalTranslation,
                     translatedLang: translationTargetLang,
@@ -215,15 +243,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     useEffect(() => { loadMessages(roomId); }, [roomId]);
 
     useEffect(() => {
-        if (messages.length > 0) {
-            const latestMsg = messages[0];
-            if (latestMsg.isLocal || latestMsg.sender === 'user') {
-                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-            }
-        }
-    }, [messages.length]);
-
-    useEffect(() => {
         const unreadMessages = messages.filter(msg =>
             msg.sender === 'other' && !msg.isRead && !processedReadIds.current.has(msg.id)
         );
@@ -235,10 +254,23 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         }
     }, [messages, roomId]);
 
+    const handleLoadMore = () => {
+        if (hasMore && !isLoading) {
+            loadMessages(roomId, currentPage + 1);
+        }
+    };
+
     const handleSendMessage = () => {
+        const now = Date.now();
+        if (now - lastSentRef.current < 500) return; // Debounce 500ms
+
         if (inputText.trim() === "") return;
+        lastSentRef.current = now;
+
         if (editingMessage) {
-            editMessage(roomId, editingMessage.id, inputText).then(() => { setEditingMessage(null); setInputText(""); }).catch(() => showToast({ message: t("chat.edit_error"), type: "error" }));
+            editMessage(roomId, editingMessage.id, inputText)
+                .then(() => { setEditingMessage(null); setInputText(""); })
+                .catch(() => showToast({ message: t("chat.edit_error"), type: "error" }));
         } else {
             sendMessage(roomId, inputText, 'TEXT');
             setInputText("");
@@ -247,17 +279,25 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     };
 
     const handleUploadSuccess = (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => {
+        // Log result to verify upload response
+        console.log("Upload Success Result:", result);
         const finalUrl = result?.secure_url || result?.url || result?.fileUrl;
         if (finalUrl) {
-            // Send Message with Type and URL. 
-            // NOTE: Content is empty for media, but ChatStore/Backend will handle description
             sendMessage(roomId, '', type, finalUrl);
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        } else {
+            showToast({ message: "Upload failed: No URL returned", type: "error" });
         }
     };
 
     const handleAvatarPress = (profile?: UserProfileResponse) => { if (profile) { setSelectedProfile(profile); setIsPopupVisible(true); } };
-    const openMedia = (url: string | undefined, type: 'IMAGE' | 'VIDEO') => { if (url) setMediaViewer({ visible: true, url, type }); };
+
+    const openMedia = (url: string | undefined, type: 'IMAGE' | 'VIDEO') => {
+        if (url) {
+            setMediaViewer({ visible: true, url, type });
+        }
+    };
+
     const handleManualTranslate = async (id: string, text: string) => {
         const msg = messages.find(m => m.id === id);
         const textToTranslate = msg?.decryptedContent || msg?.content || text;
@@ -278,6 +318,17 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const isTranslating = translatingId === item.id;
         const showDecryptionError = item.isEncrypted && item.decryptedContent?.includes('!! Decryption Failed');
 
+        // --- DEBUGGING LOGIC ---
+        let displayMediaUrl = null;
+        if (isMedia && item.mediaUrl) {
+            // Log raw input
+            // console.log(`[Item Render] ID: ${item.id}, Raw MediaURL: ${item.mediaUrl}`);
+            displayMediaUrl = getDirectMediaUrl(item.mediaUrl);
+            // Log processed output
+            // console.log(`[Item Render] ID: ${item.id}, Display URL: ${displayMediaUrl}`);
+        }
+        // -----------------------
+
         let primaryText = item.text;
         let isWaitingForDecrypt = false;
         if (item.isEncrypted) {
@@ -297,10 +348,23 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
                 <View style={styles.msgContent}>
                     {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
-                    {isMedia ? (
+                    {isMedia && displayMediaUrl ? (
                         <TouchableOpacity style={[styles.mediaContainer, isUser ? styles.mediaUser : styles.mediaOther]} onPress={() => openMedia(item.mediaUrl, item.messageType as 'IMAGE' | 'VIDEO')}>
-                            {item.messageType === 'IMAGE' && <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />}
-                            {item.messageType === 'VIDEO' && <View style={[styles.msgImage, styles.videoPlaceholder]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
+                            {item.messageType === 'IMAGE' && (
+                                <Image
+                                    source={{ uri: displayMediaUrl }}
+                                    style={styles.msgImage}
+                                    resizeMode="cover"
+                                    onError={(e) => console.log(`[Image Error] MsgId: ${item.id} URL: ${displayMediaUrl}`, e.nativeEvent.error)}
+                                />
+                            )}
+                            {item.messageType === 'VIDEO' && (
+                                <View style={[styles.msgImage, styles.videoPlaceholder]}>
+                                    <Icon name="play-circle-outline" size={50} color="#FFF" />
+                                    {/* Debug Text to see if URL exists */}
+                                    {/* <Text style={{color:'red', fontSize:8}}>{item.mediaUrl?.substring(0,20)}...</Text> */}
+                                </View>
+                            )}
                         </TouchableOpacity>
                     ) : (
                         <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
@@ -338,8 +402,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         <ScreenLayout style={styles.container}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + 10 : 0}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                keyboardVerticalOffset={keyboardOffset}
             >
                 <View style={{ flex: 1 }}>
                     <FlatList
@@ -349,9 +413,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                         style={styles.list}
                         renderItem={renderMessageItem}
                         inverted
+                        onEndReached={handleLoadMore}
+                        onEndReachedThreshold={0.5}
                         contentContainerStyle={{ paddingTop: 10, paddingBottom: 10, flexGrow: 1 }}
                         keyboardShouldPersistTaps="handled"
                         initialNumToRender={15}
+                        ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
                     />
                 </View>
 

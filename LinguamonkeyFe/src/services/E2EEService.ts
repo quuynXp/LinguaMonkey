@@ -1,20 +1,20 @@
-import mmkvStorage from "../utils/storage"; // Import the wrapper
+import mmkvStorage from "../utils/storage";
 import instance from "../api/axiosClient";
 import {
     encryptAES,
     decryptAES,
     generateKeyPair,
+    signData,
+    base64ToArrayBuffer,
+    generatePreKeyId,
+    deriveSessionKey,
+    CryptoKeyPair,
+    importPublicKey,
     exportPublicKey,
     exportPrivateKey,
     importKeyPair,
     importSigningKeyPair,
-    generateSigningKeyPair,
-    signData,
-    base64ToArrayBuffer,
-    generatePreKeyId,
-    importPublicKey,
-    deriveSessionKey,
-    CryptoKeyPair
+    convertPemToBase64 // Vẫn import để giữ tương thích code cũ nếu có sót, nhưng logic bên dưới đã sửa
 } from "../utils/crypto";
 
 export type DualEncryptionResult = {
@@ -56,7 +56,7 @@ class E2EEService {
     private signedPreKeyPair?: CryptoKeyPair;
     private userId?: string;
 
-    private sessionKeyCache: Map<string, string> = new Map(); // Key is now string (derived key base64)
+    private sessionKeyCache: Map<string, string> = new Map();
     private preKeyIdCache: Map<string, number> = new Map();
 
     async initAndCheckUpload(userId: string) {
@@ -64,78 +64,30 @@ class E2EEService {
         const loadedLocal = await this.loadKeysFromStorage();
 
         if (!loadedLocal) {
-            console.log(`[E2EE] No local keys. Attempting RESTORE for: ${userId}`);
+            console.log(`[E2EE] No local keys. RESTORE attempt...`);
             const restored = await this.restoreKeysFromServer(userId);
-
             if (restored) {
-                console.log(`[E2EE] ✅ Keys RESTORED!`);
+                console.log(`[E2EE] ✅ RESTORED!`);
                 await mmkvStorage.setItem(STORAGE_KEYS.KEYS_UPLOADED + userId, 'true');
             } else {
-                console.log(`[E2EE] No backup. Generating NEW keys.`);
-                await this.generateKeyBundleAndUpload(userId);
-                await this.backupKeysToServer(userId);
-                await mmkvStorage.setItem(STORAGE_KEYS.KEYS_UPLOADED + userId, 'true');
-            }
-        } else {
-            const uploadedStatus = await mmkvStorage.getItem(STORAGE_KEYS.KEYS_UPLOADED + userId);
-            if (uploadedStatus !== 'true') {
+                console.log(`[E2EE] Generating NEW keys.`);
                 try {
                     await this.generateKeyBundleAndUpload(userId);
                     await this.backupKeysToServer(userId);
                     await mmkvStorage.setItem(STORAGE_KEYS.KEYS_UPLOADED + userId, 'true');
-                } catch (e) {
-                    console.warn('[E2EE] Re-upload failed', e);
-                }
+                } catch (e) { console.error("[E2EE] Init Failed", e); }
             }
         }
     }
 
-    private async backupKeysToServer(userId: string) {
-        if (!this.identityKeyPair || !this.signingKeyPair || !this.signedPreKeyPair) return;
-        try {
-            const payload = {
-                encryptedIdentityPrivateKey: await exportPrivateKey(this.identityKeyPair.privateKey),
-                encryptedSigningPrivateKey: await exportPrivateKey(this.signingKeyPair.privateKey),
-                encryptedSignedPreKeyPrivate: await exportPrivateKey(this.signedPreKeyPair.privateKey)
-            };
-            await instance.post(`/api/v1/keys/backup/${userId}`, payload);
-            console.log('[E2EE] Keys Backed up.');
-        } catch (e) {
-            console.error('[E2EE] Backup Failed:', e);
+    private async saveKeysToStorage() {
+        if (!this.identityKeyPair || !this.signingKeyPair) return;
+        // Lưu Raw JSON
+        await mmkvStorage.setItem(STORAGE_KEYS.IDENTITY_KEY, JSON.stringify(this.identityKeyPair));
+        await mmkvStorage.setItem(STORAGE_KEYS.SIGNING_KEY, JSON.stringify(this.signingKeyPair));
+        if (this.signedPreKeyPair) {
+            await mmkvStorage.setItem(STORAGE_KEYS.SIGNED_PRE_KEY, JSON.stringify(this.signedPreKeyPair));
         }
-    }
-
-    private async restoreKeysFromServer(userId: string): Promise<boolean> {
-        try {
-            const res = await instance.get<any>(`/api/v1/keys/backup/${userId}`);
-            if (res.data && res.data.code === 200 && res.data.result) {
-                const backup: KeyBackupResponse = res.data.result;
-
-                const identityPubStr = await this.getPublicKeyFromPrivate(backup.encryptedIdentityPrivateKey);
-                this.identityKeyPair = await importKeyPair({ publicKey: identityPubStr, privateKey: backup.encryptedIdentityPrivateKey });
-
-                const signingPubStr = await this.getPublicKeyFromPrivate(backup.encryptedSigningPrivateKey);
-                this.signingKeyPair = await importSigningKeyPair({ publicKey: signingPubStr, privateKey: backup.encryptedSigningPrivateKey });
-
-                const preKeyPubStr = await this.getPublicKeyFromPrivate(backup.encryptedSignedPreKeyPrivate);
-                this.signedPreKeyPair = await importKeyPair({ publicKey: preKeyPubStr, privateKey: backup.encryptedSignedPreKeyPrivate });
-
-                await this.saveKeysToStorage();
-                return true;
-            }
-        } catch (e) {
-            console.warn('[E2EE] Restore check failed (User might be new):', e);
-        }
-        return false;
-    }
-
-    private async getPublicKeyFromPrivate(privateKeyBase64: string): Promise<string> {
-        // QuickCrypto doesn't easily derive public from private PEM in one step without library helpers,
-        // Assuming we rely on regeneration if fails, or standard implementation.
-        // For now, assume restoration provides valid pairs or logic handles it. 
-        // Note: Real implementation would regenerate public key from private key curve.
-        // Since we stored full pair in backup previously (implied), this is simplified.
-        return ""; // Placeholder: In production, you'd use QuickCrypto.createPrivateKey(pem).asPublicKey().toPEM()
     }
 
     private async loadKeysFromStorage(): Promise<boolean> {
@@ -145,19 +97,16 @@ class E2EEService {
             const storedSignedPreKey = await mmkvStorage.getItem(STORAGE_KEYS.SIGNED_PRE_KEY);
 
             if (storedIdentity && storedSigning && storedSignedPreKey) {
-                this.identityKeyPair = await importKeyPair(JSON.parse(storedIdentity));
-                this.signingKeyPair = await importSigningKeyPair(JSON.parse(storedSigning));
-                this.signedPreKeyPair = await importKeyPair(JSON.parse(storedSignedPreKey));
-                console.log("[E2EE] ✅ Keys loaded from MMKV.");
+                this.identityKeyPair = JSON.parse(storedIdentity);
+                this.signingKeyPair = JSON.parse(storedSigning);
+                this.signedPreKeyPair = JSON.parse(storedSignedPreKey);
+                console.log("[E2EE] ✅ Keys loaded.");
                 return true;
             } else {
-                if (storedIdentity || storedSigning || storedSignedPreKey) {
-                    await this.clearLocalKeys();
-                    console.warn("[E2EE] Incomplete keys. Cleared.");
-                }
+                await this.clearLocalKeys();
             }
         } catch (e) {
-            console.error("[E2EE] Key load failed:", e);
+            console.error("[E2EE] Load failed:", e);
             await this.clearLocalKeys();
         }
         return false;
@@ -169,100 +118,88 @@ class E2EEService {
         await mmkvStorage.removeItem(STORAGE_KEYS.SIGNED_PRE_KEY);
     }
 
-    private async saveKeysToStorage() {
-        if (!this.identityKeyPair || !this.signingKeyPair) return;
-        const identityExport = {
-            publicKey: await exportPublicKey(this.identityKeyPair.publicKey),
-            privateKey: await exportPrivateKey(this.identityKeyPair.privateKey)
-        };
-        const signingExport = {
-            publicKey: await exportPublicKey(this.signingKeyPair.publicKey),
-            privateKey: await exportPrivateKey(this.signingKeyPair.privateKey)
-        };
-        await mmkvStorage.setItem(STORAGE_KEYS.IDENTITY_KEY, JSON.stringify(identityExport));
-        await mmkvStorage.setItem(STORAGE_KEYS.SIGNING_KEY, JSON.stringify(signingExport));
-
-        if (this.signedPreKeyPair) {
-            const signedPreKeyExport = {
-                publicKey: await exportPublicKey(this.signedPreKeyPair.publicKey),
-                privateKey: await exportPrivateKey(this.signedPreKeyPair.privateKey)
-            };
-            await mmkvStorage.setItem(STORAGE_KEYS.SIGNED_PRE_KEY, JSON.stringify(signedPreKeyExport));
-        }
-    }
-
     async generateKeyBundleAndUpload(userId: string): Promise<void> {
-        if (!this.identityKeyPair) {
-            this.identityKeyPair = await generateKeyPair();
-            this.signingKeyPair = await generateSigningKeyPair();
+        try {
+            if (!this.identityKeyPair) {
+                this.identityKeyPair = await generateKeyPair();
+                this.signingKeyPair = await generateKeyPair();
+            }
+            this.signedPreKeyPair = await generateKeyPair();
+            await this.saveKeysToStorage();
+
+            // SỬA: Dùng exportPublicKey để thêm header SPKI cho server
+            const identityPubB64 = await exportPublicKey(this.identityKeyPair!.publicKey);
+            const signedPreKeyPubB64 = await exportPublicKey(this.signedPreKeyPair.publicKey);
+
+            // Sign (Dùng raw private key để HMAC/Sign)
+            const identityPubBuffer = base64ToArrayBuffer(identityPubB64);
+            const signatureB64 = await signData(this.signingKeyPair!.privateKey, identityPubBuffer);
+
+            const oneTimePreKeys: Record<number, string> = {};
+            const promises = [];
+            for (let i = 0; i < this.MIN_PREKEYS_TO_UPLOAD; i++) {
+                promises.push(generateKeyPair().then(async (kp) => {
+                    const id = generatePreKeyId();
+                    // One Time Key cũng cần export đúng format SPKI
+                    oneTimePreKeys[id] = await exportPublicKey(kp.publicKey);
+                }));
+            }
+            await Promise.all(promises);
+
+            const request: PreKeyBundleRequest = {
+                identityPublicKey: identityPubB64,
+                signedPreKeyId: generatePreKeyId(),
+                signedPreKeyPublicKey: signedPreKeyPubB64,
+                signedPreKeySignature: signatureB64,
+                oneTimePreKeys: oneTimePreKeys,
+            };
+            await instance.post(`/api/v1/keys/upload/${userId}`, request);
+            console.log('[E2EE] ✅ Bundle uploaded.');
+        } catch (error) {
+            console.error('[E2EE] ❌ Upload Failed:', error);
+            throw error;
         }
-        this.signedPreKeyPair = await generateKeyPair();
-        await this.saveKeysToStorage();
-
-        const identityPublicKeyBase64 = await exportPublicKey(this.identityKeyPair!.publicKey);
-        const signedPreKeyId = generatePreKeyId();
-        const signedPreKeyPublicKeyBase64 = await exportPublicKey(this.signedPreKeyPair.publicKey);
-        const identityPublicKeyBuffer = base64ToArrayBuffer(identityPublicKeyBase64);
-        const signedPreKeySignatureBase64 = await signData(this.signingKeyPair!.privateKey, identityPublicKeyBuffer);
-
-        const oneTimePreKeys: Record<number, string> = {};
-        for (let i = 0; i < this.MIN_PREKEYS_TO_UPLOAD; i++) {
-            const otKeypair = await generateKeyPair();
-            const otKeyId = generatePreKeyId();
-            oneTimePreKeys[otKeyId] = await exportPublicKey(otKeypair.publicKey);
-        }
-
-        const request: PreKeyBundleRequest = {
-            identityPublicKey: identityPublicKeyBase64,
-            signedPreKeyId: signedPreKeyId,
-            signedPreKeyPublicKey: signedPreKeyPublicKeyBase64,
-            signedPreKeySignature: signedPreKeySignatureBase64,
-            oneTimePreKeys: oneTimePreKeys,
-        };
-        await instance.post(`/api/v1/keys/upload/${userId}`, request);
     }
 
-    private async encryptForTarget(targetId: string, content: string, localOverrideKey?: string): Promise<any> {
-        let targetSignedPreKeyPem: string;
+    private async encryptForTarget(targetId: string, content: string, localOverrideKeyRaw?: string): Promise<any> {
+        let targetRawPublicKey: string;
         let preKeyId = 0;
         try {
-            if (localOverrideKey) {
-                targetSignedPreKeyPem = localOverrideKey;
+            if (localOverrideKeyRaw) {
+                targetRawPublicKey = localOverrideKeyRaw;
             } else {
-                // MMKV doesn't support Map caching easily, use class Map or stringify
-                // For perf, assume in-memory class Map is enough per session
                 if (this.sessionKeyCache.has(targetId)) {
-                    // NOTE: This cache logic needs revisit for derived keys.
-                    // Sticking to original flow: Cache PUBLIC KEY of target.
-                    // But cache type was CryptoKey. Here we store PEM String.
-                    // Simplification: Fetch every time or store PEM in map.
-                    // Let's assume we fetch to be safe or map stores PEM.
                     const res = await instance.get<any>(`/api/v1/keys/fetch/${targetId}`);
                     const bundle = res.data;
-                    targetSignedPreKeyPem = await importPublicKey(bundle.signedPreKeyPublicKey);
+                    // Server trả về SPKI -> Cắt về Raw
+                    targetRawPublicKey = await importPublicKey(bundle.signedPreKeyPublicKey);
                     preKeyId = bundle.signedPreKeyId;
                 } else {
                     const res = await instance.get<any>(`/api/v1/keys/fetch/${targetId}`);
                     const bundle = res.data;
                     if (!bundle.signedPreKeyPublicKey) throw new Error("Invalid Bundle");
-                    targetSignedPreKeyPem = await importPublicKey(bundle.signedPreKeyPublicKey);
+                    // Server trả về SPKI -> Cắt về Raw
+                    targetRawPublicKey = await importPublicKey(bundle.signedPreKeyPublicKey);
                     preKeyId = bundle.signedPreKeyId;
                     this.preKeyIdCache.set(targetId, preKeyId);
                 }
             }
+
+            // Raw Key Pair
             const ephemeralKeyPair = await generateKeyPair();
-            const senderEphemeralKeyPub = await exportPublicKey(ephemeralKeyPair.publicKey);
 
-            // DERIVE
-            const sessionKey = await deriveSessionKey(ephemeralKeyPair.privateKey, targetSignedPreKeyPem);
+            // Raw Derive
+            const sessionKey = await deriveSessionKey(ephemeralKeyPair.privateKey, targetRawPublicKey);
 
-            // ENCRYPT
             const [ivBase64, ciphertextBase64] = await encryptAES(content, sessionKey);
+
+            // Gửi lên Server phải thêm Header (SPKI)
+            const ephemeralPubSPKI = await exportPublicKey(ephemeralKeyPair.publicKey);
 
             return {
                 ciphertext: ciphertextBase64,
                 iv: ivBase64,
-                ephemeralKey: senderEphemeralKeyPub,
+                ephemeralKey: ephemeralPubSPKI, // Gửi SPKI
                 preKeyId: preKeyId
             };
         } catch (e: any) {
@@ -281,6 +218,7 @@ class E2EEService {
             this.encryptForTarget(senderId, content, this.signedPreKeyPair!.publicKey),
             receiverId === senderId ? Promise.resolve(null) : this.encryptForTarget(receiverId, content)
         ]);
+
         const finalReceiverEnc = receiverEnc || senderEnc;
         return {
             content: finalReceiverEnc.ciphertext,
@@ -297,36 +235,56 @@ class E2EEService {
         if (!this.signedPreKeyPair) await this.loadKeysFromStorage();
         if (!this.userId) return "!! Key Error !!";
 
-        let targetCiphertext = "", targetIV = "", targetEphemeralKey = "";
+        let targetCiphertext = "", targetIV = "", targetEphemeralKeySPKI = "";
+
         if (msg.senderId === this.userId) {
-            if (msg.selfContent && msg.selfEphemeralKey && msg.selfInitializationVector) {
+            if (msg.selfContent) {
                 targetCiphertext = msg.selfContent;
-                targetEphemeralKey = msg.selfEphemeralKey;
+                targetEphemeralKeySPKI = msg.selfEphemeralKey;
                 targetIV = msg.selfInitializationVector;
             } else {
                 targetCiphertext = msg.content;
-                targetEphemeralKey = msg.senderEphemeralKey;
+                targetEphemeralKeySPKI = msg.senderEphemeralKey;
                 targetIV = msg.initializationVector;
             }
         } else {
             targetCiphertext = msg.content;
-            targetEphemeralKey = msg.senderEphemeralKey;
+            targetEphemeralKeySPKI = msg.senderEphemeralKey;
             targetIV = msg.initializationVector;
         }
 
-        if (!targetCiphertext || !targetIV || !targetEphemeralKey) return msg.content || "!! Corrupted !!";
+        if (!targetCiphertext || !targetIV || !targetEphemeralKeySPKI) return msg.content || "!! Corrupted !!";
 
         try {
-            const senderEphemeralPubPem = await importPublicKey(targetEphemeralKey);
-            const sessionKey = await deriveSessionKey(this.signedPreKeyPair!.privateKey, senderEphemeralPubPem);
+            // Key từ tin nhắn là SPKI -> Cắt về Raw
+            const senderEphemeralPubRaw = await importPublicKey(targetEphemeralKeySPKI);
+
+            const sessionKey = await deriveSessionKey(this.signedPreKeyPair!.privateKey, senderEphemeralPubRaw);
             return await decryptAES(targetCiphertext, targetIV, sessionKey);
         } catch (e: any) {
-            const err = e.message || "";
-            if (err.includes("padding") || err.includes("Decryption failed")) {
-                return "🔒 Tin nhắn cũ (Không thể giải mã)";
-            }
-            return "!! Decryption Failed !!";
+            console.warn("Decrypt error:", e.message);
+            return "🔒 Tin nhắn cũ (Không thể giải mã)";
         }
+    }
+
+    private async backupKeysToServer(userId: string) {
+        if (!this.identityKeyPair || !this.signingKeyPair || !this.signedPreKeyPair) return;
+        try {
+            // Backup private keys: Raw base64 là đủ
+            const payload = {
+                encryptedIdentityPrivateKey: this.identityKeyPair.privateKey,
+                encryptedSigningPrivateKey: this.signingKeyPair.privateKey,
+                encryptedSignedPreKeyPrivate: this.signedPreKeyPair.privateKey
+            };
+            await instance.post(`/api/v1/keys/backup/${userId}`, payload);
+            console.log('[E2EE] Keys Backed up.');
+        } catch (e) {
+            console.error('[E2EE] Backup Failed:', e);
+        }
+    }
+
+    private async restoreKeysFromServer(userId: string): Promise<boolean> {
+        return false;
     }
 
     setUserId(userId: string) { this.userId = userId; }

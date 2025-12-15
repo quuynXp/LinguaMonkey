@@ -74,7 +74,8 @@ export const useRoadmap = () => {
       enabled: !!userId,
     });
 
-  const useRoadmapWithProgress = (roadmapId: string | null) =>
+  // UPDATED: Added options parameter to control enabled state
+  const useRoadmapWithProgress = (roadmapId: string | null, options?: { enabled?: boolean }) =>
     useQuery({
       queryKey: roadmapKeys.progressDetail(roadmapId!, userId!),
       queryFn: async () => {
@@ -84,7 +85,7 @@ export const useRoadmap = () => {
         );
         return res.data.result;
       },
-      enabled: !!(roadmapId && userId),
+      enabled: !!(roadmapId && userId) && (options?.enabled ?? true),
     });
 
   const usePublicRoadmaps = () =>
@@ -128,7 +129,7 @@ export const useRoadmap = () => {
 
   const usePublicRoadmapDetail = (roadmapId: string | null, options?: { enabled?: boolean }) =>
     useQuery({
-      queryKey: roadmapKeys.detail(roadmapId!),
+      queryKey: roadmapKeys.detail(roadmapId || ''),
       queryFn: async () => {
         if (!roadmapId) throw new Error("Missing roadmapId");
 
@@ -165,7 +166,7 @@ export const useRoadmap = () => {
 
   const useRoadmapDetail = (roadmapId: string | null) =>
     useQuery({
-      queryKey: roadmapKeys.detail(roadmapId!),
+      queryKey: roadmapKeys.detail(roadmapId || ''),
       queryFn: async () => {
         if (!roadmapId) throw new Error("Missing roadmapId");
         const res = await instance.get<AppApiResponse<RoadmapResponse>>(`/api/v1/roadmaps/${roadmapId}`);
@@ -176,7 +177,7 @@ export const useRoadmap = () => {
 
   const useRoadmapItemDetail = (itemId: string | null) =>
     useQuery({
-      queryKey: roadmapKeys.itemDetail(itemId!),
+      queryKey: roadmapKeys.itemDetail(itemId || ''),
       queryFn: async () => {
         if (!itemId) throw new Error("Item id missing");
         const res = await instance.get<AppApiResponse<RoadmapItem>>(`/api/v1/roadmaps/items/${itemId}`);
@@ -187,7 +188,7 @@ export const useRoadmap = () => {
 
   const useSuggestions = (roadmapId: string | null) =>
     useQuery({
-      queryKey: roadmapKeys.suggestions(roadmapId!),
+      queryKey: roadmapKeys.suggestions(roadmapId || ''),
       queryFn: async () => {
         if (!roadmapId) throw new Error("Roadmap ID missing");
         const res = await instance.get<AppApiResponse<RoadmapSuggestionResponse[]>>(
@@ -234,7 +235,7 @@ export const useRoadmap = () => {
           currentLevel: Number(req.currentLevel) || 0,
           targetLevel: Number(req.targetLevel) || 0,
           estimatedCompletionTime: Number(req.estimatedCompletionTime) || 0,
-          certification: (req.certification === "NONE" || req.certification === "") ? null : req.certification,
+          certification: req.certification,
           items: (req.items || []).map((item, index) => ({
             ...item,
             estimatedTime: Number(item.estimatedTime) || 0,
@@ -369,7 +370,7 @@ export const useRoadmap = () => {
           currentLevel: Number(req.currentLevel) || 0,
           targetLevel: Number(req.targetLevel) || 0,
           estimatedCompletionTime: Number(req.estimatedCompletionTime) || 0,
-          certification: (req.certification === "NONE" || req.certification === "") ? null : req.certification,
+          certification: req.certification,
           items: (req.items || []).map((item, index) => ({
             ...item,
             estimatedTime: Number(item.estimatedTime) || 0,

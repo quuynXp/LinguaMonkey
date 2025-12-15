@@ -15,14 +15,13 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
-import { useRoadmap, ExtendedPublicRoadmapDetail } from "../../hooks/useRoadmap";
+import { useRoadmap } from "../../hooks/useRoadmap";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import RoadmapTimeline from "../../components/roadmap/RoadmapTimeline";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import { getAvatarSource } from "../../utils/avatarUtils";
 import { RoadmapUserResponse, RoadmapPublicResponse, RoadmapItemUserResponse } from "../../types/dto";
-import { RoadmapItem } from "../../types/entity";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -54,11 +53,13 @@ const RoadmapScreen = ({ navigation }: any) => {
     useCompleteRoadmapItem,
     useAddSuggestion,
     usePublicRoadmapDetail,
+    useRoadmapWithProgress, // Import thêm hook này
     useAssignRoadmap,
     useToggleFavoriteRoadmap
   } = useRoadmap();
 
-  const { data: userRoadmaps, isLoading: userLoading, refetch: refetchUser } = useUserRoadmaps();
+  // 1. Fetch danh sách roadmap của user (chỉ dùng để hiển thị list)
+  const { data: userRoadmaps, isLoading: userListLoading, refetch: refetchUser } = useUserRoadmaps();
 
   const {
     data: officialRoadmaps,
@@ -72,6 +73,7 @@ const RoadmapScreen = ({ navigation }: any) => {
     refetch: refetchCommunity
   } = useCommunityRoadmaps(currentLanguage);
 
+  // 2. Fetch chi tiết Public Roadmap khi ở tab Explore
   const shouldFetchPublicDetail = activeTab === 'explore' && !!selectedRoadmapId;
   const {
     data: publicRoadmapDetail,
@@ -79,10 +81,18 @@ const RoadmapScreen = ({ navigation }: any) => {
     refetch: refetchPublicDetail
   } = usePublicRoadmapDetail(selectedRoadmapId, { enabled: shouldFetchPublicDetail });
 
+  // 3. Fetch chi tiết User Roadmap khi chọn 1 roadmap của mình (quan trọng để có items đầy đủ)
+  const shouldFetchUserDetail = activeTab === 'my_roadmap' && !!selectedRoadmapId;
+  const {
+    data: userRoadmapDetail,
+    isLoading: userDetailLoading,
+    refetch: refetchUserDetail
+  } = useRoadmapWithProgress(selectedRoadmapId, { enabled: shouldFetchUserDetail });
+
   const assignRoadmapMut = useAssignRoadmap();
   const toggleFavoriteMut = useToggleFavoriteRoadmap();
 
-  // --- LOGIC USER ROADMAPS ---
+  // --- LOGIC USER ROADMAPS LIST ---
   const allUserRoadmaps = userRoadmaps || [];
   const getProgress = (r: RoadmapUserResponse) => (r.totalItems > 0 ? r.completedItems / r.totalItems : 0);
 
@@ -94,7 +104,8 @@ const RoadmapScreen = ({ navigation }: any) => {
     .filter(r => getProgress(r) >= 1)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const currentMyRoadmap = allUserRoadmaps.find(r => r.roadmapId === selectedRoadmapId);
+  // Lấy info cơ bản từ list để hiển thị header khi chưa load xong detail
+  const basicUserRoadmapInfo = allUserRoadmaps.find(r => r.roadmapId === selectedRoadmapId);
 
   const getPublicBasicInfo = () => {
     if (!selectedRoadmapId) return null;
@@ -142,9 +153,12 @@ const RoadmapScreen = ({ navigation }: any) => {
   const handleRefresh = async () => {
     if (selectedRoadmapId && activeTab === 'explore') {
       await refetchPublicDetail();
+    } else if (selectedRoadmapId && activeTab === 'my_roadmap') {
+      // Refresh detail roadmap của user
+      await refetchUserDetail();
+      await refetchSuggestions();
     } else if (activeTab === 'my_roadmap') {
       await refetchUser();
-      if (selectedRoadmapId) refetchSuggestions();
     } else {
       refetchOfficial();
       refetchCommunity();
@@ -154,6 +168,9 @@ const RoadmapScreen = ({ navigation }: any) => {
   const handleCompleteItem = async (itemId: string) => {
     try {
       await completeItemMut.mutateAsync({ itemId });
+      // Refetch detail để update trạng thái item
+      refetchUserDetail();
+      // Refetch list để update progress bar bên ngoài
       refetchUser();
     } catch (error) {
       console.error(error);
@@ -216,7 +233,7 @@ const RoadmapScreen = ({ navigation }: any) => {
   const renderHeader = () => {
     const detailTitle = activeTab === 'explore'
       ? publicRoadmapDetail?.title || t('roadmap.exploreDetail')
-      : currentMyRoadmap?.title || t('roadmap.detail');
+      : userRoadmapDetail?.title || basicUserRoadmapInfo?.title || t('roadmap.detail');
 
     return (
       <View style={styles.header}>
@@ -316,7 +333,7 @@ const RoadmapScreen = ({ navigation }: any) => {
   };
 
   const renderMyRoadmapList = () => {
-    if (userLoading) return <ActivityIndicator style={styles.loader} color="#3B82F6" />;
+    if (userListLoading) return <ActivityIndicator style={styles.loader} color="#3B82F6" />;
 
     if (activeRoadmaps.length === 0 && completedRoadmaps.length === 0) {
       return (
@@ -352,7 +369,7 @@ const RoadmapScreen = ({ navigation }: any) => {
           data={activeRoadmaps}
           keyExtractor={(item) => item.roadmapId}
           contentContainerStyle={styles.listContainer}
-          refreshControl={<RefreshControl refreshing={userLoading} onRefresh={handleRefresh} />}
+          refreshControl={<RefreshControl refreshing={userListLoading} onRefresh={handleRefresh} />}
           renderItem={renderRoadmapItem}
           ListEmptyComponent={
             <View style={styles.emptyActiveState}>
@@ -366,9 +383,11 @@ const RoadmapScreen = ({ navigation }: any) => {
 
   const renderRoadmapDetail = () => {
     const isUserRoadmap = activeTab === 'my_roadmap';
-    const loading = isUserRoadmap ? userLoading : publicDetailLoading;
+    // Sử dụng userDetailLoading thay vì userListLoading
+    const loading = isUserRoadmap ? userDetailLoading : publicDetailLoading;
 
-    const myData = isUserRoadmap ? currentMyRoadmap : null;
+    // QUAN TRỌNG: Sử dụng userRoadmapDetail từ API chi tiết thay vì basicUserRoadmapInfo từ list
+    const myData = isUserRoadmap ? userRoadmapDetail : null;
     const publicData = !isUserRoadmap ? publicRoadmapDetail : null;
     const publicBasicInfo = !isUserRoadmap ? getPublicBasicInfo() : null;
 
@@ -377,7 +396,7 @@ const RoadmapScreen = ({ navigation }: any) => {
 
     if (loading) return <ActivityIndicator style={styles.loader} color="#3B82F6" />;
 
-    if (isUserRoadmap && !myData) return <View style={styles.emptyState}><Text>Roadmap not found</Text></View>;
+    if (isUserRoadmap && !myData) return <View style={styles.emptyState}><Text>Roadmap not found or failed to load</Text></View>;
     if (!isUserRoadmap && !publicData) return <View style={styles.emptyState}><Text>Public roadmap not loaded</Text></View>;
 
     const title = isUserRoadmap ? myData!.title : publicData!.title;
@@ -385,6 +404,7 @@ const RoadmapScreen = ({ navigation }: any) => {
 
     let displayItems: RoadmapItemUserResponse[] = [];
 
+    // myData từ API chi tiết sẽ có items đầy đủ
     if (isUserRoadmap && myData?.items) {
       displayItems = myData.items;
     } else if (!isUserRoadmap && publicData?.items) {

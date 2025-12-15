@@ -10,10 +10,8 @@ import { decryptNotificationContent } from "./src/utils/notificationHelper";
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
   console.log("⚡ Background Notification received:", remoteMessage.messageId);
 
-  // 1. Giải mã (đã bao gồm logic load User ID từ storage)
   const { title, body, data } = await decryptNotificationContent(remoteMessage);
 
-  // 2. Hiển thị thông báo Local
   await Notifications.scheduleNotificationAsync({
     content: {
       title: title,

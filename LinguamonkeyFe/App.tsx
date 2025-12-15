@@ -11,7 +11,6 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import 'react-native-quick-crypto';
 import { RootNavigationRef, gotoTab } from './src/utils/navigationRef'; // chỉnh path nếu khác
 
-
 (function patchBackHandlerForDebug() {
   try {
     if (Platform.OS !== 'android') return;

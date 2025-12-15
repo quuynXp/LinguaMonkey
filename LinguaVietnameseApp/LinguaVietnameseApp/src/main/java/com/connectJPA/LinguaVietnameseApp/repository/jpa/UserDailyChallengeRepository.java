@@ -70,14 +70,14 @@ public interface UserDailyChallengeRepository extends JpaRepository<UserDailyCha
                                                             @Param("type") ChallengeType type);
 
     @Query("SELECT udc FROM UserDailyChallenge udc " +
-           "WHERE udc.id.userId = :userId " +
-           "AND udc.id.challengeId = :challengeId " +
-           "AND udc.status = 'CAN_CLAIM' " +
-           "AND udc.assignedAt BETWEEN :start AND :end")
-    Optional<UserDailyChallenge> findClaimableChallenge(@Param("userId") UUID userId,
-                                                        @Param("challengeId") UUID challengeId,
-                                                        @Param("start") OffsetDateTime start,
-                                                        @Param("end") OffsetDateTime end);
+            "WHERE udc.id.userId = :userId " +
+            "AND udc.id.challengeId = :challengeId " +
+            "AND udc.status = 'CAN_CLAIM' " +
+            "AND udc.assignedAt BETWEEN :start AND :end")
+    List<UserDailyChallenge> findClaimableChallenge(@Param("userId") UUID userId,
+                                                    @Param("challengeId") UUID challengeId,
+                                                    @Param("start") OffsetDateTime start,
+                                                    @Param("end") OffsetDateTime end);
                                                         
      long countByIdUserIdAndStatus(UUID userId, ChallengeStatus status);
      

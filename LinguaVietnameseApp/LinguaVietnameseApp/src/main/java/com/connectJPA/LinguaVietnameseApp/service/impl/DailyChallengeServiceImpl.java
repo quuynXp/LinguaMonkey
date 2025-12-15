@@ -27,6 +27,9 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -46,9 +49,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     private final UserDailyChallengeMapper dailyChallengeMapper;
     private final UserLearningActivityRepository userLearningActivityRepository;
 
-    /**
-     * Sửa tên hàm và tích hợp logic tính toán cho cả DAILY và WEEKLY
-     */
     private void syncProgress(UUID userId, ChallengePeriod period, OffsetDateTime start, OffsetDateTime end) {
         List<UserDailyChallenge> activeChallenges = userDailyChallengeRepository.findActiveChallenges(
                 userId, period, start, end);
@@ -57,32 +57,25 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
             ChallengeType type = udc.getChallenge().getChallengeType();
             long actualCount = 0;
 
-            // Tính toán progress dựa trên type và period (thông qua start/end date)
             switch (type) {
                 case LEARNING_TIME:
                     actualCount = userLearningActivityRepository.sumLearningMinutes(userId, start, end);
                     break;
-
                 case VIDEO_CALL:
                     actualCount = videoCallRepository.countCompletedCallsForUserBetween(userId, start, end);
                     break;
-
                 case GIVE_ADMIRATION:
                     actualCount = admirationRepository.countBySenderIdAndCreatedAtBetween(userId, start, end);
                     break;
-
                 case FRIEND_ADDED:
                     actualCount = friendshipRepository.countNewFriends(userId, start, end);
                     break;
-
                 case SEND_MESSAGE:
                     actualCount = chatMessageRepository.countDistinctReceiversBySenderIdAndSentAtBetween(userId, start, end);
                     break;
-
                 default:
                     continue;
             }
-
             updateProgress(udc, (int) actualCount);
         }
     }
@@ -97,6 +90,11 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
             }
             userDailyChallengeRepository.save(udc);
         }
+    }
+
+    private static <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
+        Set<Object> seen = ConcurrentHashMap.newKeySet();
+        return t -> seen.add(keyExtractor.apply(t));
     }
 
     @Override
@@ -133,14 +131,29 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         syncProgress(userId, ChallengePeriod.DAILY, startOfDay, endOfDay);
         syncProgress(userId, ChallengePeriod.WEEKLY, startOfWeek, endOfWeek);
 
-        return Stream.concat(dailies.stream(), weeklies.stream())
-                .sorted(Comparator.comparingInt((UserDailyChallenge c) -> {
-                    if (c.getStatus() == ChallengeStatus.CAN_CLAIM) return 1;
-                    if (c.getStatus() == ChallengeStatus.IN_PROGRESS) return 2;
-                    if (c.getStatus() == ChallengeStatus.CLAIMED) return 3;
-                    return 4;
-                }))
+        List<UserDailyChallenge> finalDailies = dailies.stream()
+                .filter(distinctByKey(udc -> udc.getChallenge().getId()))
+                .sorted(getComparator())
+                .limit(5) 
                 .collect(Collectors.toList());
+
+        List<UserDailyChallenge> finalWeeklies = weeklies.stream()
+                .filter(distinctByKey(udc -> udc.getChallenge().getId()))
+                .sorted(getComparator())
+                .limit(5)
+                .collect(Collectors.toList());
+
+        return Stream.concat(finalDailies.stream(), finalWeeklies.stream())
+                .collect(Collectors.toList());
+    }
+
+    private Comparator<UserDailyChallenge> getComparator() {
+        return Comparator.comparingInt((UserDailyChallenge c) -> {
+            if (c.getStatus() == ChallengeStatus.CAN_CLAIM) return 1;
+            if (c.getStatus() == ChallengeStatus.IN_PROGRESS) return 2;
+            if (c.getStatus() == ChallengeStatus.CLAIMED) return 3;
+            return 4;
+        });
     }
 
     private void assignMissingChallengesV2(UUID userId, 
@@ -149,12 +162,7 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                                           boolean assignDaily, 
                                           boolean assignWeekly) {
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        
-        String userLang = user.getNativeLanguageCode();
-        if (userLang == null || userLang.isEmpty()) {
-            userLang = "en"; 
-        }
-
+        String userLang = (user.getNativeLanguageCode() != null) ? user.getNativeLanguageCode() : "en";
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         List<UserDailyChallenge> newAssignments = new ArrayList<>();
 
@@ -168,18 +176,15 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .map(udc -> udc.getChallenge().getId())
                 .collect(Collectors.toSet());
 
-            int needed = 5 - existingDailies.size();
-            
-            List<DailyChallenge> availableDailies = allChallenges.stream()
-                .filter(c -> ChallengePeriod.DAILY.name().equalsIgnoreCase(String.valueOf(c.getPeriod())))
-                .filter(c -> !existingIds.contains(c.getId()))
-                .collect(Collectors.toList());
-
-            Collections.shuffle(availableDailies);
-            
-            availableDailies.stream()
-                .limit(needed)
-                .forEach(dc -> newAssignments.add(createTransferObject(user, dc, now)));
+            int needed = Math.max(0, 5 - existingDailies.size());
+            if (needed > 0) {
+                List<DailyChallenge> availableDailies = allChallenges.stream()
+                    .filter(c -> ChallengePeriod.DAILY.name().equalsIgnoreCase(String.valueOf(c.getPeriod())))
+                    .filter(c -> !existingIds.contains(c.getId()))
+                    .collect(Collectors.toList());
+                Collections.shuffle(availableDailies);
+                availableDailies.stream().limit(needed).forEach(dc -> newAssignments.add(createTransferObject(user, dc, now)));
+            }
         }
 
         if (assignWeekly) {
@@ -187,18 +192,15 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .map(udc -> udc.getChallenge().getId())
                 .collect(Collectors.toSet());
 
-            int needed = 5 - existingWeeklies.size();
-
-            List<DailyChallenge> availableWeeklies = allChallenges.stream()
-                .filter(c -> ChallengePeriod.WEEKLY.name().equalsIgnoreCase(String.valueOf(c.getPeriod())))
-                .filter(c -> !existingIds.contains(c.getId()))
-                .collect(Collectors.toList());
-
-            Collections.shuffle(availableWeeklies);
-
-            availableWeeklies.stream()
-                .limit(needed)
-                .forEach(dc -> newAssignments.add(createTransferObject(user, dc, now)));
+            int needed = Math.max(0, 5 - existingWeeklies.size());
+            if (needed > 0) {
+                List<DailyChallenge> availableWeeklies = allChallenges.stream()
+                    .filter(c -> ChallengePeriod.WEEKLY.name().equalsIgnoreCase(String.valueOf(c.getPeriod())))
+                    .filter(c -> !existingIds.contains(c.getId()))
+                    .collect(Collectors.toList());
+                Collections.shuffle(availableWeeklies);
+                availableWeeklies.stream().limit(needed).forEach(dc -> newAssignments.add(createTransferObject(user, dc, now)));
+            }
         }
 
         if (!newAssignments.isEmpty()) {
@@ -211,7 +213,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .id(UserDailyChallengeId.builder()
                         .userId(user.getUserId())
                         .challengeId(dc.getId())
-                        // AssignedDate nên được lưu trữ để xác định thuộc về ngày/tuần nào
                         .assignedDate(now.truncatedTo(ChronoUnit.DAYS)) 
                         .build())
                 .user(user)
@@ -231,7 +232,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     public DailyChallengeUpdateResponse updateChallengeProgress(UUID userId, ChallengeType challengeType, int increment) {
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         String userLang = (user.getNativeLanguageCode() != null) ? user.getNativeLanguageCode() : "en";
-
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime startOfDay = now.truncatedTo(ChronoUnit.DAYS);
         OffsetDateTime startOfWeek = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).truncatedTo(ChronoUnit.DAYS);
@@ -258,7 +258,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         for (UserDailyChallenge target : matchingChallenges) {
             int newProgress = target.getProgress() + increment;
             target.setProgress(newProgress);
-            
             int requiredTarget = target.getTargetAmount();
 
             if (newProgress >= requiredTarget && target.getStatus() == ChallengeStatus.IN_PROGRESS) {
@@ -266,7 +265,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 target.setCompletedAt(now);
                 target.setStatus(ChallengeStatus.CAN_CLAIM);
                 anyCompleted = true;
-
                 if (target.getChallenge().getLanguageCode().equals(userLang)) {
                     sendChallengeCompletedNotification(userId, target);
                 }
@@ -299,7 +297,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         try {
             String title = "Challenge Completed! 🎯";
             String body = "You've completed '" + challenge.getTitle() + "'. Claim your " + challenge.getExpReward() + " EXP now!";
-            
             NotificationRequest request = NotificationRequest.builder()
                     .userId(userId)
                     .title(title)
@@ -307,7 +304,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                     .type("CHALLENGE_COMPLETED")
                     .payload("{\"challengeId\":\"" + challenge.getChallengeId() + "\"}")
                     .build();
-            
             notificationService.createPushNotification(request);
         } catch (Exception e) {
             log.error("Failed to send challenge completion notification", e);
@@ -319,11 +315,9 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     public void claimReward(UUID userId, UUID challengeId) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         
-        // 1. Tìm Challenge gốc để xác định loại period (Daily/Weekly)
         DailyChallenge dailyChallenge = dailyChallengeRepository.findById(challengeId)
                 .orElseThrow(() -> new AppException(ErrorCode.CHALLENGE_NOT_FOUND));
         
-        // 2. Xác định phạm vi thời gian (start/end) dựa trên loại period
         OffsetDateTime start, end;
         if (dailyChallenge.getPeriod() == ChallengePeriod.DAILY) {
             start = now.truncatedTo(ChronoUnit.DAYS);
@@ -332,31 +326,36 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
             start = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).truncatedTo(ChronoUnit.DAYS);
             end = start.plusDays(7).minusNanos(1);
         } else {
-            // Trường hợp không xác định, mặc định là Daily
             start = now.truncatedTo(ChronoUnit.DAYS);
             end = start.plusDays(1).minusNanos(1);
         }
         
-        // SỬA LỖI: Sử dụng findClaimableChallenge (giả định query này trả về UNIQUE result) 
-        // vì nó tìm kiếm dựa trên userId, challengeId, status=CAN_CLAIM và phạm vi thời gian (start/end).
-        UserDailyChallenge challenge = userDailyChallengeRepository.findClaimableChallenge(userId, challengeId, start, end)
-                .orElseThrow(() -> new AppException(ErrorCode.CHALLENGE_NOT_COMPLETED)); // Ném lỗi nếu không tìm thấy bản ghi CAN_CLAIM
+        // FIX: Find ALL duplicates
+        List<UserDailyChallenge> candidateChallenges = userDailyChallengeRepository.findClaimableChallenge(userId, challengeId, start, end);
+        
+        if (candidateChallenges.isEmpty()) {
+             throw new AppException(ErrorCode.CHALLENGE_NOT_COMPLETED);
+        }
 
-        // Lỗi này không cần thiết nếu đã dùng findClaimableChallenge (nó đã check status)
-        // if (challenge.getStatus() != ChallengeStatus.CAN_CLAIM) { 
-        //      throw new AppException(ErrorCode.CHALLENGE_NOT_COMPLETED);
-        // }
+        // Handle duplicates: Take the first one, delete the rest (Self-healing)
+        UserDailyChallenge challenge = candidateChallenges.get(0);
+        if (candidateChallenges.size() > 1) {
+            log.warn("Found duplicate challenges for user {} and challenge {}. Cleaning up...", userId, challengeId);
+            for (int i = 1; i < candidateChallenges.size(); i++) {
+                UserDailyChallenge duplicate = candidateChallenges.get(i);
+                duplicate.setDeleted(true); // Soft delete
+                userDailyChallengeRepository.save(duplicate);
+            }
+        }
 
         if (challenge.getStatus() == ChallengeStatus.CLAIMED) {
             throw new AppException(ErrorCode.CHALLENGE_ALREADY_CLAIMED);
         }
 
-        // 3. Cập nhật trạng thái và lưu
         challenge.setStatus(ChallengeStatus.CLAIMED);
         challenge.setClaimedAt(now);
         userDailyChallengeRepository.save(challenge);
 
-        // 4. Cộng thưởng
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         user.setExp(user.getExp() + challenge.getExpReward());
         user.setCoins(user.getCoins() + challenge.getRewardCoins());
@@ -372,7 +371,6 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     @Override
     public Map<String, Object> getDailyChallengeStats(UUID userId) {
         List<UserDailyChallenge> todayChallenges = getTodayChallenges(userId);
-        
         long completed = todayChallenges.stream().filter(udc -> udc.getStatus() == ChallengeStatus.CAN_CLAIM || udc.getStatus() == ChallengeStatus.CLAIMED).count();
         int totalExpReward = todayChallenges.stream().filter(udc -> udc.getStatus() == ChallengeStatus.CAN_CLAIM).mapToInt(UserDailyChallenge::getExpReward).sum();
         int totalCoins = todayChallenges.stream().filter(udc -> udc.getStatus() == ChallengeStatus.CAN_CLAIM).mapToInt(UserDailyChallenge::getRewardCoins).sum();

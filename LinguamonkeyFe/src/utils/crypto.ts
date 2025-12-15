@@ -1,12 +1,19 @@
-import QuickCrypto from 'react-native-quick-crypto';
+import 'react-native-get-random-values';
 import { Buffer } from 'buffer';
+import { ec as EC } from 'elliptic';
+import CryptoJS from 'crypto-js';
 
 if (typeof global.Buffer === 'undefined') {
     global.Buffer = Buffer;
 }
 
-export type CryptoKey = Buffer;
+const ec = new EC('p256');
+
+const P256_SPKI_HEADER_HEX = "3059301306072a8648ce3d020106082a8648ce3d030107034200";
+
+export type CryptoKey = string;
 export type CryptoKeyPair = { publicKey: string; privateKey: string };
+
 
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
     return Buffer.from(buffer).toString('base64');
@@ -16,99 +23,93 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
     return Buffer.from(base64, 'base64').buffer;
 }
 
-export async function generateKeyPair(): Promise<CryptoKeyPair> {
-    try {
-        const keyPair = QuickCrypto.generateKeyPairSync('ec', {
-            namedCurve: 'prime256v1',
-            publicKeyEncoding: { type: 'spki', format: 'pem' },
-            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-        });
+function hexToBase64(hex: string): string {
+    return Buffer.from(hex, 'hex').toString('base64');
+}
 
-        return {
-            publicKey: keyPair.publicKey as string,
-            privateKey: keyPair.privateKey as string,
-        };
-    } catch (e: any) {
-        throw new Error(`Generate Key Pair Failed: ${e.message}`);
-    }
+
+export async function generateKeyPair(): Promise<CryptoKeyPair> {
+    const key = ec.genKeyPair();
+
+    const privateKey = key.getPrivate('hex');
+
+    const publicKey = key.getPublic(false, 'hex');
+
+    return { publicKey, privateKey };
 }
 
 export async function generateSigningKeyPair(): Promise<CryptoKeyPair> {
     return generateKeyPair();
 }
 
-export async function exportPublicKey(key: string | Buffer): Promise<string> {
-    if (typeof key === 'string' && key.includes('-----BEGIN PUBLIC KEY-----')) {
-        return key
-            .replace(/-----BEGIN PUBLIC KEY-----/g, '')
-            .replace(/-----END PUBLIC KEY-----/g, '')
-            .replace(/\s/g, '');
-    }
-    return key.toString();
-}
-
-export async function exportPrivateKey(key: string | Buffer): Promise<string> {
-    if (typeof key === 'string' && key.includes('-----BEGIN PRIVATE KEY-----')) {
-        return key
-            .replace(/-----BEGIN PRIVATE KEY-----/g, '')
-            .replace(/-----END PRIVATE KEY-----/g, '')
-            .replace(/\s/g, '');
-    }
-    return key.toString();
-}
-
-export async function importPublicKey(publicKeyBase64: string): Promise<string> {
-    return `-----BEGIN PUBLIC KEY-----\n${publicKeyBase64}\n-----END PUBLIC KEY-----`;
-}
-
-export async function importKeyPair(keyPairJson: { publicKey: string; privateKey: string }): Promise<CryptoKeyPair> {
-    return {
-        publicKey: `-----BEGIN PUBLIC KEY-----\n${keyPairJson.publicKey}\n-----END PUBLIC KEY-----`,
-        privateKey: `-----BEGIN PRIVATE KEY-----\n${keyPairJson.privateKey}\n-----END PRIVATE KEY-----`,
-    };
-}
-
-export async function importSigningKeyPair(keyPairJson: { publicKey: string; privateKey: string }): Promise<CryptoKeyPair> {
-    return importKeyPair(keyPairJson);
-}
-
-export async function deriveSessionKey(privateKeyPem: string, publicKeyPem: string): Promise<string> {
+export async function exportPublicKey(rawHexPublicKey: string): Promise<string> {
     try {
-        const sharedSecretBuffer = QuickCrypto.diffieHellman({
-            privateKey: QuickCrypto.createPrivateKey(privateKeyPem),
-            publicKey: QuickCrypto.createPublicKey(publicKeyPem),
-        });
+        const headerBuf = Buffer.from(P256_SPKI_HEADER_HEX, 'hex');
+        const keyBuf = Buffer.from(rawHexPublicKey, 'hex');
+        const fullBuf = Buffer.concat([headerBuf, keyBuf]);
+        return fullBuf.toString('base64');
+    } catch (e) {
+        return rawHexPublicKey;
+    }
+}
 
-        // Thêm kiểm tra để loại bỏ 'void' khỏi kiểu trả về
-        if (!sharedSecretBuffer) {
-            throw new Error("ECDH shared secret derivation failed: null buffer returned.");
+export async function exportPrivateKey(rawHexPrivateKey: string): Promise<string> {
+    return hexToBase64(rawHexPrivateKey);
+}
+
+export async function importPublicKey(spkiBase64: string): Promise<string> {
+    try {
+        const buffer = Buffer.from(spkiBase64, 'base64');
+        if (buffer.length > 65) {
+            const raw = buffer.slice(buffer.length - 65);
+            return raw.toString('hex');
         }
+        return buffer.toString('hex');
+    } catch (e) {
+        return spkiBase64;
+    }
+}
+
+export async function importKeyPair(json: any): Promise<CryptoKeyPair> { return json; }
+export async function importSigningKeyPair(json: any): Promise<CryptoKeyPair> { return json; }
+export function convertPemToBase64(k: string) { return k; }
+export function convertBase64ToPem(k: string) { return k; }
+
+export async function deriveSessionKey(privateKeyHex: string, publicKeyHex: string): Promise<string> {
+    try {
+        const keyA = ec.keyFromPrivate(privateKeyHex, 'hex');
+        const keyB = ec.keyFromPublic(publicKeyHex, 'hex');
+
+        const sharedSecret = keyA.derive(keyB.getPublic());
+
+        let sharedHex = sharedSecret.toString(16);
+        if (sharedHex.length % 2 !== 0) sharedHex = '0' + sharedHex;
 
         const info = 'E2EE-AES-256-GCM-v1';
+        const secretWord = CryptoJS.enc.Hex.parse(sharedHex);
+        const derivedKey = CryptoJS.HmacSHA256(secretWord, info);
 
-        // sharedSecretBuffer đã được xác nhận là Buffer (BinaryLike cho khóa)
-        const hmac = QuickCrypto.createHmac('sha256', sharedSecretBuffer);
-
-        // Buffer.from(info) đảm bảo tham số cho update là BinaryLike (Buffer) chứ không phải void.
-        hmac.update(Buffer.from(info, 'utf-8'));
-
-        return hmac.digest('base64');
+        return derivedKey.toString(CryptoJS.enc.Base64);
     } catch (e: any) {
-        console.error('ECDH Derive Error:', e);
         throw new Error(`Derive Key Failed: ${e.message}`);
     }
 }
 
 export async function encryptAES(content: string, keyBase64: string): Promise<[string, string]> {
     try {
-        const iv = QuickCrypto.randomBytes(16);
-        const key = Buffer.from(keyBase64, 'base64');
+        const key = CryptoJS.enc.Base64.parse(keyBase64);
+        const iv = CryptoJS.lib.WordArray.random(16);
 
-        const cipher = QuickCrypto.createCipheriv('aes-256-cbc', key, iv);
-        let encrypted = cipher.update(content, 'utf8', 'base64');
-        encrypted += cipher.final('base64');
+        const encrypted = CryptoJS.AES.encrypt(content, key, {
+            iv: iv,
+            mode: CryptoJS.mode.CBC,
+            padding: CryptoJS.pad.Pkcs7
+        });
 
-        return [iv.toString('base64'), encrypted];
+        return [
+            iv.toString(CryptoJS.enc.Base64),
+            encrypted.toString()
+        ];
     } catch (e: any) {
         throw new Error(`Encryption failed: ${e.message}`);
     }
@@ -116,32 +117,35 @@ export async function encryptAES(content: string, keyBase64: string): Promise<[s
 
 export async function decryptAES(ciphertextBase64: string, ivBase64: string, keyBase64: string): Promise<string> {
     try {
-        const iv = Buffer.from(ivBase64, 'base64');
-        const key = Buffer.from(keyBase64, 'base64');
+        const key = CryptoJS.enc.Base64.parse(keyBase64);
+        const iv = CryptoJS.enc.Base64.parse(ivBase64);
 
-        const decipher = QuickCrypto.createDecipheriv('aes-256-cbc', key, iv);
-        let decrypted = decipher.update(ciphertextBase64, 'base64', 'utf8');
-        decrypted += decipher.final('utf8');
+        const decrypted = CryptoJS.AES.decrypt(ciphertextBase64, key, {
+            iv: iv,
+            mode: CryptoJS.mode.CBC,
+            padding: CryptoJS.pad.Pkcs7
+        });
 
-        return decrypted;
+        const text = decrypted.toString(CryptoJS.enc.Utf8);
+        if (!text) return "🔒 Tin nhắn cũ (Không thể giải mã)";
+
+        return text;
     } catch (e: any) {
-        throw new Error(`Decryption failed: ${e.message}`);
+        return "🔒 Lỗi giải mã";
     }
 }
 
-export async function signData(privateKeyPem: string, data: ArrayBuffer): Promise<string> {
+
+export async function signData(privateKeyHex: string, data: ArrayBuffer): Promise<string> {
     try {
-        const sign = QuickCrypto.createSign('SHA256');
-        sign.update(Buffer.from(data));
-        const signatureBuffer = sign.sign(privateKeyPem);
-        return signatureBuffer.toString('base64');
+        const dataB64 = arrayBufferToBase64(data);
+        const hash = CryptoJS.HmacSHA256(dataB64, CryptoJS.enc.Hex.parse(privateKeyHex));
+        return hash.toString(CryptoJS.enc.Base64);
     } catch (e: any) {
         throw new Error(`Signing failed: ${e.message}`);
     }
 }
 
 export function generatePreKeyId(): number {
-    const buf = QuickCrypto.randomBytes(4);
-    const num = buf.readUInt32BE(0);
-    return num % (2 ** 31 - 1);
+    return Math.floor(Math.random() * 2147483647);
 }
