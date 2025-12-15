@@ -115,6 +115,8 @@ services:
           - /api/v1/wallets/
           - /api/v1/keys
           - /api/v1/keys/
+          - /api/v1/keys/backup
+          - /api/v1/keys/backup/
     plugins:
       - name: jwt
         config:

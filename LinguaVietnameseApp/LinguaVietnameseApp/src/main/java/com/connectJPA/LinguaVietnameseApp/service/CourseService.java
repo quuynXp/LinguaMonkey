@@ -20,18 +20,14 @@ import java.util.UUID;
 
 public interface CourseService {
 
-    // === QUẢN LÝ VERSIONING MỚI ===
     CourseResponse createCourse(CreateCourseRequest request);
     CourseVersionResponse updateCourseVersion(UUID versionId, UpdateCourseVersionRequest request);
     CourseVersionResponse publishCourseVersion(UUID versionId, PublishVersionRequest request);
     CourseVersionResponse createNewDraftVersion(UUID courseId);
     CourseResponse updateCourseDetails(UUID id, UpdateCourseDetailsRequest request);
 
-    Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, Pageable pageable);
-
         CourseVersionResponse getCourseVersionById(UUID versionId);
 
-    // === LOGIC CŨ (ĐÃ ĐIỀU CHỈNH) ===
     List<CourseResponse> getRecommendedCourses(UUID userId, int limit);
     List<CourseSummaryResponse> getCourseSummariesByTeacher(UUID teacherId, int limit);
     // Page<CourseResponse> getDiscountedCourses(Pageable pageable);
@@ -40,12 +36,10 @@ public interface CourseService {
     Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable);
     Page<CourseResponse> getCoursesByCreator(UUID creatorId, Pageable pageable);
 
-    // === LOGIC ADMIN (ĐIỀU CHỈNH) ===
     CourseVersionResponse approveCourseVersion(UUID versionId);
     CourseVersionResponse rejectCourseVersion(UUID versionId, String reason);
 
     List<String> getCourseCategories();
-    // THÊM: Phương thức tìm kiếm
     Page<Course> searchCourses(String keyword, int page, int size, Map<String, Object> filters);
 
     CreatorDashboardResponse getCourseDashboardStats(UUID courseId);
@@ -53,4 +47,6 @@ public interface CourseService {
     List<CourseVersionResponse> getCourseVersions(UUID courseId);
     PageResponse<CourseResponse> getSpecialOffers(String keyword, String languageCode, Float minRating, int page,
             int size);
+    Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated,
+            UUID currentUserId, Pageable pageable);
 }

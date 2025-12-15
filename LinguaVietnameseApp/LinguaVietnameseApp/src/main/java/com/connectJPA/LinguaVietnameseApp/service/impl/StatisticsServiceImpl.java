@@ -61,7 +61,6 @@ public class StatisticsServiceImpl implements StatisticsService {
             LocalDate d = t.getCreatedAt().toLocalDate();
             BucketAggregate b = byDate.computeIfAbsent(d, k -> new BucketAggregate(BigDecimal.ZERO, 0L));
             
-            // CHỈ SỬ DỤNG GIAO DỊCH CÓ TIỀN TỆ USD HOẶC ĐANG LÀ DEPOSIT ĐỂ THỐNG KÊ (nếu là DEPOSIT, tính tất cả, giả định FE sẽ quy đổi)
             boolean shouldAggregateRevenue = t.getAmount() != null && 
                                              (t.getType() == TransactionType.DEPOSIT || "USD".equalsIgnoreCase(t.getCurrency()));
 
@@ -129,6 +128,29 @@ public class StatisticsServiceImpl implements StatisticsService {
         return series;
     }
 
+    // Helper tính streak
+    private int calculateStreak(UUID userId) {
+        int streak = 0;
+        LocalDate checkDate = LocalDate.now();
+        // Check today
+        if (hasActivityOnDate(userId, checkDate)) {
+            streak++;
+        }
+        // Check backwards
+        checkDate = checkDate.minusDays(1);
+        while (hasActivityOnDate(userId, checkDate)) {
+            streak++;
+            checkDate = checkDate.minusDays(1);
+        }
+        return streak;
+    }
+
+    private boolean hasActivityOnDate(UUID userId, LocalDate date) {
+        OffsetDateTime start = date.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = date.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        return userLearningActivityRepository.existsByUserIdAndDateRange(userId, start, end);
+    }
+
     private static class BucketAggregate {
         BigDecimal revenue;
         long count;
@@ -139,71 +161,36 @@ public class StatisticsServiceImpl implements StatisticsService {
         BucketRange(LocalDate s, LocalDate e) { start = s; end = e; }
     }
 
-    /* --------------------------------------------------------------------- */
-    /* DEPOSIT REVENUE STATISTICS - NEW */
-    /* --------------------------------------------------------------------- */
-
-    @Override
-    public DepositRevenueResponse getDepositRevenueStatistics(LocalDate startDate, LocalDate endDate, String aggregate) {
-        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
-        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
-
-        List<Transaction> depositTransactions = transactionRepository
-                .findByTypeAndStatusAndCreatedAtBetween(
-                        TransactionType.DEPOSIT,
-                        TransactionStatus.SUCCESS,
-                        start,
-                        end
-                );
-
-        BigDecimal totalDepositRevenue = BigDecimal.ZERO;
-        if (depositTransactions != null) {
-            totalDepositRevenue = depositTransactions.stream()
-                    .filter(t -> t.getAmount() != null) // BỎ QUA KIỂM TRA TIỀN TỆ Ở ĐÂY
-                    .map(Transaction::getAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-        }
-
-        List<TimeSeriesPoint> revenueTimeSeries = buildTimeSeries(startDate, endDate, aggregate, depositTransactions);
-
-        return new DepositRevenueResponse(totalDepositRevenue, revenueTimeSeries);
-    }
-    
-    
-    /* --------------------------------------------------------------------- */
-    /* DASHBOARD STATISTICS                                                  */
-    /* --------------------------------------------------------------------- */
+    // --- FIX CHÍNH Ở ĐÂY: getDashboardStatistics ---
     @Override
     public DashboardStatisticsResponse getDashboardStatistics(UUID userId,
-                                                            LocalDate startDate,
-                                                            LocalDate endDate) {
+                                                              LocalDate startDate,
+                                                              LocalDate endDate) {
         OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
 
-        List<UserLearningActivity> activities = userLearningActivityRepository
-                .findByUserIdAndCreatedAtBetween(userId, start, end);
+        // 1. Tính toán các chỉ số trực tiếp từ DB (Sửa lỗi hiển thị 0)
+        long totalLearningTime = userLearningActivityRepository.sumDurationByUserIdAndDateRange(userId, start, end);
+        double averageAccuracy = userLearningActivityRepository.calculateAverageAccuracy(userId, start, end);
+        long totalScore = userLearningActivityRepository.sumScoreByUserIdAndDateRange(userId, start, end);
+        int currentStreak = calculateStreak(userId);
 
-        long totalLearningTime = activities.stream()
-                .filter(a -> (a.getActivityType() == ActivityType.LESSON_END ||
-                        a.getActivityType() == ActivityType.CHAT_END))
-                .mapToLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L)
-                .sum();
+        int lessonsCompleted = userLearningActivityRepository.countActivitiesByType(userId, ActivityType.LESSON_COMPLETION, start, end);
+        int badgesEarnedCount = userLearningActivityRepository.countActivitiesByType(userId, ActivityType.BADGE_EARNED, start, end);
 
-        long lessonsCompleted = activities.stream()
-                .filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETION)
-                .count();
-
-        long badgesEarned = activities.stream()
-                .filter(a -> a.getActivityType() == ActivityType.BADGE_EARNED)
-                .count();
-
+        // 2. Điền đầy đủ vào DTO
         OverviewMetricsDto overview = OverviewMetricsDto.builder()
                 .totalLearningTimeSeconds(totalLearningTime)
                 .lessonsCompleted(lessonsCompleted)
-                .badgesEarned(badgesEarned)
-                .streakDays(0)
+                .badgesEarned(badgesEarnedCount)
+                .streakDays(currentStreak)
+                .averageAccuracy(averageAccuracy) // Fix lỗi 0%
+                .totalExperience(totalScore)      // Fix lỗi 0 exp
+                .totalCoins(totalScore)           // Giả định 1 score = 1 coin, hoặc logic quy đổi khác
                 .build();
 
+        List<UserLearningActivity> activities = userLearningActivityRepository
+                .findByUserIdAndCreatedAtBetween(userId, start, end);
         List<TimeSeriesPoint> learningChart = buildLearningTimeSeries(startDate, endDate, activities);
 
         List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository
@@ -212,7 +199,6 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<CourseProgressDto> courseProgressList = new ArrayList<>();
         for (CourseVersionEnrollment e : enrollments) {
             Course course = courseRepository.findById(e.getCourseVersion().getCourseId()).orElse(null);
-            
             CourseVersion version = (course != null) ? course.getLatestPublicVersion() : null;
             if (course == null || version == null) continue;
 
@@ -277,11 +263,10 @@ public class StatisticsServiceImpl implements StatisticsService {
                                                           LocalDate endDate,
                                                           List<UserLearningActivity> activities) {
         Map<LocalDate, Long> dailyDuration = activities.stream()
-                .filter(a -> (a.getActivityType() == ActivityType.LESSON_END ||
-                        a.getActivityType() == ActivityType.CHAT_END))
+                .filter(a -> a.getDurationInSeconds() != null && a.getDurationInSeconds() > 0)
                 .collect(Collectors.groupingBy(
                         a -> a.getCreatedAt().toLocalDate(),
-                        Collectors.summingLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L)
+                        Collectors.summingLong(UserLearningActivity::getDurationInSeconds)
                 ));
 
         List<TimeSeriesPoint> series = new ArrayList<>();
@@ -347,9 +332,9 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Override
     public StatisticsResponse getUserStatistics(UUID userId,
-                                             LocalDate startDate,
-                                             LocalDate endDate,
-                                             String aggregate) {
+                                                LocalDate startDate,
+                                                LocalDate endDate,
+                                                String aggregate) {
         OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
 
@@ -366,10 +351,10 @@ public class StatisticsServiceImpl implements StatisticsService {
         Map<String, Long> breakdown = activities.stream()
                 .collect(Collectors.groupingBy(a -> a.getActivityType().name(), Collectors.counting()));
 
-        int lessonsCompleted = breakdown.getOrDefault(ActivityType.LESSON_COMPLETION.toString(), 0L).intValue();
-        int quizzesCompleted = breakdown.getOrDefault(ActivityType.QUIZ_COMPLETE.toString(), 0L).intValue();
-        int groupSessions = breakdown.getOrDefault(ActivityType.GROUP_SESSION_JOINED.toString(), 0L).intValue();
-        int examsTaken = breakdown.getOrDefault(ActivityType.EXAM.toString(), 0L).intValue();
+        int lessonsCompleted = userLearningActivityRepository.countActivitiesByType(userId, ActivityType.LESSON_COMPLETION, start, end);
+        int quizzesCompleted = userLearningActivityRepository.countActivitiesByType(userId, ActivityType.QUIZ_COMPLETE, start, end);
+        int groupSessions = userLearningActivityRepository.countActivitiesByType(userId, ActivityType.GROUP_SESSION_JOINED, start, end);
+        int examsTaken = userLearningActivityRepository.countActivitiesByType(userId, ActivityType.EXAM, start, end);
 
         List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository
                 .findByUserIdAndEnrolledAtBetween(userId, start, end);
@@ -407,6 +392,32 @@ public class StatisticsServiceImpl implements StatisticsService {
         return resp;
     }
 
+    @Override
+    public DepositRevenueResponse getDepositRevenueStatistics(LocalDate startDate, LocalDate endDate, String aggregate) {
+        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+
+        List<Transaction> depositTransactions = transactionRepository
+                .findByTypeAndStatusAndCreatedAtBetween(
+                        TransactionType.DEPOSIT,
+                        TransactionStatus.SUCCESS,
+                        start,
+                        end
+                );
+
+        BigDecimal totalDepositRevenue = BigDecimal.ZERO;
+        if (depositTransactions != null) {
+            totalDepositRevenue = depositTransactions.stream()
+                    .filter(t -> t.getAmount() != null)
+                    .map(Transaction::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        List<TimeSeriesPoint> revenueTimeSeries = buildTimeSeries(startDate, endDate, aggregate, depositTransactions);
+
+        return new DepositRevenueResponse(totalDepositRevenue, revenueTimeSeries);
+    }
+    
     @Override
     public List<UserCountResponse> getUserCounts(String period, LocalDate startDate, LocalDate endDate) {
         return new ArrayList<>(); 

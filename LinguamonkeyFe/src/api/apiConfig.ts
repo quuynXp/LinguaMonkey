@@ -5,6 +5,8 @@ const ADB_REVERSE_URL = process.env.EXPO_PUBLIC_ADB_REVERSE_URL || 'http://local
 const ANDROID_EMULATOR_URL = process.env.EXPO_PUBLIC_ANDROID_EMULATOR_URL || 'http://10.0.2.2:8000';
 const IOS_SIMULATOR_URL = process.env.EXPO_PUBLIC_IOS_SIMULATOR_URL || 'http://localhost:8000';
 
+const PROD_API_URL = process.env.EXPO_PUBLIC_API_PROD_URL;
+
 const getHost = (): string => {
 
     if (__DEV__) {
@@ -25,7 +27,7 @@ const getHost = (): string => {
         return IOS_SIMULATOR_URL;
     }
 
-    return 'https://api.linguamonkey.com';
+    return PROD_API_URL;
 };
 
 export const API_BASE_URL = getHost();

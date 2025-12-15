@@ -10,6 +10,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
+import com.connectJPA.LinguaVietnameseApp.enums.MessageType;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -71,7 +72,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         ChatMessageResponse response = chatMessageMapper.toResponse(entity);
         response.setTranslations(entity.getTranslations()); 
         response.setPurpose(purpose);
-        
+        response.setMediaUrl(entity.getMediaUrl());
         // Ensure E2EE metadata is returned to FE
         response.setSenderEphemeralKey(entity.getSenderEphemeralKey());
         response.setUsedPreKeyId(entity.getUsedPreKeyId());
@@ -124,6 +125,21 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         if (request.getMediaUrl() != null && !request.getMediaUrl().isEmpty()) {
             message.setMediaUrl(request.getMediaUrl());
         }
+
+        // --- MEDIA TEXT CONTENT FALLBACK LOGIC ---
+        // If message is Media but content is empty, fill it for Notifications/LastMessage purposes.
+        // The Mobile App will hide this text if messageType is IMAGE/VIDEO, so it's safe to store.
+        if (message.getContent() == null || message.getContent().trim().isEmpty()) {
+            if (message.getMessageType() == MessageType.IMAGE) {
+                message.setContent("📷 [Hình ảnh]"); 
+            } else if (message.getMessageType() == MessageType.VIDEO) {
+                message.setContent("🎥 [Video]");
+            } else if (message.getMessageType() == MessageType.AUDIO) {
+                message.setContent("🎤 [Audio]");
+            } else if (message.getMessageType() == MessageType.DOCUMENT) {
+                message.setContent("📄 [Tài liệu]");
+            }
+        }
         
         if (message.getId() == null) {
             message.setId(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()));
@@ -154,7 +170,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
         // --- BROADCAST LOGIC (Isolated from DB Transaction) ---
-        // Critical Fix: Wrapped in try-catch so Redis/WS failures do not rollback the saved message
         try {
             // 1. Send via WebSocket to Room Topic
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
@@ -174,7 +189,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 redisTemplate.convertAndSend("chat_events", event);
             } catch (Exception redisEx) {
                 log.error("Redis publish failed for message {}", savedMessage.getId().getChatMessageId(), redisEx);
-                // Do NOT rethrow, allow the method to complete successfully
             }
 
             // 3. Send Notifications
@@ -184,23 +198,45 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 } catch (Exception wsEx) { log.warn("Failed to send private WS notification to user {}", uId); }
 
                 try {
-                    Map<String, String> dataPayload = Map.of(
-                        "screen", "TabApp", "ChatStack", "GroupChatScreen",
-                        "roomId", roomId.toString(), "initialFocusMessageId", response.getChatMessageId().toString()
-                    );
+                    Map<String, String> dataPayload = new HashMap<>();
+                    dataPayload.put("screen", "TabApp");
+                    dataPayload.put("stack", "ChatStack");
+                    dataPayload.put("screenName", "GroupChatScreen");
+                    dataPayload.put("roomId", roomId.toString());
+                    dataPayload.put("initialFocusMessageId", response.getChatMessageId().toString());
+                    dataPayload.put("senderId", savedMessage.getSenderId().toString());
                     
                     boolean isEncrypted = savedMessage.getSenderEphemeralKey() != null;
-                    String contentForNotification = isEncrypted ? "Encrypted Message" : 
-                                                (response.getContent() != null && !response.getContent().isEmpty()) ? response.getContent() : "You sent an attachment";
+                    String contentForNotification;
+                    
+                    if (isEncrypted) {
+                        contentForNotification = "🔒 Tin nhắn được mã hóa";
+                        dataPayload.put("isEncrypted", "true");
+                        dataPayload.put("ciphertext", savedMessage.getContent()); 
+                        dataPayload.put("senderEphemeralKey", savedMessage.getSenderEphemeralKey());
+                        dataPayload.put("initializationVector", savedMessage.getInitializationVector());
+                        
+                        if (savedMessage.getSelfContent() != null) {
+                        }
+                    
+                    } else {
+                        contentForNotification = savedMessage.getContent();
+                        dataPayload.put("isEncrypted", "false");
+                    }
                     
                     String payloadJson = gson.toJson(dataPayload);
-                    NotificationRequest nreq = NotificationRequest.builder().userId(uId).title("New message").content(contentForNotification).type("CHAT_MESSAGE").payload(payloadJson).build();
+                    NotificationRequest nreq = NotificationRequest.builder()
+                        .userId(uId)
+                        .title("Tin nhắn mới")
+                        .content(contentForNotification)
+                        .type("CHAT_MESSAGE")
+                        .payload(payloadJson)
+                        .build();
                     notificationService.createPushNotification(nreq);
                 } catch (Exception pushEx) { log.error("Failed to create push notification for user {}", uId); }
             }
         } catch (Exception e) {
             log.error("Broadcast/Notification failed for message {}", savedMessage.getId().getChatMessageId(), e);
-            // We do NOT throw here, so the DB transaction commits successfully.
         }
 
         return response;
@@ -370,7 +406,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
             ChatMessageResponse response = mapToResponse(saved, room.getPurpose());
             
-            // Try/Catch for notification
             try {
                 messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), response);
             } catch (Exception e) {

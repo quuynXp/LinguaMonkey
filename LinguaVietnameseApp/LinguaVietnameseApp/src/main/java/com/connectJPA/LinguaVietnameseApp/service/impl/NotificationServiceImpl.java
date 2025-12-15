@@ -28,10 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +43,11 @@ public class NotificationServiceImpl implements NotificationService {
     private final UserSettingsRepository userSettingsRepository;
     private final Gson gson = new Gson();
 
+    // Định nghĩa các hằng số ngôn ngữ để tránh hardcode
+    private static final String LANG_VI = "vi";
+    private static final String LANG_ZH = "zh";
+    // private static final String LANG_EN = "en"; // Default
+
     @Override
     public Page<Notification> searchNotifications(String keyword, int page, int size, Map<String, Object> filters) {
         if (keyword == null || keyword.isBlank()) {
@@ -54,11 +56,8 @@ public class NotificationServiceImpl implements NotificationService {
         try {
             String currentUserIdString = SecurityContextHolder.getContext().getAuthentication().getName();
             UUID currentUserId = UUID.fromString(currentUserIdString);
-            
             Pageable pageable = PageRequest.of(page, size);
-            
             return notificationRepository.searchNotificationsByKeyword(currentUserId, keyword, pageable);
-            
         } catch (IllegalArgumentException e) {
             throw new AppException(ErrorCode.INVALID_KEY);
         } catch (Exception e) {
@@ -78,13 +77,18 @@ public class NotificationServiceImpl implements NotificationService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         return user.getNativeLanguageCode() != null ? Locale.forLanguageTag(user.getNativeLanguageCode()) : Locale.getDefault();
     }
+    
+    // Helper để lấy native language code dạng String (vi, en, zh)
+    private String getUserLanguageCode(UUID userId) {
+        return userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .map(User::getNativeLanguageCode)
+                .orElse("en");
+    }
 
     @Override
     public Page<NotificationResponse> getAllNotifications(UUID userId, String title, String type, Pageable pageable) {
         try {
-            if (pageable == null) {
-                throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            }
+            if (pageable == null) throw new AppException(ErrorCode.INVALID_PAGEABLE);
             Page<Notification> notifications = notificationRepository.findByUserIdAndTitleContainingAndTypeAndIsDeletedFalse(userId, title, type, pageable);
             return notifications.map(notificationMapper::toResponse);
         } catch (Exception e) {
@@ -92,13 +96,11 @@ public class NotificationServiceImpl implements NotificationService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-    
+
     @Override
     public Page<NotificationResponse> getAllNotificationByUserId(UUID userId, Pageable pageable) {
         try {
-            if (pageable == null) {
-                throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            }
+            if (pageable == null) throw new AppException(ErrorCode.INVALID_PAGEABLE);
             Page<Notification> notifications = notificationRepository.findByUserIdAndIsDeletedFalse(userId, pageable);
             return notifications.map(notificationMapper::toResponse);
         } catch (Exception e) {
@@ -110,17 +112,14 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public NotificationResponse getNotificationById(UUID id) {
         try {
-            if (id == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+            if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
             Notification notification = notificationRepository.findByNotificationIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.NOTIFICATION_NOT_FOUND));
-            
+
             if (!notification.isRead()) {
                 notification.setRead(true);
                 notificationRepository.save(notification);
             }
-
             return notificationMapper.toResponse(notification);
         } catch (Exception e) {
             log.error("Error while fetching notification by ID {}: {}", id, e.getMessage());
@@ -146,43 +145,59 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-   @Override
+    @Override
     public void createPushNotification(NotificationRequest request) {
+        // Lưu vào DB trước
         Notification notification = notificationMapper.toEntity(request);
         notification.setCreatedAt(OffsetDateTime.now());
         notification.setRead(false);
-        notificationRepository.save(notification); 
+        notificationRepository.save(notification);
+        
+        // Gửi FCM
         sendFcmToUser(request);
     }
 
     private void sendFcmToUser(NotificationRequest request) {
         try {
             List<UserFcmToken> tokens = userFcmTokenRepository.findByUserIdAndIsDeletedFalse(request.getUserId());
-
-            if (tokens.isEmpty()) {
-                return;
-            }
+            if (tokens.isEmpty()) return;
 
             boolean isSoundEnabled = userSettingsRepository.findById(request.getUserId())
                     .map(UserSettings::isSoundEnabled)
                     .orElse(true);
-
             String soundValue = isSoundEnabled ? "default" : null;
+            
+            String userLang = getUserLanguageCode(request.getUserId());
+
+            String displayTitle = request.getTitle();
+            String displayBody = request.getContent();
+
+            boolean isEncryptedMessage = request.getType() != null && request.getType().contains("CHAT"); 
+            
+            if (isEncryptedMessage) {
+                if (LANG_VI.equalsIgnoreCase(userLang)) {
+                    displayBody = "Bạn có tin nhắn mới (Được mã hoá)";
+                } else if (LANG_ZH.equalsIgnoreCase(userLang)) {
+                    displayBody = "您收到一条加密消息";
+                } else {
+                    displayBody = "You have a new encrypted message";
+                }
+            }
 
             AndroidConfig androidConfig = AndroidConfig.builder()
                     .setPriority(AndroidConfig.Priority.HIGH)
-                    .setTtl(3600 * 1000) 
+                    .setTtl(3600 * 1000)
                     .setNotification(AndroidNotification.builder()
                             .setSound(soundValue)
                             .setChannelId("default_channel_id")
-                            .setClickAction("FLUTTER_NOTIFICATION_CLICK")
                             .build())
                     .build();
-            
+
             ApnsConfig apnsConfig = ApnsConfig.builder()
                     .setAps(Aps.builder()
                             .setSound(soundValue)
-                            .setContentAvailable(true)
+                            .setContentAvailable(true) // Cho phép wake up app để xử lý background (quan trọng cho decrypt)
+                            .setMutableContent(true)   // Cho phép Notification Extension thay đổi nội dung
                             .build())
                     .build();
 
@@ -191,27 +206,41 @@ public class NotificationServiceImpl implements NotificationService {
                     Message.Builder messageBuilder = Message.builder()
                             .setToken(token.getFcmToken())
                             .setNotification(com.google.firebase.messaging.Notification.builder()
-                                    .setTitle(request.getTitle())
-                                    .setBody(request.getContent())
+                                    .setTitle(displayTitle)
+                                    .setBody(displayBody)
                                     .build())
                             .setAndroidConfig(androidConfig)
                             .setApnsConfig(apnsConfig);
 
+                    Map<String, String> dataPayload = new HashMap<>();
+                    
+                    dataPayload.put("type", request.getType() != null ? request.getType() : "DEFAULT");
+                    dataPayload.put("notificationId", request.getId() != null ? request.getId().toString() : "");
+                    
                     if (request.getPayload() != null && !request.getPayload().isEmpty()) {
-                        Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
-                        messageBuilder.putAllData(dataPayload);
+                        try {
+                            Map<String, Object> rawMap = gson.fromJson(request.getPayload(), Map.class);
+                            for (Map.Entry<String, Object> entry : rawMap.entrySet()) {
+                                if (entry.getValue() != null) {
+                                    dataPayload.put(entry.getKey(), entry.getValue().toString());
+                                }
+                            }
+                        } catch (Exception ex) {
+                            log.warn("Failed to parse JSON payload for push, sending as raw string");
+                            dataPayload.put("rawPayload", request.getPayload());
+                        }
                     }
 
+                    messageBuilder.putAllData(dataPayload);
                     firebaseMessaging.send(messageBuilder.build());
                     log.info("Sent push notification to user {}", request.getUserId());
 
                 } catch (FirebaseMessagingException e) {
-                    log.warn("FCM Error for token ending in ...{}: {}", 
-                        token.getFcmToken().substring(Math.max(0, token.getFcmToken().length() - 5)), e.getMessage());
+                    log.warn("FCM Error for token ending in ...{}: {}",
+                            token.getFcmToken().substring(Math.max(0, token.getFcmToken().length() - 5)), e.getMessage());
                 }
             }
         } catch (Exception e) {
-            // Catch all to ensure one notification failure doesn't crash the calling thread
             log.error("General error in sendFcmToUser: {}", e.getMessage());
         }
     }
@@ -220,9 +249,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public NotificationResponse updateNotification(UUID id, NotificationRequest request) {
         try {
-            if (id == null || request == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+            if (id == null || request == null) throw new AppException(ErrorCode.INVALID_KEY);
             Notification notification = notificationRepository.findByNotificationIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.NOTIFICATION_NOT_FOUND));
             notificationMapper.updateEntityFromRequest(request, notification);
@@ -239,9 +266,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void deleteNotification(UUID id) {
         try {
-            if (id == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+            if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
             Notification notification = notificationRepository.findByNotificationIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.NOTIFICATION_NOT_FOUND));
             notificationRepository.softDeleteById(id);
@@ -258,7 +283,7 @@ public class NotificationServiceImpl implements NotificationService {
                     .orElseThrow(() -> new AppException(ErrorCode.NOTIFICATION_NOT_FOUND));
             return notification.getUserId().equals(userId);
         } catch (Exception e) {
-            log.error("Error checking authorization for notification ID {} and user ID {}: {}", notificationId, userId, e.getMessage());
+            log.error("Error checking authorization: {}", e.getMessage());
             return false;
         }
     }
@@ -284,9 +309,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendPurchaseCourseNotification(UUID userId, String courseName) {
         try {
-            if (userId == null || courseName == null || courseName.isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+            if (userId == null || courseName == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             NotificationRequest request = NotificationRequest.builder()
@@ -298,7 +321,7 @@ public class NotificationServiceImpl implements NotificationService {
             createNotification(request);
             emailService.sendPurchaseCourseEmail(email, courseName, locale);
         } catch (Exception e) {
-            log.error("Error sending course purchase notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending course purchase notification: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -307,21 +330,19 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendVoucherRegistrationNotification(UUID userId, String voucherCode) {
         try {
-            if (userId == null || voucherCode == null || voucherCode.isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+            if (userId == null || voucherCode == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             NotificationRequest request = NotificationRequest.builder()
                     .userId(userId)
-                    .title("Voucher Registration: " + voucherCode)
+                    .title("Voucher Registration")
                     .content("You have registered the voucher: " + voucherCode)
                     .type("VOUCHER_REGISTRATION")
                     .build();
             createNotification(request);
             emailService.sendVoucherRegistrationEmail(email, voucherCode, locale);
         } catch (Exception e) {
-            log.error("Error sending voucher registration notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending voucher notification: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -330,9 +351,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendAchievementNotification(UUID userId, String title, String message) {
         try {
-            if (userId == null || title == null || title.isBlank() || message == null || message.isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+            if (userId == null || title == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             NotificationRequest request = NotificationRequest.builder()
@@ -344,7 +363,7 @@ public class NotificationServiceImpl implements NotificationService {
             createNotification(request);
             emailService.sendAchievementEmail(email, title, message, locale);
         } catch (Exception e) {
-            log.error("Error sending achievement notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending achievement notification: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -353,9 +372,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendDailyStudyReminderNotification(UUID userId) {
         try {
-            if (userId == null) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+            if (userId == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             NotificationRequest request = NotificationRequest.builder()
@@ -367,7 +384,7 @@ public class NotificationServiceImpl implements NotificationService {
             createNotification(request);
             emailService.sendDailyStudyReminder(email, locale);
         } catch (Exception e) {
-            log.error("Error sending daily study reminder notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending daily reminder: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -376,21 +393,19 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendPasswordResetNotification(UUID userId, String resetLink) {
         try {
-            if (userId == null || resetLink == null || resetLink.isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+            if (userId == null || resetLink == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             NotificationRequest request = NotificationRequest.builder()
                     .userId(userId)
                     .title("Password Reset Request")
-                    .content("A password reset has been requested. Click the link to reset: " + resetLink)
+                    .content("A password reset has been requested.")
                     .type("PASSWORD_RESET")
                     .build();
             createNotification(request);
             emailService.sendPasswordResetEmail(email, resetLink, locale);
         } catch (Exception e) {
-            log.error("Error sending password reset notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending password reset notification: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -399,21 +414,19 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendVerifyAccountNotification(UUID userId, String verifyLink) {
         try {
-            if (userId == null || verifyLink == null || verifyLink.isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+            if (userId == null || verifyLink == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             NotificationRequest request = NotificationRequest.builder()
                     .userId(userId)
                     .title("Account Verification")
-                    .content("Please verify your account using this link: " + verifyLink)
+                    .content("Please verify your account.")
                     .type("ACCOUNT_VERIFICATION")
                     .build();
             createNotification(request);
             emailService.sendVerifyAccountEmail(email, verifyLink, locale);
         } catch (Exception e) {
-            log.error("Error sending account verification notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending verify account notification: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -422,21 +435,19 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendInactivityWarningNotification(UUID userId, int days) {
         try {
-            if (userId == null || days <= 0) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+            if (userId == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             NotificationRequest request = NotificationRequest.builder()
                     .userId(userId)
                     .title("Inactivity Warning")
-                    .content("You have been inactive for " + days + " days. Log in to continue learning!")
+                    .content("You have been inactive for " + days + " days.")
                     .type("INACTIVITY_WARNING")
                     .build();
             createNotification(request);
             emailService.sendInactivityWarning(email, days, locale);
         } catch (Exception e) {
-            log.error("Error sending inactivity warning notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending inactivity warning: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -445,21 +456,19 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendStreakRewardNotification(UUID userId, int streakDays) {
         try {
-            if (userId == null || streakDays <= 0) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+            if (userId == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             NotificationRequest request = NotificationRequest.builder()
                     .userId(userId)
                     .title("Streak Reward: " + streakDays + " Days")
-                    .content("Congratulations on maintaining a " + streakDays + "-day streak! Claim your reward!")
+                    .content("Congratulations on maintaining a " + streakDays + "-day streak!")
                     .type("STREAK_REWARD")
                     .build();
             createNotification(request);
             emailService.sendStreakRewardEmail(email, streakDays, locale);
         } catch (Exception e) {
-            log.error("Error sending streak reward notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending streak reward: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -471,13 +480,13 @@ public class NotificationServiceImpl implements NotificationService {
             if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
             Notification notification = notificationRepository.findByNotificationIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.NOTIFICATION_NOT_FOUND));
-            
+
             if (!notification.isRead()) {
                 notification.setRead(true);
                 notificationRepository.save(notification);
             }
         } catch (Exception e) {
-            log.error("Error marking notification as read {}: {}", id, e.getMessage());
+            log.error("Error marking as read: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -486,14 +495,12 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public void sendVipSuccessNotification(UUID userId, boolean isRenewal, String planType) {
         try {
-            if (userId == null) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
-            
+            if (userId == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+
             String title = isRenewal ? "VIP Subscription Renewed! 💎" : "VIP Activated! 🌟";
-            String content = isRenewal 
-                ? "Your " + planType + " VIP subscription has been successfully extended."
-                : "Welcome to VIP! Your " + planType + " plan is now active. Enjoy unlimited access!";
+            String content = isRenewal
+                    ? "Your " + planType + " VIP subscription has been extended."
+                    : "Welcome to VIP! Your " + planType + " plan is now active.";
             String type = isRenewal ? "VIP_EXTENDED" : "VIP_ACTIVATED";
 
             NotificationRequest request = NotificationRequest.builder()
@@ -502,12 +509,12 @@ public class NotificationServiceImpl implements NotificationService {
                     .content(content)
                     .type(type)
                     .build();
-            
+
             createNotification(request);
             createPushNotification(request); 
 
         } catch (Exception e) {
-            log.error("Error sending VIP success notification for user ID {}: {}", userId, e.getMessage());
+            log.error("Error sending VIP success notification: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
     Animated,
     ScrollView,
@@ -7,7 +7,6 @@ import {
     View,
     ActivityIndicator,
     RefreshControl,
-    Dimensions,
 } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useNavigation } from "@react-navigation/native"
@@ -17,7 +16,6 @@ import ScreenLayout from "../../components/layout/ScreenLayout"
 import { useUserStore } from "../../stores/UserStore"
 import { useGetStudyHistory } from "../../hooks/useUserActivity"
 import type { StudySessionResponse, StatsResponse } from "../../types/dto"
-import { ActivityType } from "../../types/enums"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
 type Tab = "sessions" | "tests" | "stats"
@@ -41,16 +39,14 @@ const ProgressScreen = () => {
 
     const studySessions: StudySessionResponse[] = studyHistory?.sessions || []
 
-    // Default safe stats
-    // FIX 1: Added totalExperience and averageScore to match StatsResponse interface
     const stats: StatsResponse = studyHistory?.stats || {
         totalSessions: 0,
         totalTimeSeconds: 0,
         totalCoins: 0,
-        totalExperience: 0, // Added
+        totalExperience: 0,
         lessonsCompleted: 0,
         averageAccuracy: 0,
-        averageScore: 0,    // Added
+        averageScore: 0,
         timeGrowthPercent: 0,
         accuracyGrowthPercent: 0,
         coinsGrowthPercent: 0,
@@ -105,15 +101,14 @@ const ProgressScreen = () => {
         </View>
     )
 
-    // Manual Bar Chart for Time
     const renderTimeChart = () => {
         const data = stats.timeChartData || []
-        const maxVal = Math.max(...data.map(d => d.value), 1) // Avoid div by 0
+        const maxVal = Math.max(...data.map(d => d.value), 1)
 
         return (
             <View style={styles.chartContainer}>
                 <Text style={styles.chartTitle}>{t("history.stats.studyTime")}</Text>
-                <View style={styles.chartBody}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartBody}>
                     {data.map((item, index) => (
                         <View key={index} style={styles.chartColumn}>
                             <View style={styles.barContainer}>
@@ -125,44 +120,38 @@ const ProgressScreen = () => {
                             <Text style={styles.axisLabel}>{item.label}</Text>
                         </View>
                     ))}
-                </View>
+                </ScrollView>
             </View>
         )
     }
 
-    // Manual Lollipop/Line-ish Chart for Accuracy
     const renderAccuracyChart = () => {
         const data = stats.accuracyChartData || []
+        const ACCURACY_COLOR = '#10B981'
+        const maxVal = 100
 
         return (
             <View style={styles.chartContainer}>
                 <View style={styles.chartHeaderRow}>
                     <Text style={styles.chartTitle}>{t("history.stats.accuracyProgress")}</Text>
                     <View style={styles.legend}>
-                        <View style={[styles.dot, { backgroundColor: '#10B981' }]} />
+                        <View style={[styles.dot, { backgroundColor: ACCURACY_COLOR }]} />
                         <Text style={styles.legendText}>Avg Score %</Text>
                     </View>
                 </View>
-                <View style={styles.chartBody}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartBody}>
                     {data.map((item, index) => (
                         <View key={index} style={styles.chartColumn}>
-                            <View style={styles.lineChartContainer}>
-                                {/* Line stick */}
-                                <View style={[styles.lineStick, {
-                                    height: `${item.value}%`,
-                                    backgroundColor: item.value > 0 ? '#10B981' : 'transparent'
+                            <View style={styles.barContainer}>
+                                <View style={[styles.bar, {
+                                    height: `${(item.value / maxVal) * 100}%`,
+                                    backgroundColor: item.value > 0 ? ACCURACY_COLOR : '#E5E7EB'
                                 }]} />
-                                {/* Dot */}
-                                {item.value > 0 && (
-                                    <View style={[styles.lineDot, { bottom: `${item.value}%` }]}>
-                                        <Text style={styles.dotValue}>{Math.round(item.value)}</Text>
-                                    </View>
-                                )}
                             </View>
                             <Text style={styles.axisLabel}>{item.label}</Text>
                         </View>
                     ))}
-                </View>
+                </ScrollView>
                 <View style={styles.chartFooter}>
                     <Text style={styles.footerText}>
                         {t("history.stats.weakestSkill")}: <Text style={{ fontWeight: 'bold', color: '#EF4444' }}>{stats.weakestSkill}</Text>
@@ -246,7 +235,6 @@ const ProgressScreen = () => {
         </View>
     )
 
-    // Main Render
     return (
         <ScreenLayout swipeToTab="Chat">
             <View style={styles.container}>
@@ -254,23 +242,6 @@ const ProgressScreen = () => {
                     <Text style={styles.headerTitle}>{t("history.title")}</Text>
                 </View>
 
-                {/* Tabs */}
-                {/* <View style={styles.tabContainer}>
-                    {[{ key: "stats", icon: "analytics" }, { key: "sessions", icon: "history" }].map((tab) => (
-                        <TouchableOpacity
-                            key={tab.key}
-                            style={[styles.tab, currentTab === tab.key && styles.activeTab]}
-                            onPress={() => setCurrentTab(tab.key as Tab)}
-                        >
-                            <Icon name={tab.icon} size={18} color={currentTab === tab.key ? "#FFF" : "#6B7280"} />
-                            <Text style={[styles.tabText, currentTab === tab.key && styles.activeTabText]}>
-                                {t(`history.tabs.${tab.key}`)}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View> */}
-
-                {/* Filter */}
                 <View style={styles.filterContainer}>
                     {["week", "month", "year"].map((filter) => (
                         <TouchableOpacity
@@ -337,7 +308,6 @@ const styles = createScaledSheet({
     statLabel: { fontSize: 12, color: "#6B7280", marginTop: 4 },
     statSubLabel: { fontSize: 10, color: "#9CA3AF", marginTop: 2 },
 
-    // AI Card
     aiCard: { backgroundColor: "#4F46E5", borderRadius: 12, padding: 16, elevation: 4 },
     aiHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
     aiTitle: { color: "#FFF", fontWeight: "700", fontSize: 14 },
@@ -347,26 +317,21 @@ const styles = createScaledSheet({
     chartContainer: { backgroundColor: "#FFF", padding: 16, borderRadius: 12, elevation: 2 },
     chartHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
     chartTitle: { fontSize: 16, fontWeight: "700", color: "#374151", marginBottom: 16 },
-    chartBody: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 160 },
-    chartColumn: { flex: 1, alignItems: 'center' },
+    // **Điều chỉnh: Bỏ justifyContent: 'space-between' và thêm padding để chartBody không chiếm full width màn hình và dùng ScrollView bọc chartBody**
+    chartBody: { flexDirection: 'row', alignItems: 'flex-end', height: 160, paddingHorizontal: 8, gap: 20 },
+    // **Điều chỉnh: Bỏ flex: 1 và đặt chiều rộng cố định (width: 32) cho mỗi cột để nó không bị giãn quá mức**
+    chartColumn: { alignItems: 'center', width: 32 },
     barContainer: { height: 130, width: '100%', justifyContent: 'flex-end', alignItems: 'center' },
-    bar: { width: 12, borderRadius: 6 },
+    bar: { width: 16, borderRadius: 6 },
     axisLabel: { marginTop: 8, fontSize: 10, color: "#9CA3AF" },
 
-    // Line Chart Custom
-    lineChartContainer: { height: 130, width: '100%', justifyContent: 'flex-end', alignItems: 'center', position: 'relative' },
-    lineStick: { width: 2, borderRadius: 1, opacity: 0.5 },
-    lineDot: { position: 'absolute', width: 24, height: 16, borderRadius: 8, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', marginBottom: -8 },
-    dotValue: { color: '#FFF', fontSize: 8, fontWeight: '700' },
     legend: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     dot: { width: 8, height: 8, borderRadius: 4 },
     legendText: { fontSize: 12, color: '#6B7280' },
     chartFooter: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderColor: '#F3F4F6' },
     footerText: { fontSize: 13, color: '#4B5563' },
 
-    // Session
     sessionCard: { flexDirection: "row", backgroundColor: "#FFF", padding: 12, borderRadius: 12, marginBottom: 12 },
-    // FIX 2: Added sessionHeader
     sessionHeader: { flexDirection: "row", alignItems: "center", flex: 1 },
     typeIcon: { padding: 10, borderRadius: 20, marginRight: 12 },
     sessionInfo: { flex: 1, justifyContent: "center" },

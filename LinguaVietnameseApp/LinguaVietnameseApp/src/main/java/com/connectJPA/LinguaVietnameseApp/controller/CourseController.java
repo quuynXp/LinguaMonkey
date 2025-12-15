@@ -11,7 +11,6 @@ import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
-// import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.CourseSearchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -21,6 +20,8 @@ import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -35,7 +36,7 @@ public class CourseController {
 
     // === LEARNER API (API CHO NGƯỜI HỌC) ===
 
-    @Operation(summary = "Get all public courses (paginated)")
+    @Operation(summary = "Get all public courses (paginated, filters out enrolled/owned)")
     @GetMapping
     public AppApiResponse<Page<CourseResponse>> getAllCourses(
             @RequestParam(required = false) String title,
@@ -45,7 +46,21 @@ public class CourseController {
             Pageable pageable,
             Locale locale) {
 
-        Page<CourseResponse> courses = courseService.getAllCourses(title, languageCode, type, isAdminCreated, pageable);
+        // Get Current User from Context
+        UUID currentUserId = null;
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated() && !authentication.getPrincipal().equals("anonymousUser")) {
+             try {
+                // Assuming the Principal is the User ID (String) or username that can be mapped
+                // In a JWT setup, this is usually the subject (userId)
+                currentUserId = UUID.fromString(authentication.getName());
+             } catch (IllegalArgumentException e) {
+                 // Handle case where authentication name is not UUID (e.g. username) if needed
+                 // For now, fail silently or null
+             }
+        }
+
+        Page<CourseResponse> courses = courseService.getAllCourses(title, languageCode, type, isAdminCreated, currentUserId, pageable);
         
         return AppApiResponse.<Page<CourseResponse>>builder()
                 .code(200)

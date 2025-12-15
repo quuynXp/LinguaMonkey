@@ -8,6 +8,7 @@ import messaging from '@react-native-firebase/messaging';
 import { useUserStore } from '../stores/UserStore';
 import { handleNotificationNavigation } from '../utils/navigationRef';
 import i18n from "../i18n";
+import { decryptNotificationContent } from '../utils/notificationHelper';
 
 export interface NotificationPreferences {
   enablePush: boolean;
@@ -20,6 +21,12 @@ export interface NotificationPreferences {
   coupleNotifications: boolean;
   groupInvitations: boolean;
   achievementNotifications: boolean;
+  // --- THUỘC TÍNH BỊ THIẾU TỪ appStore.ts ---
+  dailyChallengeReminders: boolean;
+  courseReminders: boolean;
+  coupleReminders: boolean;
+  vipReminders: boolean;
+  // ------------------------------------------
   reminderFrequency: 'daily' | 'weekdays' | 'custom';
   customDays: number[];
   studyTime: string;
@@ -59,6 +66,12 @@ class NotificationService {
       coupleNotifications: true,
       groupInvitations: true,
       achievementNotifications: true,
+      // --- THUỘC TÍNH BỊ THIẾU CẦN KHỞI TẠO ---
+      dailyChallengeReminders: true, // Defaulting to true
+      courseReminders: true,        // Defaulting to true
+      coupleReminders: true,        // Defaulting to true
+      vipReminders: true,           // Defaulting to true
+      // ------------------------------------------
       reminderFrequency: 'daily',
       customDays: [],
       studyTime: '09:00',
@@ -130,15 +143,9 @@ class NotificationService {
     const unsubscribeOnMessage = msg.onMessage(async remoteMessage => {
       console.log("🔔 Firebase Foreground:", remoteMessage);
 
-      // Note: If WebSocket is active, ChatStore usually handles the "Sound" and "Bubble".
-      // We check here if we should show a redundant local notification.
-      // For now, allow it as a backup or for non-chat notifications.
+      const { title, body, data } = await decryptNotificationContent(remoteMessage);
 
-      const title = remoteMessage.notification?.title || i18n.t("notification.default_title");
-      const body = remoteMessage.notification?.body || "";
-
-      // Optional: Check payload type. If CHAT_MESSAGE, maybe skip if screen is focused (handled in ChatStore)
-      await this.sendLocalNotification(title, body, remoteMessage.data);
+      await this.sendLocalNotification(title, body, data);
     });
 
     return () => {
@@ -275,7 +282,11 @@ class NotificationService {
     try {
       const savedPrefs = await AsyncStorage.getItem(STORAGE_KEY);
       if (savedPrefs) {
-        this.preferences = { ...this.preferences, ...JSON.parse(savedPrefs) };
+        // Sử dụng một hàm trợ giúp để đảm bảo merge đúng và loại bỏ/thêm các trường mới
+        const parsedPrefs = JSON.parse(savedPrefs);
+        const mergedPrefs: NotificationPreferences = { ...this.preferences, ...parsedPrefs };
+        this.preferences = mergedPrefs;
+        // Lỗi 2345 sẽ được giải quyết tại đây vì this.preferences đã có đủ trường
         useAppStore.getState().setNotificationPreferences(this.preferences);
       }
     } catch (error) {
@@ -286,6 +297,7 @@ class NotificationService {
   async savePreferences(): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.preferences));
+      // Lỗi 2345 sẽ được giải quyết tại đây vì this.preferences đã có đủ trường
       useAppStore.getState().setNotificationPreferences(this.preferences);
     } catch (error) {
       console.error('❌ Save prefs error:', error);

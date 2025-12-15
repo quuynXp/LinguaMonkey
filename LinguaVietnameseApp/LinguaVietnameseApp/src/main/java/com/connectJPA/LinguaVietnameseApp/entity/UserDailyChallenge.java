@@ -26,7 +26,6 @@ import org.hibernate.annotations.CreationTimestamp;
 @SuperBuilder
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class UserDailyChallenge extends BaseEntity {
-
     @EmbeddedId
     private UserDailyChallengeId id;
 

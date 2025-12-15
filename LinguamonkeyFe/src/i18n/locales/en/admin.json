@@ -1349,6 +1349,12 @@
         "xp": "XP",
         "level": "Level"
     },
+    "language": {
+        "vietnamese": "Vietnamese",
+        "english": "English",
+        "japanese": "Japanese",
+        "chinese": "Chinese"
+    },
     "profile": {
         "allUsers": "All users",
         "myFriends": "My friends",
@@ -1988,7 +1994,7 @@
     "social": "Social",
     "join": "Join",
     "chat": {
-        "sent_an_attachment" : "Sent an attachment",
+        "sent_an_attachment": "Sent an attachment",
         "no_active_chats": "Offline",
         "start_conversation_hint": "Start a conversation by selecting AI Chat or User Chat",
         "active_now": "Online",

@@ -157,7 +157,15 @@ public class RoomServiceImpl implements RoomService {
                     .ifPresent(msg -> {
                         response.setLastMessage(msg.getContent());
                         response.setLastMessageTime(msg.getId().getSentAt());
+                        response.setLastMessageTime(msg.getId().getSentAt());
+                        response.setLastMessageSenderId(msg.getSenderId().toString());
+                        response.setLastMessageSenderEphemeralKey(msg.getSenderEphemeralKey());
+                        response.setLastMessageInitializationVector(msg.getInitializationVector());
+                        response.setLastMessageSelfContent(msg.getSelfContent());
+                        response.setLastMessageSelfEphemeralKey(msg.getSelfEphemeralKey());
+                        response.setLastMessageSelfInitializationVector(msg.getSelfInitializationVector());
                     });
+                    
 
             return response;
         });

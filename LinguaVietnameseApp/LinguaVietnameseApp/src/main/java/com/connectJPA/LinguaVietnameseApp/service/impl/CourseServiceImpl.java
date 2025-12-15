@@ -96,60 +96,50 @@ public class CourseServiceImpl implements CourseService {
 
     private CourseResponse enrichCourseResponse(CourseResponse response) {
         if (response != null && response.getCourseId() != null) {
-            
-            // 1. Room Enrichment
+            UUID courseId = response.getCourseId();
+
             try {
-                roomRepository.findByCourseId(response.getCourseId())
+                // Ensure room linkage is correctly fetched, handle if missing
+                roomRepository.findByCourseId(courseId)
                     .ifPresent(room -> response.setRoomId(room.getRoomId()));
             } catch (Exception e) {
-                // Log and ignore
+                // Log warning silently, continue enriching other fields
             }
 
-            // 2. Creator Info Enrichment
             if (response.getCreatorId() != null) {
-                try {
-                    UUID creatorId = response.getCreatorId();
-                    User creator = userRepository.findById(creatorId).orElse(null);
-                    if (creator != null) {
-                        response.setCreatorName(creator.getFullname() != null ? creator.getFullname() : creator.getNickname());
-                        response.setCreatorAvatar(creator.getAvatarUrl());
-                        response.setCreatorNickname(creator.getNickname());
-                        response.setCreatorCountry(creator.getCountry());
-                        response.setCreatorVip(creator.isVip());
-                        response.setCreatorLevel(creator.getLevel());
-                    }
-                } catch (IllegalArgumentException e) {
-                    // ignore
-                }
+                userRepository.findById(response.getCreatorId()).ifPresent(creator -> {
+                    response.setCreatorName(creator.getFullname() != null ? creator.getFullname() : creator.getNickname());
+                    response.setCreatorAvatar(creator.getAvatarUrl());
+                    response.setCreatorNickname(creator.getNickname());
+                    response.setCreatorCountry(creator.getCountry());
+                    response.setCreatorVip(creator.isVip());
+                    response.setCreatorLevel(creator.getLevel());
+                });
             }
 
-            // 3. Stats Enrichment
             try {
-                Double avgRating = courseReviewRepository.getAverageRatingByCourseId(response.getCourseId());
-                long count = courseReviewRepository.countByCourseIdAndParentIsNullAndIsDeletedFalse(response.getCourseId());
-                long studentCount = courseEnrollmentRepository.countStudentsByCourseId(response.getCourseId());
+                Double avgRating = courseReviewRepository.getAverageRatingByCourseId(courseId);
+                long reviewCount = courseReviewRepository.countByCourseIdAndParentIsNullAndIsDeletedFalse(courseId);
+                long studentCount = courseEnrollmentRepository.countStudentsByCourseId(courseId);
+                
                 response.setAverageRating(avgRating != null ? avgRating : 0.0);
-                response.setReviewCount((int) count);
+                response.setReviewCount((int) reviewCount);
                 response.setTotalStudents((int) studentCount);
             } catch (Exception e) {
-                // ignore
             }
 
-            // 4. Draft Version (Force Fetch)
-            courseVersionRepository.findTopByCourseIdAndStatusOrderByVersionNumberDesc(response.getCourseId(), VersionStatus.DRAFT)
-                    .ifPresent(draft -> {
-                         CourseVersionResponse vr = versionMapper.toResponse(draft);
-                         if (vr.getPrice() == null) vr.setPrice(BigDecimal.ZERO);
-                         response.setLatestDraftVersion(vr);
-                    });
-            
-            // 5. Public Version (Force Fetch via Optimized Query)
-            // This fixes the async sync issue where student sees "No version available"
-            courseVersionRepository.findLatestPublicVersionByCourseId(response.getCourseId())
+            courseVersionRepository.findLatestPublicVersionByCourseId(courseId)
                     .ifPresent(publicVer -> {
                         CourseVersionResponse vr = versionMapper.toResponse(publicVer);
                         if (vr.getPrice() == null) vr.setPrice(BigDecimal.ZERO);
                         response.setLatestPublicVersion(vr);
+                    });
+
+            courseVersionRepository.findTopByCourseIdAndStatusOrderByVersionNumberDesc(courseId, VersionStatus.DRAFT)
+                    .ifPresent(draft -> {
+                         CourseVersionResponse vr = versionMapper.toResponse(draft);
+                         if (vr.getPrice() == null) vr.setPrice(BigDecimal.ZERO);
+                         response.setLatestDraftVersion(vr);
                     });
         }
         return response;
@@ -270,7 +260,8 @@ public class CourseServiceImpl implements CourseService {
         course.setTitle(request.getTitle());
         course.setCreatorId(request.getCreatorId());
         
-        course.setApprovalStatus(CourseApprovalStatus.APPROVED);
+        // FIX: Initially set to PENDING so it doesn't show in public lists until approved/published
+        course.setApprovalStatus(CourseApprovalStatus.PENDING);
         course = courseRepository.save(course); 
 
         CourseVersion version = new CourseVersion();
@@ -283,6 +274,7 @@ public class CourseServiceImpl implements CourseService {
         
         courseVersionRepository.save(version);
         
+        // Ensure enrichment tries to find room (likely null now, which is correct)
         return enrichCourseResponse(courseMapper.toResponse(course));
     }
 
@@ -307,15 +299,27 @@ public class CourseServiceImpl implements CourseService {
         if (request.getInstructionLanguage() != null) version.setInstructionLanguage(request.getInstructionLanguage());
 
         if (request.getLessonIds() != null) {
-            cvlRepository.deleteByCourseVersion_VersionId(versionId); 
-            if (version.getLessons() != null) {
-                version.getLessons().clear();
-            } else {
-                version.setLessons(new ArrayList<>());
-            }
             
+            // 1. Lấy danh sách CourseVersionLesson hiện tại
+            List<CourseVersionLesson> existingCvlList = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(versionId);
+            Map<UUID, CourseVersionLesson> existingCvlMap = existingCvlList.stream()
+                    .collect(Collectors.toMap(cvl -> cvl.getLesson().getLessonId(), cvl -> cvl));
+            
+            List<UUID> newLessonIds = request.getLessonIds();
+            
+            // Danh sách LessonId mới
+            List<UUID> lessonIdsToKeep = new ArrayList<>(newLessonIds);
+            
+            // 2. Xóa các CourseVersionLesson không còn trong danh sách mới
+            existingCvlList.stream()
+                    .filter(cvl -> !newLessonIds.contains(cvl.getLesson().getLessonId()))
+                    .forEach(cvlRepository::delete);
+            
+            // 3. Cập nhật/Tạo mới danh sách CourseVersionLesson
+            List<CourseVersionLesson> updatedCvlList = new ArrayList<>();
             int order = 0;
-            for (UUID lessonId : request.getLessonIds()) {
+
+            for (UUID lessonId : newLessonIds) {
                 Lesson lesson = lessonRepository.findById(lessonId)
                         .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
@@ -323,9 +327,25 @@ public class CourseServiceImpl implements CourseService {
                     throw new AppException(ErrorCode.UNAUTHORIZED);
                 }
 
-                CourseVersionLesson cvl = new CourseVersionLesson(version, lesson, order++);
-                version.getLessons().add(cvl);
+                CourseVersionLesson cvl;
+                if (existingCvlMap.containsKey(lessonId)) {
+                    // Cập nhật thứ tự cho entity đã tồn tại
+                    cvl = existingCvlMap.get(lessonId);
+                    cvl.setOrderIndex(order++);
+                } else {
+                    // Tạo mới entity
+                    cvl = new CourseVersionLesson(version, lesson, order++);
+                }
+                
+                // Thêm vào danh sách để lưu/cập nhật
+                updatedCvlList.add(cvl);
             }
+            
+            // Lưu tất cả các CourseVersionLesson đã tạo/cập nhật
+            cvlRepository.saveAll(updatedCvlList);
+
+            // 4. Cập nhật lại list lessons trong version entity
+            version.setLessons(updatedCvlList);
         }
 
         boolean isValid = true;
@@ -384,6 +404,9 @@ public class CourseServiceImpl implements CourseService {
         course.setLatestPublicVersion(version);
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         courseRepository.save(course); 
+
+        // FIX: Ensure room exists when publishing first public version
+        roomService.ensureCourseRoomExists(course.getCourseId(), course.getTitle(), course.getCreatorId());
 
         sendLearnerUpdateNotification(
             course,
@@ -488,7 +511,7 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, Pageable pageable) {
+    public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, UUID currentUserId, Pageable pageable) {
         Page<Course> courses;
 
         if (isAdminCreated != null && isAdminCreated) {
@@ -499,11 +522,29 @@ public class CourseServiceImpl implements CourseService {
         else if (title != null && !title.isBlank()) {
             courses = courseRepository.searchCoursesByKeyword(title, pageable);
         } 
-        else if (type != null) {
-            courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
-        } 
         else {
-            courses = courseRepository.findByApprovalStatusAndIsDeletedFalse(CourseApprovalStatus.APPROVED, pageable);
+            List<UUID> excludedIds = new ArrayList<>();
+            excludedIds.add(UUID.fromString("00000000-0000-0000-0000-000000000000"));
+
+            if (currentUserId != null) {
+                List<CourseVersionEnrollment> enrollments = courseEnrollmentRepository.findByUserIdAndIsDeletedFalse(currentUserId);
+                enrollments.forEach(e -> {
+                    if (e.getCourseVersion() != null && e.getCourseVersion().getCourseId() != null) {
+                        excludedIds.add(e.getCourseVersion().getCourseId());
+                    }
+                });
+
+                List<Course> createdCourses = courseRepository.findByCreatorIdAndIsDeletedFalse(currentUserId);
+                createdCourses.forEach(c -> excludedIds.add(c.getCourseId()));
+            }
+
+            if (type == CourseType.FREE) {
+                courses = courseRepository.findAvailableFreeCourses(excludedIds, CourseApprovalStatus.APPROVED, pageable);
+            } else if (type == CourseType.PAID) {
+                courses = courseRepository.findAvailablePaidCourses(excludedIds, CourseApprovalStatus.APPROVED, pageable);
+            } else {
+                courses = courseRepository.findAllAvailableCourses(excludedIds, CourseApprovalStatus.APPROVED, pageable);
+            }
         }
         
         return courses.map(courseMapper::toResponse).map(this::enrichCourseResponse);
@@ -709,6 +750,7 @@ public class CourseServiceImpl implements CourseService {
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         courseRepository.save(course);
         
+        // FIX: Ensure course room is created when approved
         roomService.ensureCourseRoomExists(course.getCourseId(), course.getTitle(), course.getCreatorId());
 
         NotificationRequest creatorNotif = NotificationRequest.builder()

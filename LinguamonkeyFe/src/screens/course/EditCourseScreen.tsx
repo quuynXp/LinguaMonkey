@@ -21,8 +21,10 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from "@tanstack/react-query"; // <--- THÊM IMPORT NÀY
 
-import { useCourses } from "../../hooks/useCourses";
+// THÊM courseKeys VÀO IMPORT
+import { useCourses, courseKeys } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { DifficultyLevel, VersionStatus, Country } from "../../types/enums";
@@ -280,6 +282,7 @@ const EditCourseScreen = () => {
 
   const { t } = useTranslation();
   const user = useUserStore((state) => state.user);
+  const queryClient = useQueryClient(); // <--- KHỞI TẠO QUERY CLIENT
 
   const [activeCourseId, setActiveCourseId] = useState<string | undefined>(initialCourseId);
 
@@ -743,6 +746,12 @@ const EditCourseScreen = () => {
       onSuccess: () => {
         setPublishModalVisible(false);
         refetchVersions();
+
+        // FIX CACHE: Invalidate toàn bộ các danh sách khóa học để người dùng khác thấy update
+        queryClient.invalidateQueries({ queryKey: courseKeys.lists() }); // Danh sách Market
+        queryClient.invalidateQueries({ queryKey: courseKeys.topSelling(10) }); // Top Selling
+        queryClient.invalidateQueries({ queryKey: courseKeys.all }); // NUCLEAR OPTION: Clear hết liên quan đến courses
+
         Alert.alert(t("success"), t("course.publishSuccess"));
       },
       onError: (err: any) => {
@@ -990,7 +999,6 @@ const styles = createScaledSheet({
   cancelText: { fontWeight: '600', color: '#4B5563' },
   confirmText: { fontWeight: '600', color: '#FFF' },
 
-  // Language Modal specific
   langSelector: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12 },
   langSelectorText: { fontSize: 15, color: '#1F2937' },
   langModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },

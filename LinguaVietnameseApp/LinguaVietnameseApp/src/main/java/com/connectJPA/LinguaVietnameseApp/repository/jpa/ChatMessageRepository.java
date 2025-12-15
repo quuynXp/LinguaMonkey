@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,6 +44,19 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.senderId = :userId AND cm.translations IS NOT NULL AND cm.isDeleted = false")
     long countTranslationsForUser(@Param("userId") UUID userId);
 
+
+    // For Daily Challenge (Today - Chat with X people)
+    @Query("SELECT COUNT(DISTINCT cm.receiverId) FROM ChatMessage cm " +
+           "WHERE cm.senderId = :senderId AND cm.id.sentAt BETWEEN :start AND :end AND cm.isDeleted = false")
+    long countDistinctReceiversBySenderIdAndSentAtBetween(@Param("senderId") UUID senderId, 
+                                                          @Param("start") OffsetDateTime start, 
+                                                          @Param("end") OffsetDateTime end);
+
+    // For Badge (Lifetime - Chat with X people)
+    @Query("SELECT COUNT(DISTINCT cm.receiverId) FROM ChatMessage cm " +
+           "WHERE cm.senderId = :senderId AND cm.isDeleted = false")
+    long countDistinctReceiversBySenderId(@Param("senderId") UUID senderId);
+    
     @Query("SELECT cm FROM ChatMessage cm WHERE " +
             "LOWER(cm.content) LIKE LOWER(CONCAT('%', :keyword, '%')) AND " +
             "(:roomId IS NULL OR cm.roomId = :roomId) AND " +

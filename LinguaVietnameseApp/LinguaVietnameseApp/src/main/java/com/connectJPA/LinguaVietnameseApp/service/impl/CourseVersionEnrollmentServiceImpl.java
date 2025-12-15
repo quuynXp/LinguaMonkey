@@ -21,6 +21,8 @@ import com.connectJPA.LinguaVietnameseApp.service.CourseVersionEnrollmentService
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.RedisConnectionFailureException;
@@ -37,6 +39,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollmentService {
+    private static final Logger logger = LoggerFactory.getLogger(CourseVersionEnrollmentServiceImpl.class);
+
     private final CourseVersionEnrollmentRepository courseVersionEnrollmentRepository;
     private final CourseVersionEnrollmentMapper CourseVersionEnrollmentMapper;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -51,16 +55,13 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
         try {
             Page<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository.findAllByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId, pageable);
             
-            // FIX: Map and Populate completedLessonIds for the list view
             return enrollments.map(enrollment -> {
                 CourseVersionEnrollmentResponse resp = CourseVersionEnrollmentMapper.toResponse(enrollment);
                 
                 if (enrollment.getCourseVersion() != null) {
-                    // Populate completed count
                     long completedCount = courseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, enrollment.getCourseVersion().getVersionId());
                     resp.setCompletedLessonsCount((int) completedCount);
 
-                    // FIX: Populate the list of completed IDs so Frontend can verify completion
                     List<UUID> completedIds = lessonProgressRepository.findCompletedLessonIdsInVersion(userId, enrollment.getCourseVersion().getVersionId());
                     resp.setCompletedLessonIds(new HashSet<>(completedIds));
                 }
@@ -192,12 +193,25 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
             enrollment = courseVersionEnrollmentRepository.save(enrollment);
 
             UUID courseId = version.getCourseId();
-            roomService.addUserToCourseRoom(courseId, enrollment.getUserId());
+            
+            // FIX: BỌC LỆNH GỌI roomService TRONG TRY-CATCH RIÊNG
+            try {
+                roomService.addUserToCourseRoom(courseId, enrollment.getUserId());
+            } catch (Exception roomException) {
+                // Ghi log lỗi mà không re-throw, để enrollment có thể thành công
+                logger.warn("Failed to add user {} to course room {} after enrollment. Error: {}", 
+                    enrollment.getUserId(), courseId, roomException.getMessage());
+                // Tiếp tục trả về thành công cho việc ghi danh
+            }
 
             return CourseVersionEnrollmentMapper.toResponse(enrollment);
+        } catch (AppException e) {
+            throw e; // Giữ lại AppException để trả về lỗi nghiệp vụ chính xác
         } catch (RedisConnectionFailureException e) {
             throw new AppException(ErrorCode.REDIS_CONNECTION_FAILED);
         } catch (Exception e) {
+            // Bắt các lỗi không xác định khác (DB, NullPointer,...)
+            logger.error("Uncategorized exception during course enrollment creation: {}", e.getMessage(), e);
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

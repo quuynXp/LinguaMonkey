@@ -105,7 +105,17 @@ export const useClaimBadge = () => {
       return data.result;
     },
     onSuccess: (_, vars) => {
-      // Refresh Badge Progress (để cập nhật UI từ nút Claim -> Đã nhận)
+      // 1. Tối ưu: Cập nhật cache ngay lập tức (Instant UI Update)
+      queryClient.setQueryData(badgeKeys.progress(vars.userId), (oldData: BadgeProgressResponse[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(badge =>
+          badge.badgeId === vars.badgeId
+            ? { ...badge, isAchieved: true, currentUserProgress: badge.criteriaThreshold }
+            : badge
+        );
+      });
+
+      // 2. Invalidate Queries để fetch data chính xác (Consistency)
       queryClient.invalidateQueries({ queryKey: badgeKeys.progress(vars.userId) });
       // Refresh User Profile (để cộng Coin)
       queryClient.invalidateQueries({ queryKey: ['userProfile', vars.userId] });
@@ -119,71 +129,71 @@ export const useClaimBadge = () => {
 
   // // 4. POST /api/v1/badges (Create Badge - Admin only)
   // export const useCreateBadge = () => {
-  //   const queryClient = useQueryClient();
+  //   const queryClient = useQueryClient();
 
-  //   const mutation = useMutation({
-  //     mutationFn: async (payload: BadgeRequest) => {
-  //       const { data } = await axiosInstance.post<AppApiResponse<BadgeResponse>>(
-  //         "/api/v1/badges",
-  //         payload
-  //       );
-  //       return data.result!;
-  //     },
-  //     onSuccess: () => {
-  //       // Refresh list after create
-  //       queryClient.invalidateQueries({ queryKey: badgeKeys.lists() });
-  //     },
-  //   });
+  //   const mutation = useMutation({
+  //     mutationFn: async (payload: BadgeRequest) => {
+  //       const { data } = await axiosInstance.post<AppApiResponse<BadgeResponse>>(
+  //         "/api/v1/badges",
+  //         payload
+  //       );
+  //       return data.result!;
+  //     },
+  //     onSuccess: () => {
+  //       // Refresh list after create
+  //       queryClient.invalidateQueries({ queryKey: badgeKeys.lists() });
+  //     },
+  //   });
 
-  //   return {
-  //     createBadge: mutation.mutateAsync,
-  //     isCreating: mutation.isPending,
-  //     error: mutation.error,
-  //   };
+  //   return {
+  //     createBadge: mutation.mutateAsync,
+  //     isCreating: mutation.isPending,
+  //     error: mutation.error,
+  //   };
   // };
 
   // // 5. PUT /api/v1/badges/{id} (Update Badge - Admin only)
   // export const useUpdateBadge = () => {
-  //   const queryClient = useQueryClient();
+  //   const queryClient = useQueryClient();
 
-  //   const mutation = useMutation({
-  //     mutationFn: async ({ id, payload }: { id: string; payload: BadgeRequest }) => {
-  //       const { data } = await axiosInstance.put<AppApiResponse<BadgeResponse>>(
-  //         `/api/v1/badges/${id}`,
-  //         payload
-  //       );
-  //       return data.result!;
-  //     },
-  //     onSuccess: (data) => {
-  //       // Refresh specific detail and lists
-  //       queryClient.invalidateQueries({ queryKey: badgeKeys.detail(data.badgeId) });
-  //       queryClient.invalidateQueries({ queryKey: badgeKeys.lists() });
-  //     },
-  //   });
+  //   const mutation = useMutation({
+  //     mutationFn: async ({ id, payload }: { id: string; payload: BadgeRequest }) => {
+  //       const { data } = await axiosInstance.put<AppApiResponse<BadgeResponse>>(
+  //         `/api/v1/badges/${id}`,
+  //         payload
+  //       );
+  //       return data.result!;
+  //     },
+  //     onSuccess: (data) => {
+  //       // Refresh specific detail and lists
+  //       queryClient.invalidateQueries({ queryKey: badgeKeys.detail(data.badgeId) });
+  //       queryClient.invalidateQueries({ queryKey: badgeKeys.lists() });
+  //     },
+  //   });
 
-  //   return {
-  //     updateBadge: mutation.mutateAsync,
-  //     isUpdating: mutation.isPending,
-  //     error: mutation.error,
-  //   };
+  //   return {
+  //     updateBadge: mutation.mutateAsync,
+  //     isUpdating: mutation.isPending,
+  //     error: mutation.error,
+  //   };
   // };
 
   // // 6. DELETE /api/v1/badges/{id} (Delete Badge - Admin only)
   // export const useDeleteBadge = () => {
-  //   const queryClient = useQueryClient();
+  //   const queryClient = useQueryClient();
 
-  //   const mutation = useMutation({
-  //     mutationFn: async (id: string) => {
-  //       const { data } = await axiosInstance.delete<AppApiResponse<void>>(
-  //         `/api/v1/badges/${id}`
-  //       );
-  //       return data;
-  //     },
-  //     onSuccess: () => {
-  //       // Refresh lists after delete
-  //       queryClient.invalidateQueries({ queryKey: badgeKeys.lists() });
-  //     },
-  //   });
+  //   const mutation = useMutation({
+  //     mutationFn: async (id: string) => {
+  //       const { data } = await axiosInstance.delete<AppApiResponse<void>>(
+  //         `/api/v1/badges/${id}`
+  //       );
+  //       return data;
+  //     },
+  //     onSuccess: () => {
+  //       // Refresh lists after delete
+  //       queryClient.invalidateQueries({ queryKey: badgeKeys.lists() });
+  //     },
+  //   });
 
   return {
     claimBadge: mutation.mutateAsync,

@@ -47,6 +47,13 @@ public class RoomResponse {
     
     private List<UserProfileResponse> members;
 
+    private String lastMessageSenderId; 
+    private String lastMessageSenderEphemeralKey;
+    private String lastMessageInitializationVector;
+    private String lastMessageSelfContent;
+    private String lastMessageSelfEphemeralKey;
+    private String lastMessageSelfInitializationVector;
+    
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime createdAt;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)

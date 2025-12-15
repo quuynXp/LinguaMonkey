@@ -36,6 +36,10 @@ const AdminTransactionScreen = () => {
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  // Info Modal State
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [selectedBankInfo, setSelectedBankInfo] = useState<any>(null);
+
   // Queries
   const allHistoryQuery = useTransactions({ page, size: 20 });
   const pendingWithdrawalsQuery = usePendingWithdrawals(page, 20);
@@ -55,7 +59,7 @@ const AdminTransactionScreen = () => {
   const handleApprove = (id: string) => {
     Alert.alert(
       t('admin.withdraw.confirmApproveTitle'),
-      t('admin.withdraw.confirmApproveMsg'),
+      t('admin.withdraw.confirmApproveMsg') + "\n(Funds will be transferred automatically via Payout Service)",
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -83,9 +87,26 @@ const AdminTransactionScreen = () => {
     }
   };
 
+  // Helper to parse bank details from description
+  const parseBankDetails = (description: string) => {
+    try {
+      // Try parsing JSON first
+      return JSON.parse(description);
+    } catch (e) {
+      // Fallback if plain text
+      return { note: description };
+    }
+  };
+
+  const showBankDetails = (description: string) => {
+    const info = parseBankDetails(description);
+    setSelectedBankInfo(info);
+    setInfoModalVisible(true);
+  };
+
   const renderItem = ({ item }: { item: TransactionResponse }) => {
-    // Check if item is a pending withdrawal that needs action (only in Pending tab)
-    const isActionable = filter === 'PENDING_WITHDRAWAL';
+    const isActionable = filter === 'PENDING_WITHDRAWAL' && item.status === 'PENDING';
+    const isWithdraw = item.type === 'WITHDRAW';
 
     return (
       <View style={styles.card}>
@@ -99,9 +120,15 @@ const AdminTransactionScreen = () => {
           </View>
           <View style={styles.info}>
             <Text style={styles.type}>{item.type}</Text>
-            {/* Ensure types/dto.ts is updated to include 'user' in TransactionResponse */}
             <Text style={styles.user}>{item.user?.fullname || item.user?.email || 'Unknown User'}</Text>
             <Text style={styles.date}>{new Date(item.createdAt).toLocaleDateString()} • {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+
+            {/* Show view details button if it's a withdraw request */}
+            {isWithdraw && (
+              <TouchableOpacity onPress={() => showBankDetails(item.description)} style={{ marginTop: 4 }}>
+                <Text style={{ color: '#4F46E5', fontSize: 12, fontWeight: '600' }}>View Bank Details</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <View style={styles.amountBox}>
             <Text style={[styles.amount, { color: item.amount > 0 ? "#059669" : "#DC2626" }]}>
@@ -156,7 +183,6 @@ const AdminTransactionScreen = () => {
           <ActivityIndicator size="large" color="#4F46E5" style={styles.loader} />
         ) : (
           <FlatList<TransactionResponse>
-            // Explicitly cast to TransactionResponse[] to satisfy FlatList generic
             data={(data?.data || []) as TransactionResponse[]}
             keyExtractor={(item) => item.transactionId}
             renderItem={renderItem}
@@ -212,6 +238,43 @@ const AdminTransactionScreen = () => {
             </View>
           </View>
         </Modal>
+
+        {/* Bank Info Modal */}
+        <Modal
+          visible={infoModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setInfoModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Bank Information</Text>
+              {selectedBankInfo && (
+                <View style={styles.infoContainer}>
+                  {selectedBankInfo.bankCode && (
+                    <Text style={styles.infoText}><Text style={styles.bold}>Bank:</Text> {selectedBankInfo.bankCode}</Text>
+                  )}
+                  {selectedBankInfo.accountNumber && (
+                    <Text style={styles.infoText}><Text style={styles.bold}>Account No:</Text> {selectedBankInfo.accountNumber}</Text>
+                  )}
+                  {selectedBankInfo.accountName && (
+                    <Text style={styles.infoText}><Text style={styles.bold}>Name:</Text> {selectedBankInfo.accountName}</Text>
+                  )}
+                  {selectedBankInfo.note && (
+                    <Text style={styles.infoText}><Text style={styles.bold}>Note:</Text> {selectedBankInfo.note}</Text>
+                  )}
+                </View>
+              )}
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#4F46E5', marginTop: 20, alignItems: 'center' }]}
+                onPress={() => setInfoModalVisible(false)}
+              >
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
       </View>
     </ScreenLayout>
   );
@@ -273,6 +336,10 @@ const styles = createScaledSheet({
   modalBtnConfirm: { backgroundColor: '#DC2626' },
   modalBtnTextCancel: { color: '#374151', fontWeight: '600' },
   modalBtnTextConfirm: { color: '#fff', fontWeight: '600' },
+
+  infoContainer: { marginVertical: 10 },
+  infoText: { fontSize: 16, marginBottom: 8, color: '#374151' },
+  bold: { fontWeight: '700', color: '#1F2937' }
 });
 
 export default AdminTransactionScreen;

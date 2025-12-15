@@ -1084,7 +1084,7 @@ export interface CourseLessonResponse {
     title?: string;
     duration?: string;
     LessonSummaryResponse?: LessonSummaryResponse[];
-    completedLessonIds?: string[];
+    completedLessonIds?: string;
 }
 
 export interface CoursePerformanceResponse {
@@ -1196,6 +1196,12 @@ export interface DashboardStatisticsResponse {
     coursesChange: number;
     signupsChange: number;
     chartData: TimeSeriesPoint[];
+    overview: OverviewMetricsDto;
+    learningTimeChart: TimeSeriesPoint[];
+    courseProgress: CourseProgressDto[];
+    badgeProgress: BadgeProgressDto;
+    transactionSummary: TransactionSummaryDto;
+    recentActivities: UserLearningActivityResponse[];
 }
 
 export interface DatingInviteSummary {
@@ -1881,6 +1887,12 @@ export interface RoomResponse {
     avatarUrl: string;
     memberCount: number;
     maxMembers: number;
+    lastMessageSenderId: string;
+    lastMessageSenderEphemeralKey: string;
+    lastMessageInitializationVector: string;
+    lastMessageSelfContent: string;
+    lastMessageSelfEphemeralKey: string;
+    lastMessageSelfInitializationVector: string;
     purpose: Enums.RoomPurpose;
     lastMessageTime: string;
     partnerIsOnline: boolean;
@@ -2155,6 +2167,8 @@ export interface UserLearningActivityResponse {
     durationInSeconds?: number;
     details?: string;
     createdAt: string;
+    title: string;
+    score: number;
 }
 export interface UserLearningActivityRequest {
     userId: string;
@@ -2501,6 +2515,13 @@ export interface OverviewMetricsDto {
     activeUsers: number;
     revenue: number;
     newSignups: number;
+    totalLearningTimeSeconds: number;
+    lessonsCompleted: number;
+    badgesEarned: number;
+    averageAccuracy: number;
+    totalExperience: number;
+    totalCoins: number;
+    streakDays: number;
 }
 
 export interface ParticipantInfo {
@@ -2526,6 +2547,8 @@ export interface SubtitleItem {
 export interface TimeSeriesPoint {
     label: string;
     revenue: number;
+    value: number;
+    timestamp?: string;
     transactions: number;
 }
 

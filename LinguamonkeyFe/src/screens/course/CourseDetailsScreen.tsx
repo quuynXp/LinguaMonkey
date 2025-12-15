@@ -31,6 +31,7 @@ import { CourseVersionEnrollmentStatus } from "../../types/enums";
 import { getCourseImage, getLessonImage } from "../../utils/courseUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
 import {
   CourseVersionDiscountResponse,
   CourseVersionEnrollmentResponse,
@@ -90,6 +91,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
+
+  // Use optional chaining carefully here. roomData depends on user enrollment/membership.
   const { data: roomData, isLoading: roomLoading } = useCourseRoom(courseId);
 
   const { data: versionHistory } = useCourseVersions(courseId);
@@ -115,6 +118,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }, [user?.userId, refetchEnrollments, refetchUserProgress])
   );
 
+  // FIX: Logic to set initial viewing version
+  // Priority: Public Version -> Draft (if creator)
   useEffect(() => {
     if (course && !viewingVersionId) {
       if (course.latestPublicVersion?.versionId) {
@@ -125,13 +130,16 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }
   }, [course, isCreator, viewingVersionId]);
 
+  // Fetch meta data if viewing a specific history version
   const { data: selectedVersionData, isLoading: versionMetaLoading } = useGetVersion(viewingVersionId || "");
 
+  // FIX: Determine Active Version
   const activeVersion = selectedVersionData
     || course?.latestPublicVersion
     || (isCreator ? course?.latestDraftVersion : null);
 
   const activeVersionId = activeVersion?.versionId;
+
   const isViewingArchived = activeVersion?.status === "ARCHIVED";
   const isViewingDraft = activeVersion?.status === "DRAFT";
 
@@ -188,6 +196,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
   const priceAfterDiscount = discountPercent > 0 ? displayPriceRaw * (1 - discountPercent / 100) : displayPriceRaw;
 
+  // LOGIC: Free Course = Price after discount is ZERO or less.
   const isFreeCourse = priceAfterDiscount <= 0;
   const isPaidCourse = !isFreeCourse;
 
@@ -205,7 +214,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     return activeEnrollment.progress || 0;
   }, [activeEnrollment]);
 
-  const hasAccess = isEnrolled || isCreator || isFreeCourse;
+  // hasAccess = Creator OR (Paid Course AND Enrolled) OR Free Course
+  const hasAccess = isCreator || isEnrolled || isFreeCourse;
   const reviews = (reviewsData?.data as any[]) || [];
 
   const displayThumbnail = activeVersion?.thumbnailUrl;
@@ -214,68 +224,77 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const displayDescription = activeVersion?.description;
   const originalPrice = displayPriceRaw;
 
+  const getCourseImageSource = (url?: string) => {
+    const processedUrl = url ? getDirectMediaUrl(url) : null;
+    return processedUrl ? { uri: processedUrl } : require("../../assets/images/ImagePlacehoderCourse.png");
+  };
+
   const canReview = useMemo(() => {
-    return isFreeCourse || isEnrolled;
-  }, [isFreeCourse, isEnrolled]);
+    return isCreator || isFreeCourse || isEnrolled;
+  }, [isCreator, isFreeCourse, isEnrolled]);
 
   const displayPriceStr = convert(priceAfterDiscount, 'VND');
   const displayOriginalPriceStr = convert(originalPrice, 'VND');
 
-  const handleLessonPress = async (lesson: LessonResponse, isLessonCompleted: boolean) => {
-    const isAccessible = hasAccess || lesson.isFree;
-
+  const navigateToLesson = (lesson: LessonResponse, isLessonCompleted: boolean) => {
     const progressItem = progressMap[String(lesson.lessonId)];
     const latestScore = progressItem?.score;
-
-    if (isLessonCompleted && isAccessible) {
-      gotoTab("CourseStack", "LessonScreen", {
-        lesson: lesson,
-        onComplete: handleLessonComplete,
-        isCompleted: true,
-        latestScore: latestScore
-      });
-      return;
-    }
-
-    if (!isAccessible) {
-      if (isPaidCourse) {
-        setPurchaseModalVisible(true);
-      } else {
-        await handleFreeEnrollAndNavigate(lesson);
-      }
-      return;
-    }
-
-    if (isFreeCourse && !isEnrolled && !isCreator) {
-      await handleFreeEnrollAndNavigate(lesson);
-      return;
-    }
 
     gotoTab("CourseStack", "LessonScreen", {
       lesson: lesson,
       onComplete: handleLessonComplete,
-      isCompleted: false,
+      isCompleted: isLessonCompleted,
       latestScore: latestScore
     });
   };
 
-  const handleFreeEnrollAndNavigate = async (lesson: LessonResponse) => {
-    if (!user?.userId || !activeVersionId) return;
+  const handleFreeEnrollAndNavigate = async (lesson: LessonResponse, isLessonCompleted: boolean) => {
+    if (!user?.userId || !activeVersionId) {
+      Alert.alert(t("auth.required"), t("auth.loginRequiredForFreeEnrollment", "Vui lòng đăng nhập để tham gia khóa học miễn phí."));
+      return;
+    }
+
     try {
       await enrollAsync({
         userId: user.userId,
         courseVersionId: activeVersionId,
         status: CourseVersionEnrollmentStatus.ACTIVE
       });
+      // After successful enrollment, refetch the enrollments state
       await refetchEnrollments();
-      gotoTab("CourseStack", "LessonScreen", {
-        lesson: lesson,
-        onComplete: handleLessonComplete,
-        isCompleted: false
-      });
-    } catch (error) {
-      Alert.alert(t("error"), t("course.enrollmentFailed"));
+
+      // Then navigate
+      navigateToLesson(lesson, isLessonCompleted);
+
+    } catch (error: any) {
+      // NOTE: The backend check logic will prevent DUP key error. 
+      // This catch block handles other potential issues.
+      const errorMsg = error?.response?.data?.message || t("course.enrollmentFailed");
+      Alert.alert(t("error"), errorMsg);
     }
+  };
+
+  const handleLessonPress = async (lesson: LessonResponse, isLessonCompleted: boolean) => {
+    const hasCourseAccess = isCreator || isEnrolled || isFreeCourse;
+
+    const isLessonAccessible = hasCourseAccess || lesson.isFree;
+
+    if (!isLessonAccessible) {
+      setPurchaseModalVisible(true);
+      return;
+    }
+
+    // FIX: Check if it's a Free Course and the user is NOT enrolled yet.
+    if (isFreeCourse && !isEnrolled && !isCreator) {
+      // The enrollment mutation on the backend should check existence, but
+      // we still need to create it if it doesn't exist.
+      // After this call, 'isEnrolled' will be true on the next render thanks to refetchEnrollments().
+      await handleFreeEnrollAndNavigate(lesson, isLessonCompleted);
+      return;
+    }
+
+    // Default flow: If access is granted (paid & enrolled, or creator, or free & enrolled/creator)
+    navigateToLesson(lesson, isLessonCompleted);
   };
 
   const handlePurchaseSuccess = () => {
@@ -288,7 +307,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       return;
     }
     if (!canReview) {
-      Alert.alert(t("notice"), t("course.reviewNotAllowed", "Bạn chưa đủ điều kiện để đánh giá khóa học này."));
+      Alert.alert(t("notice"), t("course.reviewNotAllowed", "Bạn chưa đủ điều kiện để đánh giá khóa học này (cần phải ghi danh hoặc khóa học miễn phí)."));
       return;
     }
     if (!courseId) return;
@@ -312,8 +331,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   };
 
   const handleJoinRoom = () => {
-    const targetRoomId = course?.roomId || roomData?.roomId;
-    const targetRoomName = course?.title || roomData?.roomName;
+    const targetRoomId = roomData?.roomId || course?.roomId;
+    const targetRoomName = roomData?.roomName || course?.title;
 
     if (targetRoomId) {
       gotoTab("Chat", "GroupChatScreen", {
@@ -321,7 +340,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         roomName: targetRoomName
       });
     } else {
-      if (roomLoading || courseLoading) {
+      if (roomLoading && courseLoading) {
         Alert.alert(t("common.loading"), t("course.roomLoading", "Đang kết nối phòng chat..."));
       } else {
         Alert.alert(t("notice"), t("course.noRoomAvailable", "Phòng chat chưa sẵn sàng. Vui lòng thử lại sau."));
@@ -411,7 +430,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const renderHeader = () => (
     <View style={styles.headerContainer}>
       <View style={styles.coverContainer}>
-        <Image source={getCourseImage(displayThumbnail)} style={styles.coverImage} resizeMode="cover" />
+        <Image source={getCourseImageSource(displayThumbnail)} style={styles.coverImage} resizeMode="cover" />
         <View style={styles.coverOverlay} />
         <TouchableOpacity
           style={[styles.backBtn, { top: insets.top + 10 }]}
@@ -466,21 +485,21 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
               <Text style={styles.statValue}>{displayLanguage || "-"}</Text>
             </View>
           </View>
-          {hasAccess ? (
+          {isCreator ? (
+            <View style={[styles.headerBuyBtn, { backgroundColor: '#F3F4F6' }]}>
+              <Text style={[styles.headerBuyText, { color: '#4F46E5' }]}>Creator View</Text>
+            </View>
+          ) : hasAccess ? ( // Nếu Free HOẶC Paid/Enrolled
             <TouchableOpacity style={styles.headerBuyBtn} onPress={handleJoinRoom}>
               <Text style={styles.headerBuyText}>{t('chat.join_room', 'Join Room')}</Text>
               <Icon name="chat" size={16} color="#FFF" />
             </TouchableOpacity>
-          ) : isPaidCourse ? (
+          ) : isPaidCourse ? ( // Nếu Paid và CHƯA Enrolled
             <TouchableOpacity style={styles.headerBuyBtn} onPress={() => setPurchaseModalVisible(true)}>
               <Text style={styles.headerBuyText}>{t('common.buy')}</Text>
               <Icon name="shopping-cart" size={16} color="#FFF" />
             </TouchableOpacity>
-          ) : isCreator && (
-            <View style={[styles.headerBuyBtn, { backgroundColor: '#F3F4F6' }]}>
-              <Text style={[styles.headerBuyText, { color: '#4F46E5' }]}>Creator View</Text>
-            </View>
-          )}
+          ) : null}
         </View>
 
         {renderAuthorInfo()}
@@ -516,7 +535,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
               </View>
             ) : (
               <Text style={styles.priceText}>
-                {originalPrice === 0 ? t("course.free") : `${displayOriginalPriceStr.toLocaleString()} VND`}
+                {displayPriceRaw === 0 ? t("course.free") : `${displayOriginalPriceStr.toLocaleString()} VND`}
               </Text>
             )}
           </View>
@@ -582,6 +601,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
           style={[styles.lessonItem, isLocked && styles.lessonItemLocked]}
           onPress={() => handleLessonPress(item, isLessonCompleted)}
           activeOpacity={0.7}
+          disabled={isLocked && isPaidCourse && !item.isFree}
         >
           <View style={styles.lessonThumbContainer}>
             <Image source={getLessonImage(item.thumbnailUrl)} style={styles.lessonThumb} />
@@ -682,7 +702,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <FlatList
         data={displayLessons}
-        extraData={[progressMap, completedLessonIdsSet]}
+        extraData={[progressMap, completedLessonIdsSet, hasAccess, isEnrolled]}
         renderItem={renderLessonItem}
         keyExtractor={(item) => item.lessonId || String(item.orderIndex)}
         ListHeaderComponent={renderHeader}

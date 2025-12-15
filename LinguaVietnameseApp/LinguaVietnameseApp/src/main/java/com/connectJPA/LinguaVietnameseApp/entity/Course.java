@@ -44,7 +44,6 @@ public class Course extends BaseEntity {
     private UUID creatorId;
 
     private OffsetDateTime lastQualityWarningAt;
-    
 
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false)

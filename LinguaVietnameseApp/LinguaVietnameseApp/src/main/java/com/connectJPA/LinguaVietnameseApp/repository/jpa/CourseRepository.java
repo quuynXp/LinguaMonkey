@@ -4,7 +4,6 @@ import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
-import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -34,20 +33,49 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
            "LEFT JOIN CourseVersionEnrollment cve ON cve.courseVersion = cv " +
            "WHERE c.isDeleted = false " +
            "AND c.approvalStatus = com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED " +
+           "AND c.latestPublicVersion IS NOT NULL " +
            "GROUP BY c " +
            "ORDER BY COUNT(cve) DESC")
     List<Course> findTopSellingCourses(Pageable pageable);
     
-    // 5. Cập nhật để tìm kiếm theo type của latestPublicVersion (Sử dụng HQL)
-    // NOTE: Removed the derived query method 'findByTypeAndIsDeletedFalse' which caused the error.
-    @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.type = :type AND c.isDeleted = false")
+    @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.type = :type AND c.isDeleted = false AND c.latestPublicVersion IS NOT NULL")
     Page<Course> findCoursesByTypeAndIsDeletedFalse(@Param("type") CourseType type, Pageable pageable);
     
-    // Cập nhật để truy vấn latestPublicVersion.thumbnailUrl
     @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.thumbnailUrl IS NULL AND c.createdAt < :threshold")
     List<Course> findTop50ByThumbnailUrlIsNullAndCreatedAtBefore(@Param("threshold") OffsetDateTime threshold);
 
-    // 2. Sửa Native Query: Truy vấn qua latestPublicVersion_id (đã join ngầm)
+    @Query("SELECT c FROM Course c WHERE c.courseId NOT IN :excludedIds " +
+            "AND c.approvalStatus = :status " +
+            "AND c.isDeleted = false " +
+            "AND c.latestPublicVersion IS NOT NULL")
+    Page<Course> findAllAvailableCourses(
+            @Param("excludedIds") List<UUID> excludedIds,
+            @Param("status") CourseApprovalStatus status, 
+            Pageable pageable
+    );
+
+    @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.price > 0 " +
+            "AND c.courseId NOT IN :excludedIds " +
+            "AND c.approvalStatus = :approvalStatus " +
+            "AND c.isDeleted = false " +
+            "AND c.latestPublicVersion IS NOT NULL")
+    Page<Course> findAvailablePaidCourses(
+            @Param("excludedIds") List<UUID> excludedIds,
+            @Param("approvalStatus") CourseApprovalStatus approvalStatus, 
+            Pageable pageable
+    );
+
+    @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.price = 0 " +
+            "AND c.courseId NOT IN :excludedIds " +
+            "AND c.approvalStatus = :approvalStatus " +
+            "AND c.isDeleted = false " +
+            "AND c.latestPublicVersion IS NOT NULL")
+    Page<Course> findAvailableFreeCourses(
+            @Param("excludedIds") List<UUID> excludedIds,
+            @Param("approvalStatus") CourseApprovalStatus approvalStatus, 
+            Pageable pageable
+    );
+
     @Query(value = """
         SELECT c.* FROM courses c 
         JOIN course_versions cv ON c.latest_public_version_id = cv.version_id
@@ -63,6 +91,7 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
         AND (
             c.course_id NOT IN (:excluded)
         )
+        AND c.latest_public_version_id IS NOT NULL
         ORDER BY RANDOM() 
         LIMIT :limit
     """, nativeQuery = true)
@@ -72,19 +101,19 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
             @Param("excluded") List<UUID> excluded,
             @Param("limit") int limit);
 
-    // 3. Cập nhật để tìm kiếm theo languageCode của latestPublicVersion
     @Query("SELECT c FROM Course c WHERE LOWER(c.title) LIKE LOWER(CONCAT('%', :title, '%')) " +
            "AND c.latestPublicVersion.languageCode = :languageCode " +
            "AND c.approvalStatus = :approvalStatus " +
-           "AND c.isDeleted = false")
+           "AND c.isDeleted = false " +
+           "AND c.latestPublicVersion IS NOT NULL")
     Page<Course> findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
             @Param("title") String title, @Param("languageCode") String languageCode, @Param("approvalStatus") CourseApprovalStatus approvalStatus, Pageable pageable);
 
-    // 4. Cập nhật để tìm kiếm theo difficultyLevel của latestPublicVersion
     @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.difficultyLevel IN :difficultyLevel " +
            "AND c.courseId NOT IN :courseId " +
            "AND c.approvalStatus = :approvalStatus " +
-           "AND c.isDeleted = false")
+           "AND c.isDeleted = false " +
+           "AND c.latestPublicVersion IS NOT NULL")
     Page<Course> findByDifficultyLevelInAndCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
             @Param("difficultyLevel") List<String> difficultyLevel, 
             @Param("courseId") List<UUID> courseId, 
@@ -92,31 +121,42 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
             Pageable pageable
     );
 
+    @Query("SELECT c FROM Course c WHERE c.courseId NOT IN :courseId " +
+            "AND c.approvalStatus = :approvalStatus " +
+            "AND c.isDeleted = false " +
+            "AND c.latestPublicVersion IS NOT NULL")
     Page<Course> findByCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
-            List<UUID> courseId, 
-            CourseApprovalStatus approvalStatus, 
+            @Param("courseId") List<UUID> courseId, 
+            @Param("approvalStatus") CourseApprovalStatus approvalStatus, 
             Pageable pageable
     );
 
-    // 5. Cập nhật để tìm kiếm theo type của latestPublicVersion (Sử dụng HQL)
     @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.type = :type " +
            "AND c.approvalStatus = :approvalStatus " +
-           "AND c.isDeleted = false")
+           "AND c.isDeleted = false " +
+           "AND c.latestPublicVersion IS NOT NULL")
     Page<Course> findByTypeAndApprovalStatusAndIsDeletedFalse(@Param("type") CourseType type, @Param("approvalStatus") CourseApprovalStatus approvalStatus, Pageable pageable);
 
-    // 6. Giữ nguyên (description vẫn nằm trong latestPublicVersion)
     @Query("SELECT c FROM Course c WHERE (" +
            "LOWER(c.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(c.latestPublicVersion.description) LIKE LOWER(CONCAT('%', :keyword, '%'))" +
            ") AND c.isDeleted = false AND c.approvalStatus = com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED " +
+           "AND c.latestPublicVersion IS NOT NULL " +
            "ORDER BY c.createdAt DESC")
     Page<Course> searchCoursesByKeyword(@Param("keyword") String keyword, Pageable pageable);
 
-    Page<Course> findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(CourseApprovalStatus approved,
+    @Query("SELECT c FROM Course c WHERE c.isAdminCreated = true " +
+           "AND c.approvalStatus = :approved " +
+           "AND c.isDeleted = false " +
+           "AND c.latestPublicVersion IS NOT NULL")
+    Page<Course> findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(@Param("approved") CourseApprovalStatus approved,
             Pageable pageable);
 
-Page<Course> findByApprovalStatusAndIsDeletedFalse(CourseApprovalStatus status, Pageable pageable);
+    @Query("SELECT c FROM Course c WHERE c.approvalStatus = :status " +
+           "AND c.isDeleted = false " +
+           "AND c.latestPublicVersion IS NOT NULL")
+    Page<Course> findByApprovalStatusAndIsDeletedFalse(@Param("status") CourseApprovalStatus status, Pageable pageable);
 
-List<Course> findByLatestPublicVersion_DifficultyLevelAndApprovalStatus(DifficultyLevel diffLevel,
-              CourseApprovalStatus approved);
+    List<Course> findByLatestPublicVersion_DifficultyLevelAndApprovalStatus(DifficultyLevel diffLevel,
+            CourseApprovalStatus approved);
 }

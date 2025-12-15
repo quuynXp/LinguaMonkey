@@ -11,6 +11,8 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class NotificationRequest {
+    private UUID id;
+
     @NotNull(message = "User ID is required")
     private UUID userId;
 
@@ -30,6 +32,5 @@ public class NotificationRequest {
     private boolean read = false;
     private boolean isDeleted = false;
 
-    // Added to support the builder.additionalData(...) call
     private Map<String, String> additionalData;
 }

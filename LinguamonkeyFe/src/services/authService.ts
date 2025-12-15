@@ -51,22 +51,10 @@ export const authService = {
 
       useUserStore.getState().setUser(normalizedUser);
       useUserStore.getState().setAuthenticated(true);
-      await AsyncStorage.setItem('hasLoggedIn', 'true');
 
       NotificationService.registerTokenToBackend();
 
       eventBus.emit('logged_in', { userId: normalizedUser.userId, token: accessToken });
-
-      const hasFinishedSetup = (await AsyncStorage.getItem('hasFinishedSetup')) === 'true';
-      const userRoles = normalizedUser.roles || [];
-
-      if (userRoles.includes('ROLE_ADMIN')) {
-        resetToTab('AdminStack');
-      } else if (!hasFinishedSetup) {
-        gotoTab('SetupInitScreen');
-      } else {
-        resetToTab('Home');
-      }
 
     } catch (error: any) {
       console.error('[AuthService] Handle Login Failed:', error.response?.data || error.message);

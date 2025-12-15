@@ -6,7 +6,6 @@ import {
   Modal,
   PermissionsAndroid,
   Platform,
-  ActivityIndicator,
   Dimensions,
   Image,
   ScrollView,
@@ -44,7 +43,7 @@ const PAGE_SIZE = 6;
 
 const normalizeLexiconText = (text: string) => {
   if (!text) return "";
-  return text.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ");
+  return text.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ").trim();
 };
 
 const getLexiconKey = (lang: string, text: string) => {
@@ -54,10 +53,10 @@ const getLexiconKey = (lang: string, text: string) => {
 
 const clientSideTranslate = (text: string, srcLang: string, targetLang: string): string | null => {
   const lexicon = useChatStore.getState().lexiconMaster;
-  if (!lexicon || lexicon.size === 0) return null;
+  if (!lexicon || lexicon.size === 0 || !text) return null;
 
   const words = text.split(/\s+/).filter(w => w);
-  let translatedText = '';
+  const translatedParts: string[] = [];
   let i = 0;
   let hasMatch = false;
 
@@ -69,7 +68,7 @@ const clientSideTranslate = (text: string, srcLang: string, targetLang: string):
       const entry = lexicon.get(key);
 
       if (entry && entry.translations && entry.translations[targetLang]) {
-        translatedText += entry.translations[targetLang] + ' ';
+        translatedParts.push(entry.translations[targetLang]);
         i += j;
         matched = true;
         hasMatch = true;
@@ -77,11 +76,11 @@ const clientSideTranslate = (text: string, srcLang: string, targetLang: string):
       }
     }
     if (!matched) {
-      translatedText += words[i] + ' ';
+      translatedParts.push(words[i]);
       i++;
     }
   }
-  return hasMatch ? translatedText.trim() : null;
+  return hasMatch ? translatedParts.join(' ') : null;
 };
 
 const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, currentUserId: string, onClose: () => void }) => {
@@ -96,7 +95,7 @@ const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, c
   if (isLoading || !profile) {
     return (
       <View style={styles.miniProfileContainer}>
-        <ActivityIndicator color="#4f46e5" />
+        <Text style={{ color: 'white' }}>Loading...</Text>
       </View>
     );
   }
@@ -245,8 +244,6 @@ const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
 
       {showTranslated && translated ? (
         <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translated}</Text>
-      ) : (showTranslated && !translated) ? (
-        <ActivityIndicator size="small" color="#fbbf24" style={{ marginTop: 4 }} />
       ) : null}
     </View>
   );
@@ -386,6 +383,7 @@ const WebRTCCallScreen = () => {
           if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
 
           let translated = data.translated || "";
+
           if (!translated && data.originalFull && data.senderId !== user?.userId && !data.isFiller) {
             const localTrans = clientSideTranslate(data.originalFull, data.originalLang, targetLang);
             if (localTrans) translated = localTrans;

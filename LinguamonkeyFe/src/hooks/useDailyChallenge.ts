@@ -40,6 +40,16 @@ export function useClaimChallengeReward() {
       return data.result;
     },
     onSuccess: (_, vars) => {
+      queryClient.setQueryData(dailyChallengeKeys.byUser(vars.userId), (oldData: UserDailyChallengeResponse[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(challenge =>
+          challenge.challengeId === vars.challengeId
+            ? { ...challenge, status: 'CLAIMED' }
+            : challenge
+        );
+      });
+
+      // 2. Sau đó, Invalidate Queries để fetch lại data chính xác từ server (Consistency)
       queryClient.invalidateQueries({ queryKey: dailyChallengeKeys.byUser(vars.userId) });
       queryClient.invalidateQueries({ queryKey: ['userProfile', vars.userId] }); // Update coin/exp user
     },

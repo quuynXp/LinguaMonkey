@@ -222,11 +222,13 @@ const TopSellingCoursesList = ({
   onSeeAll,
   courses,
   isLoading,
+  navigation // FIX: Thêm navigation vào props
 }: {
   t: ReturnType<typeof useTranslation>['t'];
   onSeeAll: () => void;
   courses: CourseResponse[];
   isLoading: boolean;
+  navigation: any; // FIX: Thêm kiểu cho navigation
 }) => {
   const handleCoursePress = (course: CourseResponse) => {
     gotoTab("CourseStack", "CourseDetailsScreen", { courseId: course.courseId });
@@ -289,7 +291,7 @@ const TopSellingCoursesList = ({
 };
 
 
-const LearnScreen = ({ navigation }: any) => {
+const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigation }: any)
   const { t } = useTranslation();
   const userStore = useUserStore();
   const isVip = userStore.vip;
@@ -368,8 +370,14 @@ const LearnScreen = ({ navigation }: any) => {
 
   const topSellingCourses = useMemo(() => (topSellingData as CourseResponse[]) || [], [topSellingData]);
 
-  const handleSeeAll = () => {
-    gotoTab("CourseStack", "StudentCoursesScreen");
+  // FIX: Cập nhật điều hướng để truyền mode MARKETPLACE
+  const handleSeeAllMarketplace = () => {
+    navigation.navigate("StudentCoursesScreen", { mode: 'MARKETPLACE' });
+  };
+
+  // FIX: Cập nhật điều hướng để truyền mode ENROLLED
+  const handleSeeAllEnrolled = () => {
+    navigation.navigate("StudentCoursesScreen", { mode: 'ENROLLED' });
   };
 
   const handleVipFeature = () => {
@@ -491,13 +499,14 @@ const LearnScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {/* TOP SELLING COURSES */}
+          {/* TOP SELLING COURSES (MARKETPLACE) */}
           {topSellingCourses.length > 0 && (
             <TopSellingCoursesList
               t={t}
-              onSeeAll={handleSeeAll}
+              onSeeAll={handleSeeAllMarketplace} // FIX: Dùng marketplace mode
               courses={topSellingCourses}
               isLoading={topSellingLoading}
+              navigation={navigation} // FIX: Truyền navigation
             />
           )}
 
@@ -506,7 +515,7 @@ const LearnScreen = ({ navigation }: any) => {
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>{t("learn.enrolledCourses", "Khóa học của tôi")}</Text>
-                <TouchableOpacity onPress={() => gotoTab("CourseStack", "StudentCoursesScreen")}>
+                <TouchableOpacity onPress={handleSeeAllEnrolled}>
                   <Text style={styles.seeAllText}>{t("common.seeAll", "Xem tất cả")}</Text>
                 </TouchableOpacity>
               </View>
@@ -514,7 +523,7 @@ const LearnScreen = ({ navigation }: any) => {
                 {purchasedCourses.map((enrollment: CourseVersionEnrollmentResponse, index: number) => {
                   const courseVersion = enrollment.courseVersion;
                   if (!courseVersion) return null;
-                  const key = courseVersion.versionId || `enroll-${index}`;
+                  const key = enrollment.enrollmentId || courseVersion.versionId || `enroll-${index}`; // FIX: Dùng enrollmentId làm key nếu có
                   const dateEnrolled = enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : '';
 
                   const processedUrl = getDirectMediaUrl(courseVersion.thumbnailUrl);
@@ -588,12 +597,12 @@ const LearnScreen = ({ navigation }: any) => {
             </View>
           )}
 
-          {/* Recommended Courses */}
+          {/* Recommended Courses (MARKETPLACE) */}
           {recommendedData && recommendedData.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
-                <TouchableOpacity onPress={handleSeeAll}>
+                <TouchableOpacity onPress={handleSeeAllMarketplace}> {/* FIX: Dùng marketplace mode */}
                   <Text style={styles.seeAllText}>{t("common.seeAll", "Xem tất cả")}</Text>
                 </TouchableOpacity>
               </View>

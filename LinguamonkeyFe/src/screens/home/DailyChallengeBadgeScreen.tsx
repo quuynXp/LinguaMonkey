@@ -18,8 +18,6 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
     const initialTab = route?.params?.initialTab || 'DAILY';
     const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
-    const [claimedItems, setClaimedItems] = useState<Set<string>>(new Set());
-
     const { user } = useUserStore();
     const userId = user?.userId;
 
@@ -30,8 +28,7 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
     const { claimBadge, isClaiming: isClaimingBadge } = useClaimBadge();
 
     const getSortWeight = (item: UserDailyChallengeResponse) => {
-        const isLocallyClaimed = claimedItems.has(item.challengeId);
-        if (item.status === 'CLAIMED' || isLocallyClaimed) return 3;
+        if (item.status === 'CLAIMED') return 3;
         if (item.status === 'CAN_CLAIM') return 1;
         return 2;
     };
@@ -41,59 +38,39 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
             c.period === 'DAILY' || (c.period !== 'WEEKLY' && !c.period)
         ) || [];
         return [...list].sort((a, b) => getSortWeight(a) - getSortWeight(b));
-    }, [challenges, claimedItems]);
+    }, [challenges]);
 
     const weeklyTasks = useMemo(() => {
         const list = challenges?.filter((c: UserDailyChallengeResponse) => c.period === 'WEEKLY') || [];
         return [...list].sort((a, b) => getSortWeight(a) - getSortWeight(b));
-    }, [challenges, claimedItems]);
+    }, [challenges]);
 
-    const onClaimSuccess = (id: string, type: 'CHALLENGE' | 'BADGE') => {
-        setClaimedItems(prev => new Set(prev).add(id));
-        if (type === 'CHALLENGE') refetchChallenges();
-        if (type === 'BADGE') refetchBadges();
-    }
 
     const handleClaimChallenge = async (challengeId: string) => {
-        if (!userId || claimedItems.has(challengeId)) return;
+        if (!userId) return;
         try {
             await claimReward({ userId, challengeId });
-            onClaimSuccess(challengeId, 'CHALLENGE');
         } catch (error: any) {
-            const msg = error?.response?.data?.message || error?.message || "";
-            if (msg.toLowerCase().includes("already claimed") || msg.toLowerCase().includes("đã nhận")) {
-                onClaimSuccess(challengeId, 'CHALLENGE');
-            }
+            console.error("Claim challenge failed:", error);
         }
     };
 
     const handleClaimBadge = async (badgeId: string) => {
-        if (!userId || claimedItems.has(badgeId)) return;
+        if (!userId) return;
         try {
             await claimBadge({ userId, badgeId });
-            onClaimSuccess(badgeId, 'BADGE');
         } catch (error: any) {
-            const msg = error?.response?.data?.message || error?.message || "";
-            if (msg.toLowerCase().includes("already claimed") || msg.toLowerCase().includes("đã nhận")) {
-                onClaimSuccess(badgeId, 'BADGE');
-            }
+            console.error("Claim badge failed:", error);
         }
     };
 
-    // SỬA ĐỔI: Chấp nhận stack và screenRoute
+
     const handleNavigate = (stack?: string, screenRoute?: string) => {
         if (screenRoute) {
-            // Ưu tiên dùng gotoTab(stack, screenRoute) nếu có stack, đúng với yêu cầu "goToTab("stack", "màn hình")"
             if (stack) {
                 try {
-                    // Nếu gotoTab được cấu hình đúng để xử lý điều hướng Stack lồng (nested stack navigation)
-                    // thì nó sẽ không cần dùng đến navigation.navigate của props nữa.
-                    // Tuy nhiên, để đảm bảo an toàn, vẫn giữ logic hiện tại:
                     gotoTab(stack, screenRoute);
                 } catch (e) {
-                    // Fallback nếu gotoTab không thành công hoặc không tồn tại (chỉ giữ lại logic này nếu bạn muốn)
-                    // Vì bạn đã có gotoTab, nên loại bỏ navigation.navigate ở đây.
-                    // Nếu bạn *bắt buộc* phải dùng navigation.navigate, thì cần đảm bảo screenRoute là màn hình trực tiếp.
                     console.error("gotoTab failed, trying navigation.navigate:", e);
                     try {
                         navigation.navigate(screenRoute);
@@ -114,19 +91,21 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
     };
 
     const renderChallengeItem = (item: UserDailyChallengeResponse) => {
-        const isLocallyClaimed = claimedItems.has(item.challengeId);
-        const isFinished = item.status === 'CLAIMED' || isLocallyClaimed;
-        const canClaim = item.status === 'CAN_CLAIM' && !isLocallyClaimed;
+        // SỬA ĐỔI: Dùng item.status để xác định trạng thái
+        const isFinished = item.status === 'CLAIMED';
+        const canClaim = item.status === 'CAN_CLAIM';
+        const isInProgress = item.status === 'IN_PROGRESS';
+
         const progressPercent = Math.min(100, Math.max(0, (item.progress / (item.targetAmount || 1)) * 100));
 
         return (
             <TouchableOpacity
                 key={item.challengeId}
                 style={[styles.taskCard, isFinished && styles.taskCardGrayedOut]}
-                // SỬA ĐỔI: Truyền cả item.stack và item.screenRoute vào handleNavigate
-                onPress={() => !isFinished && !canClaim && handleNavigate(item.stack, item.screenRoute)}
+                // Chỉ cho phép navigate nếu đang IN_PROGRESS và không thể CLAIM
+                onPress={() => isInProgress && handleNavigate(item.stack, item.screenRoute)}
                 activeOpacity={0.9}
-                disabled={isFinished}
+                disabled={!isInProgress}
             >
                 <View style={[styles.taskIconContainer, isFinished && styles.grayscale]}>
                     <Icon name={isFinished ? "check-circle" : "flag"} size={28} color={isFinished ? "#6B7280" : "#F59E0B"} />
@@ -140,6 +119,7 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
                             styles.progressBarFill,
                             {
                                 width: `${progressPercent}%`,
+                                // SỬA ĐỔI: Cập nhật màu dựa trên trạng thái mới
                                 backgroundColor: isFinished ? '#9CA3AF' : (canClaim ? '#10B981' : '#3B82F6')
                             }
                         ]} />
@@ -152,7 +132,7 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
                         <TouchableOpacity
                             style={styles.claimButton}
                             onPress={() => handleClaimChallenge(item.challengeId)}
-                            disabled={isClaimingChallenge || isLocallyClaimed}
+                            disabled={isClaimingChallenge}
                         >
                             {isClaimingChallenge ? <ActivityIndicator color="#FFF" size="small" /> : (
                                 <>
@@ -180,10 +160,11 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
     };
 
     const renderBadgeItem = (item: BadgeProgressResponse) => {
-        const isLocallyClaimed = claimedItems.has(item.badgeId);
-        const isOwned = item.isAchieved || isLocallyClaimed;
+        // SỬA ĐỔI: Dùng item.isAchieved để xác định trạng thái
+        const isOwned = item.isAchieved;
         const canClaim = !isOwned && (item.currentUserProgress >= item.criteriaThreshold);
         const isLocked = !isOwned && !canClaim;
+
         const progressPercent = Math.min(100, Math.max(0, (item.currentUserProgress / item.criteriaThreshold) * 100));
         const badgeImageSource = getBadgeImage(item.imageUrl);
 
@@ -214,9 +195,11 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
                     <TouchableOpacity
                         style={styles.badgeClaimBtn}
                         onPress={() => handleClaimBadge(item.badgeId)}
-                        disabled={isClaimingBadge || isLocallyClaimed}
+                        disabled={isClaimingBadge}
                     >
-                        <Text style={styles.claimTextSmall}>{t('common.claim')}</Text>
+                        {isClaimingBadge ? <ActivityIndicator color="#FFF" size="small" /> : (
+                            <Text style={styles.claimTextSmall}>{t('common.claim')}</Text>
+                        )}
                     </TouchableOpacity>
                 ) : isOwned ? (
                     <View style={styles.ownedLabel}>

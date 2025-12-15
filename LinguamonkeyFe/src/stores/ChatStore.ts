@@ -14,6 +14,8 @@ import { showToast } from '../components/Toast';
 
 const AI_BOT_ID = "00000000-0000-0000-0000-000000000000";
 
+// --- TYPES ---
+
 type ExtendedMessage = Message & {
   selfContent?: string;
   selfEphemeralKey?: string;
@@ -53,7 +55,10 @@ interface UseChatState {
   aiWsConnected: boolean;
   rooms: { [roomId: string]: Room };
   userStatuses: { [userId: string]: UserStatus };
-  lexiconMaster: Map<string, LexiconEntry>;
+
+  // Key là Text đã normalize -> Value là Map translation
+  lexiconMaster: Map<string, Record<string, string>>;
+
   aiRoomList: Room[];
   pendingSubscriptions: string[];
   pendingPublishes: { destination: string, payload: any }[];
@@ -110,9 +115,57 @@ interface UseChatState {
   updateUserStatus: (userId: string, isOnline: boolean, lastActiveAt?: string) => void;
   performEagerTranslation: (messageId: string, text: string, targetLang?: string) => Promise<void>;
   translateLastNMessages: (roomId: string, targetLang: string, count?: number) => Promise<void>;
+
   decryptNewMessages: (roomId: string, newMessages: Message[]) => Promise<void>;
+  _processDecryptionQueue: (roomId: string, messages: Message[]) => void;
   updateDecryptedContent: (roomId: string, messageId: string, decryptedContent: string) => void;
 }
+
+// --- HELPER FUNCTIONS ---
+
+const normalizeLexiconText = (text: string) => {
+  if (!text) return "";
+  return text
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+};
+
+const parseDate = (dateInput: any): number => {
+  if (!dateInput) return Date.now();
+  if (Array.isArray(dateInput)) {
+    const [y, M, d, h, m, s, ns] = dateInput;
+    const date = new Date(y, M - 1, d, h || 0, m || 0, s || 0);
+    if (ns) date.setMilliseconds(Math.floor(ns / 1000000));
+    return date.getTime();
+  }
+  return new Date(dateInput).getTime();
+};
+
+// FIX 1: Logic Deduplication mạnh mẽ hơn
+const isSameMessage = (localMsg: Message, serverMsg: Message): boolean => {
+  // Case 1: ID trùng nhau (hiếm khi xảy ra giữa local và server vì server tạo UUID mới)
+  if (localMsg.id.chatMessageId === serverMsg.id.chatMessageId) return true;
+
+  // Case 2: Cùng Sender + Thời gian gần nhau (trong vòng 10s)
+  if (localMsg.isLocal && localMsg.senderId === serverMsg.senderId) {
+    const timeDiff = Math.abs(parseDate(localMsg.id.sentAt) - parseDate(serverMsg.id.sentAt));
+
+    if (timeDiff < 10000) { // Tăng lên 10s để chấp nhận độ trễ mạng/server
+      // Nếu Server msg là E2EE (có key), ta KHÔNG so sánh content vì 1 cái là plain, 1 cái là cipher
+      // Ta chấp nhận đây chính là tin nhắn đó.
+      if (serverMsg.senderEphemeralKey) return true;
+
+      // Nếu là tin nhắn thường, so sánh content hoặc mediaUrl
+      if (localMsg.messageType === serverMsg.messageType) {
+        if (localMsg.mediaUrl && localMsg.mediaUrl === serverMsg.mediaUrl) return true;
+        if (localMsg.content === serverMsg.content) return true;
+      }
+    }
+  }
+  return false;
+};
 
 const normalizeMessage = (msg: any): Message => {
   if (!msg) {
@@ -156,129 +209,63 @@ const normalizeMessage = (msg: any): Message => {
     return baseMsg as Message;
   }
 
-  if (msg?.chatMessageId) {
-    const rawMsg = {
-      ...msg,
-      id: { chatMessageId: msg.chatMessageId, sentAt: msg.sentAt || new Date().toISOString() },
-      senderId: msg.senderId,
-      content: msg.content,
-      translationsMap: parsedTranslations,
-      senderEphemeralKey: msg.senderEphemeralKey,
-      usedPreKeyId: msg.usedPreKeyId,
-      initializationVector: msg.initializationVector,
-      decryptedContent: msg.decryptedContent || null,
-      mediaUrl: safeMediaUrl,
-    };
-    return rawMsg as Message;
-  }
+  const chatMessageId = msg?.chatMessageId || msg?.id;
+  const sentAt = msg?.sentAt || msg?.id?.sentAt || new Date().toISOString();
 
-  if (msg?.id && typeof msg.id === 'string') {
-    const rawMsg = {
-      ...msg,
-      id: { chatMessageId: msg.id, sentAt: msg.sentAt || new Date().toISOString() },
-      translationsMap: parsedTranslations,
-      senderEphemeralKey: msg.senderEphemeralKey,
-      usedPreKeyId: msg.usedPreKeyId,
-      initializationVector: msg.initializationVector,
-      decryptedContent: msg.decryptedContent || null,
-      mediaUrl: safeMediaUrl,
-    };
-    return rawMsg as Message;
-  }
-
-  const fallbackMsg = {
+  const rawMsg = {
     ...msg,
-    id: { chatMessageId: 'unknown-' + Math.random(), sentAt: new Date().toISOString() },
+    id: { chatMessageId: String(chatMessageId), sentAt: sentAt },
+    senderId: msg.senderId,
+    content: msg.content,
+    translationsMap: parsedTranslations,
+    senderEphemeralKey: msg.senderEphemeralKey,
+    usedPreKeyId: msg.usedPreKeyId,
+    initializationVector: msg.initializationVector,
     decryptedContent: msg.decryptedContent || null,
     mediaUrl: safeMediaUrl,
   };
-  return fallbackMsg as Message;
+  return rawMsg as Message;
 };
 
-const parseDate = (dateInput: any): number => {
-  if (!dateInput) return Date.now();
-  if (Array.isArray(dateInput)) {
-    const [y, M, d, h, m, s, ns] = dateInput;
-    const date = new Date(y, M - 1, d, h || 0, m || 0, s || 0);
-    if (ns) date.setMilliseconds(Math.floor(ns / 1000000));
-    return date.getTime();
-  }
-  return new Date(dateInput).getTime();
-};
+// FIX 2: Logic Merge tin nhắn local vào server
+const upsertMessageList = (currentList: Message[], newMessage: Message): { list: Message[], isNew: boolean } => {
+  const list = [...currentList];
 
-function upsertMessage(list: ExtendedMessage[], rawMsg: any, eagerCallback?: (msg: ExtendedMessage) => void): { list: ExtendedMessage[], isNew: boolean } {
-  if (!rawMsg) return { list, isNew: false };
-  const msg = normalizeMessage(rawMsg);
-  const currentUserId = useUserStore.getState().user?.userId;
-
-  if (msg.isDeleted) {
-    return { list: list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId), isNew: false };
+  // 1. Tìm trùng ID chính xác (Backend update lại tin cũ)
+  const idMatchIndex = list.findIndex(m => m.id.chatMessageId === newMessage.id.chatMessageId);
+  if (idMatchIndex > -1) {
+    const existing = list[idMatchIndex];
+    list[idMatchIndex] = {
+      ...existing,
+      ...newMessage,
+      // Giữ lại decrypted content nếu tin mới chưa giải mã
+      decryptedContent: newMessage.decryptedContent || existing.decryptedContent,
+      isLocal: false
+    };
+    return { list, isNew: false };
   }
 
-  if (eagerCallback && msg.senderId !== currentUserId && msg.messageType === 'TEXT' && (msg.content || msg.decryptedContent)) {
-    if (msg.decryptedContent && !msg.senderEphemeralKey) {
-      eagerCallback({ ...msg, content: msg.decryptedContent });
-    } else if (!msg.senderEphemeralKey) {
-      eagerCallback(msg);
+  // 2. Tìm tin nhắn Local tương ứng để thay thế (Deduplication)
+  if (!newMessage.isLocal) {
+    const localMatchIndex = list.findIndex(m => m.isLocal && isSameMessage(m, newMessage));
+    if (localMatchIndex > -1) {
+      const existing = list[localMatchIndex];
+      list[localMatchIndex] = {
+        ...newMessage,
+        // Quan trọng: Giữ lại nội dung Plaintext mà mình đã gõ ở Local
+        // Vì server trả về ciphertext, nếu ghi đè ngay sẽ bị hiện mã hoá
+        decryptedContent: existing.decryptedContent || existing.content,
+        isLocal: false
+      };
+      return { list, isNew: false };
     }
   }
 
-  let workingList = [...list];
-  let isNew = false;
+  // 3. Thêm mới
+  list.unshift(newMessage);
+  list.sort((a, b) => parseDate(b.id.sentAt) - parseDate(a.id.sentAt));
 
-  if (msg.senderId === currentUserId && !msg.isLocal) {
-    const optimisticIndex = workingList.findIndex(m => {
-      if (!m.isLocal) return false;
-      if (msg.mediaUrl && m.mediaUrl) return m.mediaUrl === msg.mediaUrl;
-      if (msg.messageType === 'TEXT') {
-        const timeDiff = Math.abs(parseDate(msg.id.sentAt) - parseDate(m.id.sentAt));
-        // Increase time tolerance to 60s to handle server time skew
-        return timeDiff < 60000 && m.content?.trim() === msg.content?.trim();
-      }
-      return false;
-    });
-
-    if (optimisticIndex !== -1) {
-      const optimisticMsg = workingList[optimisticIndex];
-      if (optimisticMsg.decryptedContent) {
-        msg.decryptedContent = optimisticMsg.decryptedContent;
-      }
-      workingList.splice(optimisticIndex, 1);
-    }
-  }
-
-  const existsIndex = workingList.findIndex((m) => m.id.chatMessageId === msg.id.chatMessageId);
-
-  if (existsIndex > -1) {
-    const existing = workingList[existsIndex];
-    if (Object.keys(existing.translationsMap || {}).length > Object.keys(msg.translationsMap || {}).length) {
-      msg.translationsMap = { ...msg.translationsMap, ...existing.translationsMap };
-    }
-    if (existing.decryptedContent && !msg.decryptedContent) {
-      msg.decryptedContent = existing.decryptedContent;
-    }
-    workingList[existsIndex] = msg;
-  } else {
-    workingList = [msg, ...workingList];
-    isNew = true;
-  }
-
-  workingList.sort((a, b) => parseDate(b.id?.sentAt) - parseDate(a.id?.sentAt));
-  return { list: workingList, isNew };
-}
-
-const normalizeLexiconText = (text: string) => {
-  if (!text) return "";
-  return text.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ");
-};
-
-const normalizeLangCode = (lang: string) => {
-  if (!lang) return 'en';
-  return lang.split('-')[0].toLowerCase();
-};
-
-const getLexiconKey = (lang: string, text: string) => {
-  return `${normalizeLangCode(lang)}:${normalizeLexiconText(text)}`;
+  return { list, isNew: true };
 };
 
 function extractRoomIdFromTopic(topic: string) { return topic.split('/').pop() || ''; }
@@ -287,6 +274,8 @@ let streamBuffer = "";
 let lastStreamUpdate = 0;
 let streamTimeout: number | null = null;
 const STREAM_THROTTLE_MS = 60;
+
+// --- STORE IMPLEMENTATION ---
 
 export const useChatStore = create<UseChatState>((set, get) => ({
   stompConnected: false,
@@ -329,133 +318,129 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   updateDecryptedContent: (roomId, messageId, decryptedContent) => {
-    set(state => ({
-      messagesByRoom: {
-        ...state.messagesByRoom,
-        [roomId]: state.messagesByRoom[roomId]?.map(m =>
-          m.id.chatMessageId === messageId ? { ...m, decryptedContent: decryptedContent } : m
-        ) || []
-      }
-    }));
+    set(state => {
+      const msgs = state.messagesByRoom[roomId] || [];
+      return {
+        messagesByRoom: {
+          ...state.messagesByRoom,
+          [roomId]: msgs.map(m => {
+            if (m.id.chatMessageId !== messageId) return m;
+            return { ...m, decryptedContent: decryptedContent };
+          })
+        }
+      };
+    });
   },
 
   upsertRoom: (room: Room) => {
-    set((state) => ({
-      rooms: {
-        ...state.rooms,
-        [room.roomId]: room
-      }
-    }));
+    set((state) => ({ rooms: { ...state.rooms, [room.roomId]: room } }));
   },
 
   decryptNewMessages: async (roomId, messagesToProcess) => {
+    get()._processDecryptionQueue(roomId, messagesToProcess);
+  },
+
+  _processDecryptionQueue: async (roomId, messages) => {
     const user = useUserStore.getState().user;
-    const currentUserId = user?.userId;
-    const room = get().rooms[roomId];
+    if (!user?.userId) return;
 
-    if (room?.purpose !== RoomPurpose.PRIVATE_CHAT) return;
+    e2eeService.setUserId(user.userId);
 
-    e2eeService.setUserId(currentUserId || '');
+    const targets = messages.filter(m =>
+      m.messageType === 'TEXT' &&
+      (!m.decryptedContent || m.decryptedContent.includes('!!')) &&
+      (m.content || (m as any).selfContent)
+    );
 
-    const decryptionPromises = messagesToProcess.map(async (msg) => {
-      if (msg.decryptedContent || msg.messageType !== 'TEXT') return;
+    if (targets.length === 0) return;
 
-      let ciphertext = msg.content;
-      let ephemeralKey = msg.senderEphemeralKey;
-      let iv = msg.initializationVector;
+    const CHUNK_SIZE = 5;
+    const { chatSettings, nativeLanguage } = useAppStore.getState();
+    const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
 
-      if (msg.senderId === currentUserId) {
-        if (msg.selfContent && msg.selfEphemeralKey && msg.selfInitializationVector) {
-          ciphertext = msg.selfContent;
-          ephemeralKey = msg.selfEphemeralKey;
-          iv = msg.selfInitializationVector;
-        } else {
-          // Fallback if self columns are missing (e.g. sent from other device without self-copy)
-          // or if local optimistic msg hasn't synced back yet
-          return;
+    for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
+      const chunk = targets.slice(i, i + CHUNK_SIZE);
+
+      const results = await Promise.all(chunk.map(async (msg) => {
+        try {
+          const text = await e2eeService.decrypt(msg);
+          return { id: msg.id.chatMessageId, text };
+        } catch (e) {
+          return { id: msg.id.chatMessageId, text: '!! Error !!' };
         }
-      } else {
-        if (!ephemeralKey) return;
+      }));
+
+      set(state => {
+        const roomMsgs = state.messagesByRoom[roomId] || [];
+        const newRoomMsgs = roomMsgs.map(m => {
+          const res = results.find(r => r.id === m.id.chatMessageId);
+          if (res && !res.text.includes("!!")) {
+            return { ...m, decryptedContent: res.text };
+          }
+          return m;
+        });
+        return {
+          messagesByRoom: { ...state.messagesByRoom, [roomId]: newRoomMsgs }
+        };
+      });
+
+      if (chatSettings.autoTranslate) {
+        results.forEach(res => {
+          if (res.text && !res.text.includes("!!") && !res.text.includes("🔒")) {
+            get().performEagerTranslation(res.id, res.text, targetLang);
+          }
+        });
       }
-
-      const tempMsgForDecrypt: any = {
-        ...msg,
-        content: ciphertext,
-        senderEphemeralKey: ephemeralKey,
-        initializationVector: iv
-      };
-
-      try {
-        const decryptedContent = await e2eeService.decrypt(tempMsgForDecrypt);
-        get().updateDecryptedContent(roomId, msg.id.chatMessageId, decryptedContent);
-
-        const { chatSettings } = useAppStore.getState();
-        if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
-          await get().performEagerTranslation(msg.id.chatMessageId, decryptedContent);
-        }
-      } catch (e: any) {
-        console.warn(`[ChatStore] Failed to decrypt ${msg.id.chatMessageId}:`, e);
-        get().updateDecryptedContent(roomId, msg.id.chatMessageId, `!! Decryption Failed !!`);
-      }
-    });
-
-    await Promise.all(decryptionPromises);
+      await new Promise(r => setTimeout(r, 20));
+    }
   },
 
   performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
     if (!text || !messageId) return;
     if (text.trim().startsWith('{') && text.includes('ciphertext')) return;
-    if (text.includes('!! Decryption Failed')) return;
+    if (text.includes('!! Decryption Failed') || text.includes('🔒')) return;
 
     const { nativeLanguage, chatSettings } = useAppStore.getState();
     const targetLang = overrideTargetLang || chatSettings?.targetLanguage || nativeLanguage || 'vi';
 
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
 
-    const state = get();
-    let existingMessage: Message | undefined;
-    const currentRoomId = state.currentViewedRoomId;
-    if (currentRoomId && state.messagesByRoom[currentRoomId]) {
-      existingMessage = state.messagesByRoom[currentRoomId].find(m => m.id.chatMessageId === messageId);
-    }
-    if (!existingMessage) {
-      for (const rId in state.messagesByRoom) {
-        if (rId === currentRoomId) continue;
-        existingMessage = state.messagesByRoom[rId]?.find(m => m.id.chatMessageId === messageId);
-        if (existingMessage) break;
-      }
-    }
-
-    if (existingMessage && existingMessage.translationsMap && existingMessage.translationsMap[targetLang]) {
-      return;
-    }
-
+    // --- LEXICON LITE MATCHING (Enhanced) ---
     const lexicon = get().lexiconMaster;
-    const words = text.split(/\s+/).filter(w => w);
+
+    // FIX: Xử lý chuỗi input để loại bỏ nhiễu (ví dụ: "Hii" -> "hii" -> "hi")
+    // Normalize cơ bản
+    const normalizedInput = normalizeLexiconText(text);
+    const words = normalizedInput.split(' ').filter(w => w);
+
     let translatedText = '';
     let matchedWordsCount = 0;
-    const sourceLangs = ['en', 'vi', 'zh', 'ja', 'ko', 'fr', 'es', 'de'];
 
     for (let i = 0; i < words.length; i++) {
       let bestMatch = '';
       let bestTranslation = '';
       let bestJ = 0;
+
       for (let j = Math.min(words.length - i, 6); j >= 1; j--) {
-        const phrase = words.slice(i, i + j).join(' ');
-        let foundTranslation = false;
-        for (const srcLang of sourceLangs) {
-          const key = getLexiconKey(srcLang, phrase);
-          const entry = lexicon.get(key);
-          if (entry && entry.translations[targetLang]) {
-            bestMatch = phrase;
-            bestTranslation = entry.translations[targetLang];
-            bestJ = j;
-            foundTranslation = true;
-            break;
-          }
+        let phrase = words.slice(i, i + j).join(' ');
+
+        // Lookup 1: Exact match
+        let translations = lexicon.get(phrase);
+
+        // Lookup 2: Fallback cho từ lặp ký tự (ví dụ: "hiii" -> "hi")
+        if (!translations && j === 1) {
+          const cleanWord = phrase.replace(/(.)\1+/g, '$1'); // hiii -> hi
+          translations = lexicon.get(cleanWord);
         }
-        if (foundTranslation) break;
+
+        if (translations && translations[targetLang]) {
+          bestMatch = phrase;
+          bestTranslation = translations[targetLang];
+          bestJ = j;
+          break;
+        }
       }
+
       if (bestJ > 0) {
         translatedText += bestTranslation + ' ';
         i += bestJ - 1;
@@ -468,6 +453,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const finalLocalTranslation = translatedText.trim();
     const totalWords = words.length;
     const matchRatio = totalWords > 0 ? (matchedWordsCount / totalWords) : 0;
+
     const isClientGoodEnough = matchRatio >= 0.7 || (totalWords <= 5 && matchedWordsCount >= 1);
 
     if (isClientGoodEnough && finalLocalTranslation.length > 0) {
@@ -477,9 +463,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: finalLocalTranslation }
         }
       }));
+      // DONE: Không gọi API nữa
       return;
     }
 
+    // Fallback API
     try {
       const res = await instance.post('/api/py/translate', {
         text,
@@ -502,15 +490,27 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   fetchLexiconMaster: async () => {
+    if (get().lexiconMaster.size > 0) return;
+
     try {
       const res = await instance.get<AppApiResponse<LexiconEntry[]>>('/api/py/lexicon/top', { params: { limit: 5000 } });
       const lexiconData = res.data.result || [];
-      const newLexicon = new Map<string, LexiconEntry>();
+
+      const newLexicon = new Map<string, Record<string, string>>();
+
       lexiconData.forEach(entry => {
-        const key = getLexiconKey(entry.original_lang, entry.original_text);
-        newLexicon.set(key, entry);
+        const key = normalizeLexiconText(entry.original_text);
+
+        const existing = newLexicon.get(key);
+        if (existing) {
+          newLexicon.set(key, { ...existing, ...entry.translations });
+        } else {
+          newLexicon.set(key, entry.translations);
+        }
       });
+
       set({ lexiconMaster: newLexicon });
+      console.log(`[Lexicon] Loaded ${newLexicon.size} entries.`);
     } catch (e) { console.error("Failed to fetch lexicon master:", e); }
   },
 
@@ -546,29 +546,31 @@ export const useChatStore = create<UseChatState>((set, get) => ({
             }
             return;
           }
+
           const roomId = rawMsg?.roomId || rawMsg?.room_id;
           const senderId = rawMsg?.senderId || rawMsg?.sender_id;
           const state = get();
-
-          const triggerEager = (m: Message) => {
-            const { chatSettings } = useAppStore.getState();
-            if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
-              get().performEagerTranslation(m.id.chatMessageId, m.content);
-            }
-          };
 
           if (roomId && senderId !== currentUserId && senderId !== AI_BOT_ID) {
             if (state.currentViewedRoomId !== roomId && !(state.isBubbleOpen && state.activeBubbleRoomId === roomId)) {
               if (state.appIsActive) { await playInAppSound(); state.openBubble(roomId); }
             }
-            let newMsg: Message | undefined;
+
+            const newMsg = normalizeMessage(rawMsg);
             set((s) => {
-              const { list, isNew } = upsertMessage(s.messagesByRoom[roomId] || [], rawMsg, triggerEager);
-              if (isNew) newMsg = list.find(m => m.id.chatMessageId === normalizeMessage(rawMsg).id.chatMessageId);
+              const currentList = s.messagesByRoom[roomId] || [];
+              const { list } = upsertMessageList(currentList, newMsg);
               return { messagesByRoom: { ...s.messagesByRoom, [roomId]: list } };
             });
-            if (newMsg && newMsg.senderEphemeralKey) {
+
+            if (newMsg.senderEphemeralKey) {
               get().decryptNewMessages(roomId, [newMsg]);
+            } else {
+              const { chatSettings, nativeLanguage } = useAppStore.getState();
+              if (chatSettings.autoTranslate && newMsg.messageType === 'TEXT' && newMsg.content) {
+                const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
+                get().performEagerTranslation(newMsg.id.chatMessageId, newMsg.content, targetLang);
+              }
             }
           }
         });
@@ -580,36 +582,36 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           stompService.subscribe(dest, (rawMsg: any) => {
             const roomId = extractRoomIdFromTopic(dest);
             if (dest.includes('/status')) { if (rawMsg.userId) { get().updateUserStatus(rawMsg.userId, rawMsg.status === 'ONLINE', rawMsg.timestamp); } return; }
-            const triggerEager = (m: Message) => {
-              const { chatSettings } = useAppStore.getState();
-              if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
-                get().performEagerTranslation(m.id.chatMessageId, m.content);
-              }
-            };
-            if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
-            let newMsg: Message | undefined;
+
+            const newMsg = normalizeMessage(rawMsg);
+            if (!newMsg.roomId) newMsg.roomId = roomId;
+
             set((state) => {
-              const { list, isNew } = upsertMessage(state.messagesByRoom[roomId] || [], rawMsg, triggerEager);
-              if (isNew) newMsg = list.find(m => m.id.chatMessageId === normalizeMessage(rawMsg).id.chatMessageId);
+              const currentList = state.messagesByRoom[roomId] || [];
+              const { list } = upsertMessageList(currentList, newMsg);
               return { messagesByRoom: { ...state.messagesByRoom, [roomId]: list } };
             });
-            if (newMsg && newMsg.senderEphemeralKey) {
+
+            if (newMsg.senderEphemeralKey) {
               get().decryptNewMessages(roomId, [newMsg]);
+            } else {
+              const { chatSettings, nativeLanguage } = useAppStore.getState();
+              if (chatSettings.autoTranslate && newMsg.messageType === 'TEXT' && newMsg.content) {
+                const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
+                get().performEagerTranslation(newMsg.id.chatMessageId, newMsg.content, targetLang);
+              }
             }
           });
         } catch (e) { console.warn('Flush subscribe error', dest, e); }
       });
       set({ pendingSubscriptions: [] });
-      const pendingPubs = get().pendingPublishes || [];
-      pendingPubs.forEach(p => { try { stompService.publish(p.destination, p.payload); } catch (e) { console.warn('Publish failed', e); } });
+      const pendingPublishes = get().pendingPublishes || [];
+      pendingPublishes.forEach(p => { try { stompService.publish(p.destination, p.payload); } catch (e) { console.warn('Publish failed', e); } });
       set({ pendingPublishes: [] });
     }, (err) => { console.error('STOMP connect error', err); set({ stompConnected: false }); });
   },
 
-  disconnectStompClient: () => {
-    stompService.disconnect();
-    set({ stompConnected: false });
-  },
+  disconnectStompClient: () => { stompService.disconnect(); set({ stompConnected: false }); },
 
   subscribeToRoom: (roomId: string) => {
     const chatDest = `/topic/room/${roomId}`;
@@ -617,27 +619,27 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     if (stompService.isConnected) {
       stompService.subscribe(chatDest, (rawMsg: any) => {
         if (rawMsg && rawMsg.type === 'VIDEO_CALL') { return; }
-        if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
-        const triggerEager = (m: Message) => {
-          const { chatSettings } = useAppStore.getState();
-          if (chatSettings.autoTranslate || chatSettings.targetLanguage) {
-            get().performEagerTranslation(m.id.chatMessageId, m.content);
-          }
-        };
-        let newMsg: Message | undefined;
+        const newMsg = normalizeMessage(rawMsg);
+        if (!newMsg.roomId) newMsg.roomId = roomId;
+
         set((state) => {
-          const { list, isNew } = upsertMessage(state.messagesByRoom[roomId] || [], rawMsg, triggerEager);
-          if (isNew) newMsg = list.find(m => m.id.chatMessageId === normalizeMessage(rawMsg).id.chatMessageId);
+          const currentList = state.messagesByRoom[roomId] || [];
+          const { list } = upsertMessageList(currentList, newMsg);
           return { messagesByRoom: { ...state.messagesByRoom, [roomId]: list } };
         });
-        if (newMsg) {
+
+        if (newMsg.senderEphemeralKey || newMsg.senderId === useUserStore.getState().user?.userId) {
           get().decryptNewMessages(roomId, [newMsg]);
+        } else {
+          const { chatSettings, nativeLanguage } = useAppStore.getState();
+          if (chatSettings.autoTranslate && newMsg.messageType === 'TEXT' && newMsg.content) {
+            const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
+            get().performEagerTranslation(newMsg.id.chatMessageId, newMsg.content, targetLang);
+          }
         }
       });
       stompService.subscribe(statusDest, (msg: any) => {
-        if (msg.userId) {
-          get().updateUserStatus(msg.userId, msg.status === 'ONLINE', new Date().toISOString());
-        }
+        if (msg.userId) { get().updateUserStatus(msg.userId, msg.status === 'ONLINE', new Date().toISOString()); }
       });
       return;
     }
@@ -648,12 +650,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   unsubscribeFromRoom: (roomId: string) => {
     const chatDest = `/topic/room/${roomId}`;
     const statusDest = `/topic/room/${roomId}/status`;
-    if (stompService.isConnected) {
-      stompService.unsubscribe(chatDest);
-      stompService.unsubscribe(statusDest);
-    } else {
-      set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== chatDest && d !== statusDest) }));
-    }
+    if (stompService.isConnected) { stompService.unsubscribe(chatDest); stompService.unsubscribe(statusDest); }
+    else { set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== chatDest && d !== statusDest) })); }
   },
 
   initAiClient: () => {
@@ -787,36 +785,26 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       const newMessages = rawMessages.map(normalizeMessage);
       const totalPages = res.data.result?.totalPages || 0;
 
-      await get().decryptNewMessages(roomId, newMessages);
-
       set((currentState) => {
         const currentMsgs = currentState.messagesByRoom[roomId] || [];
-        let uniqueList = page === 0 ? [] : [...currentMsgs];
-
+        let mergedList = page === 0 ? [] : [...currentMsgs];
         newMessages.forEach(msg => {
-          const existsIndex = uniqueList.findIndex(m => m.id.chatMessageId === msg.id.chatMessageId);
-          if (existsIndex > -1) {
-            const existing = uniqueList[existsIndex];
-            uniqueList[existsIndex] = {
-              ...existing,
-              ...msg,
-              decryptedContent: msg.decryptedContent || existing.decryptedContent
-            };
-          } else {
-            uniqueList.push(msg);
-          }
+          const { list } = upsertMessageList(mergedList, msg);
+          mergedList = list;
         });
-
-        uniqueList.sort((a, b) => parseDate(b.id.sentAt) - parseDate(a.id.sentAt));
-
         return {
-          messagesByRoom: { ...currentState.messagesByRoom, [roomId]: uniqueList },
+          messagesByRoom: { ...currentState.messagesByRoom, [roomId]: mergedList },
           pageByRoom: { ...currentState.pageByRoom, [roomId]: page },
           hasMoreByRoom: { ...currentState.hasMoreByRoom, [roomId]: page < totalPages - 1 },
           loadingByRoom: { ...currentState.loadingByRoom, [roomId]: false },
         };
       });
-    } catch (e) { set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } })); }
+
+      get().decryptNewMessages(roomId, newMessages);
+
+    } catch (e) {
+      set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } }));
+    }
   },
 
   searchMessages: async (roomId, keyword) => {
@@ -827,7 +815,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       const rawMessages = res.data.result?.content || [];
       const newMessages = rawMessages.map(normalizeMessage);
 
-      await get().decryptNewMessages(roomId, newMessages);
+      get().decryptNewMessages(roomId, newMessages);
 
       set((currentState) => ({
         messagesByRoom: { ...currentState.messagesByRoom, [roomId]: newMessages },
@@ -849,12 +837,37 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     const room = state.rooms[roomId];
     const receiverId = room?.members?.find(m => m.userId !== user?.userId)?.userId || null;
-    const optimisticId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const optimisticId = `local-${Date.now()}`;
     const isPrivateChat = room?.purpose === RoomPurpose.PRIVATE_CHAT;
 
-    console.log(`[ChatStore-DEBUG] sendMessage: Room=${roomId}, Type=${type}, Receiver=${receiverId}`);
+    // --- OPTIMISTIC PREVIEW CONTENT ---
+    // User wants "Last Message" to show text like "Sent a photo" immediately.
+    let optimisticContent = content;
+    if (type === 'IMAGE' && !content) optimisticContent = "📷 [Hình ảnh]";
+    else if (type === 'VIDEO' && !content) optimisticContent = "🎥 [Video]";
+    else if (type === 'AUDIO' && !content) optimisticContent = "🎤 [Audio]";
+    else if (type === 'DOCUMENT' && !content) optimisticContent = "📄 [Tài liệu]";
 
-    // ✅ 1. KHỞI TẠO finalPayload VỚI GIÁ TRỊ MẶC ĐỊNH TRƯỚC
+    const optimisticMsg: ExtendedMessage = {
+      id: { chatMessageId: optimisticId, sentAt: new Date().toISOString() },
+      senderId: user.userId,
+      content: optimisticContent, // Show fallback text in list immediately
+      decryptedContent: content, // But detailed content relies on input
+      messageType: type as any,
+      mediaUrl: mediaUrl || null,
+      isLocal: true,
+      translationsMap: {},
+      roomId: roomId,
+      isRead: false,
+      isDeleted: false,
+    };
+
+    set((s) => {
+      const currentList = s.messagesByRoom[roomId] || [];
+      const { list } = upsertMessageList(currentList, optimisticMsg);
+      return { messagesByRoom: { ...s.messagesByRoom, [roomId]: list } };
+    });
+
     let finalPayload: any = {
       senderId: user.userId,
       roomId,
@@ -862,21 +875,12 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       purpose: room?.purpose || RoomPurpose.PRIVATE_CHAT,
       mediaUrl: mediaUrl || null,
       receiverId,
-      isRead: false,
-      content: content // Mặc định là plaintext
+      content: content // Keep empty for sending so Backend can populate default
     };
 
-    let optimisticContent = content;
-
-    // ✅ 2. NẾU CẦN E2EE, GHI ĐÈ CÁC TRƯỜNG
     if (isPrivateChat && receiverId && type === 'TEXT') {
       try {
-        console.log(`[ChatStore-DEBUG] Performing Dual Encryption...`);
-        e2eeService.setUserId(user.userId);
-
         const encResult = await e2eeService.encrypt(receiverId, user.userId, content);
-
-        // ✅ GHI ĐÈ CÁC TRƯỜNG MÃ HÓA
         finalPayload.content = encResult.content;
         finalPayload.senderEphemeralKey = encResult.senderEphemeralKey;
         finalPayload.usedPreKeyId = encResult.usedPreKeyId;
@@ -884,9 +888,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         finalPayload.selfContent = encResult.selfContent;
         finalPayload.selfEphemeralKey = encResult.selfEphemeralKey;
         finalPayload.selfInitializationVector = encResult.selfInitializationVector;
-
-        console.log(`[ChatStore-DEBUG] ✅ Encryption success.`);
-
       } catch (error) {
         console.error("[ChatStore-ERROR] ❌ Encryption Failed:", error);
         showToast({ message: "Lỗi mã hóa! Không gửi được.", type: "error" });
@@ -894,54 +895,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       }
     }
 
-    // ✅ 3. LOG ĐỂ KIỂM TRA
-    console.log(`[ChatStore-DEBUG] Final Payload Check:`, {
-      senderId: finalPayload.senderId,
-      hasContent: !!finalPayload.content,
-      contentLength: finalPayload.content?.length || 0,
-      hasSenderEphemeralKey: !!finalPayload.senderEphemeralKey,
-      hasSelfContent: !!finalPayload.selfContent
-    });
-
-    // ✅ 4. TẠO OPTIMISTIC MESSAGE
-    const optimisticMsg: ExtendedMessage = {
-      id: { chatMessageId: optimisticId, sentAt: new Date().toISOString() },
-      senderId: user.userId,
-      content: finalPayload.content,
-      decryptedContent: optimisticContent,
-      messageType: type as any,
-      mediaUrl: mediaUrl || null,
-      isLocal: true,
-      translatedText: null,
-      translationsMap: {},
-      senderEphemeralKey: finalPayload.senderEphemeralKey,
-      roomId: roomId,   // ✅ Added
-      isDeleted: false, // ✅ Added
-      isRead: false     // ✅ Added
-    };
-
-    set((s) => ({
-      messagesByRoom: {
-        ...s.messagesByRoom,
-        [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], optimisticMsg).list
-      }
-    }));
-
-    // ✅ 5. GỬI QUA STOMP
     const dest = `/app/chat/room/${roomId}`;
-
-    console.log(`[ChatStore-DEBUG] Preparing to publish to ${dest}. Connected: ${stompService.isConnected}`);
-
     if (stompService.isConnected) {
-      try {
-        stompService.publish(dest, finalPayload);
-        console.log(`[ChatStore-DEBUG] ✅ STOMP publish called successfully.`);
-      } catch (e) {
-        console.error(`[ChatStore-ERROR] ❌ STOMP publish threw error:`, e);
-        set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload: finalPayload }] }));
-      }
+      try { stompService.publish(dest, finalPayload); }
+      catch (e) { set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload: finalPayload }] })); }
     } else {
-      console.warn(`[ChatStore-WARN] STOMP not connected. Queueing message.`);
       set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload: finalPayload }] }));
       get().initStompClient();
     }
@@ -955,7 +913,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   markMessageAsRead: (roomId, messageId) => {
     if (messageId.startsWith('local') || messageId.startsWith('unknown')) return;
-
     set(state => ({
       messagesByRoom: {
         ...state.messagesByRoom,
@@ -964,14 +921,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         ) || []
       }
     }));
-
     const user = useUserStore.getState().user;
     const dest = `/app/chat/message/${messageId}/read`;
-    const payload = {
-      senderId: user?.userId,
-      timestamp: new Date().toISOString()
-    };
-
+    const payload = { senderId: user?.userId, timestamp: new Date().toISOString() };
     if (stompService.isConnected) {
       try { stompService.publish(dest, payload); }
       catch (e) { set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload: payload }] })); }

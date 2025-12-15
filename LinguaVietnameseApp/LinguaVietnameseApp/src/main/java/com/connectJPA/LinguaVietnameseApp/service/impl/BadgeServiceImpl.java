@@ -9,12 +9,11 @@ import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserBadge;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserBadgeId;
 import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
+import com.connectJPA.LinguaVietnameseApp.enums.CriteriaType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.BadgeMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.BadgeRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserBadgeRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +39,13 @@ public class BadgeServiceImpl implements BadgeService {
     private final BadgeRepository badgeRepository;
     private final UserBadgeRepository userBadgeRepository;
     private final UserRepository userRepository;
+    private final UserLearningActivityRepository userLearningActivityRepository;
+    // Repositories needed for criteria checks
+    private final VideoCallRepository videoCallRepository;
+    private final AdmirationRepository admirationRepository;
+    private final FriendshipRepository friendshipRepository;
+    private final ChatMessageRepository chatMessageRepository;
+
     private final BadgeMapper badgeMapper;
     private final NotificationService notificationService;
 
@@ -90,10 +96,8 @@ public class BadgeServiceImpl implements BadgeService {
         User user = userRepository.findById(userId).orElse(null);
         String lang = (user != null && user.getNativeLanguageCode() != null) ? user.getNativeLanguageCode() : "en";
         
-        // Fix: Only find Starter badges for the user's language
         List<Badge> starterBadges = badgeRepository.findByBadgeTypeAndLanguageCodeAndIsDeletedFalse(BadgeType.REGISTRATION, lang);
         
-        // Fallback if none found for specific lang
         if (starterBadges.isEmpty() && !lang.equals("en")) {
             starterBadges = badgeRepository.findByBadgeTypeAndLanguageCodeAndIsDeletedFalse(BadgeType.REGISTRATION, "en");
         }
@@ -106,30 +110,6 @@ public class BadgeServiceImpl implements BadgeService {
     @Override
     @Transactional
     public void updateBadgeProgress(UUID userId, BadgeType type, int increment) {
-        User user = userRepository.findById(userId).orElse(null);
-        if (user == null) return;
-        
-        String lang = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
-
-        // Fix: Only check badges relevant to user's language
-        List<Badge> targetBadges = badgeRepository.findByBadgeTypeAndLanguageCodeAndIsDeletedFalse(type, lang);
-
-        for (Badge badge : targetBadges) {
-            if (userBadgeRepository.existsById(new UserBadgeId(badge.getBadgeId(), userId))) {
-                continue; 
-            }
-
-            int currentProgress = 0; 
-            if (type == BadgeType.STREAK_MILESTONE) {
-                currentProgress = user.getStreak();
-            } else {
-                 currentProgress += increment;
-            }
-
-            if (currentProgress >= badge.getCriteriaThreshold()) {
-                assignBadgeToUser(userId, badge.getBadgeId());
-            }
-        }
     }
 
     private void sendBadgeEarnedNotification(UUID userId, Badge badge) {
@@ -155,10 +135,7 @@ public class BadgeServiceImpl implements BadgeService {
         String userLang = user.getNativeLanguageCode();
         if (userLang == null || userLang.isEmpty()) userLang = "en";
 
-        // FIX: Only load badges for current user language (or fallback)
         List<Badge> allBadges = badgeRepository.findAllByLanguageCodeAndIsDeletedFalse(userLang);
-        
-        // If empty (e.g. user set 'vi' but only 'en' badges exist), try fallback
         if (allBadges.isEmpty() && !userLang.equals("en")) {
             allBadges = badgeRepository.findAllByLanguageCodeAndIsDeletedFalse("en");
         }
@@ -174,22 +151,15 @@ public class BadgeServiceImpl implements BadgeService {
 
         for (Badge badge : allBadges) {
             boolean isOwned = ownedBadgesMap.containsKey(badge.getBadgeId());
-            int currentProgress = 0;
+            long currentProgress = 0;
 
             if (isOwned) {
                 currentProgress = badge.getCriteriaThreshold();
             } else {
-                if (badge.getBadgeType() != null) {
-                    switch (badge.getBadgeType()) {
-                        case STREAK_MILESTONE:
-                            currentProgress = user.getStreak();
-                            break;
-                        default:
-                            currentProgress = 0;
-                    }
-                }
+                currentProgress = calculateRealTimeProgress(user, badge);
             }
 
+            // Cap at threshold
             if (currentProgress > badge.getCriteriaThreshold()) {
                 currentProgress = badge.getCriteriaThreshold();
             }
@@ -201,7 +171,7 @@ public class BadgeServiceImpl implements BadgeService {
                     .imageUrl(badge.getImageUrl())
                     .criteriaType(badge.getCriteriaType()) 
                     .criteriaThreshold(badge.getCriteriaThreshold())
-                    .currentUserProgress(currentProgress)
+                    .currentUserProgress((int) currentProgress)
                     .isAchieved(isOwned)
                     .build();
             
@@ -209,6 +179,37 @@ public class BadgeServiceImpl implements BadgeService {
         }
 
         return progressList;
+    }
+
+    /**
+     * Calculates progress based on the 5 types requested + others
+     */
+    private long calculateRealTimeProgress(User user, Badge badge) {
+        CriteriaType criteria = badge.getCriteriaType();
+        if (criteria == null) return 0;
+
+        switch (criteria) {
+            case VIDEO_CALL: // "Gương mặt thân quen"
+                return videoCallRepository.countCompletedCallsForUser(user.getUserId());
+            
+            case GIVE_ADMIRATION: // "Trái tim vàng"
+                return admirationRepository.countBySenderId(user.getUserId());
+            
+            case FRIENDS_MADE: // "Mạng lưới toàn cầu"
+                return friendshipRepository.countAcceptedFriends(user.getUserId());
+            
+            case SEND_MESSAGE: // "Đại sứ thân thiện"
+                return chatMessageRepository.countDistinctReceiversBySenderId(user.getUserId());
+            
+            case LEARNING_TIME: // "Học giả uyên bác"
+                return userLearningActivityRepository.getTotalLearningMinutes(user.getUserId());
+
+            case LOGIN_STREAK:
+                return user.getStreak();
+
+            default:
+                return 0;
+        }
     }
 
     @Override
@@ -251,19 +252,9 @@ public class BadgeServiceImpl implements BadgeService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         
-        boolean canClaim = false;
-        if (badge.getBadgeType() != null) {
-            switch (badge.getBadgeType()) {
-                case STREAK_MILESTONE:
-                    if (user.getStreak() >= badge.getCriteriaThreshold()) canClaim = true;
-                    break;
-                default:
-                    canClaim = true; 
-                    break;
-            }
-        }
+        long progress = calculateRealTimeProgress(user, badge);
 
-        if (!canClaim) {
+        if (progress < badge.getCriteriaThreshold()) {
             throw new AppException(ErrorCode.BADGE_CRITERIA_NOT_MET); 
         }
 

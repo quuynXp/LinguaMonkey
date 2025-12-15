@@ -16,22 +16,20 @@ import { useUserStore } from '../../stores/UserStore';
 import { useChatStore } from '../../stores/ChatStore'; // Import Store
 import { RoomResponse } from '../../types/dto';
 import { RoomType } from '../../types/enums';
+import DecryptedText from '../../components/common/DecryptedText';
 
 const ChatRoomListScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
   const { useJoinedRooms } = useRooms();
-  // Get socket state to trigger refetch
   const { messagesByRoom } = useChatStore();
 
-  // Load rooms using the Strict endpoint (handled by backend)
   const { data: roomsData, isLoading, refetch } = useJoinedRooms({
     userId: user?.userId || '',
     page: 0,
     size: 50,
   });
 
-  // Listener: When a new message arrives via WebSocket (even for hidden rooms), refetch the list
   useEffect(() => {
     refetch();
   }, [messagesByRoom, refetch]);
@@ -69,13 +67,21 @@ const ChatRoomListScreen = ({ navigation }: any) => {
           </View>
 
           <View style={styles.lastMessageContainer}>
-            {/* Show partner status text if private and offline */}
             {isPrivate && !item.partnerIsOnline && item.partnerLastActiveText && (
               <Text style={styles.statusText}>{item.partnerLastActiveText} • </Text>
             )}
-            <Text style={styles.lastMessage} numberOfLines={1}>
-              {item.lastMessage || t('chat.sent_an_attachment')}
-            </Text>
+            <DecryptedText
+              style={styles.lastMessage}
+              numberOfLines={1}
+              content={item.lastMessage || ''}
+              senderId={item.lastMessageSenderId}
+              senderEphemeralKey={item.lastMessageSenderEphemeralKey}
+              initializationVector={item.lastMessageInitializationVector}
+              selfContent={item.lastMessageSelfContent}
+              selfEphemeralKey={item.lastMessageSelfEphemeralKey}
+              selfInitializationVector={item.lastMessageSelfInitializationVector}
+              fallbackText={t('chat.sent_an_attachment')}
+            />
           </View>
         </View>
       </TouchableOpacity>
