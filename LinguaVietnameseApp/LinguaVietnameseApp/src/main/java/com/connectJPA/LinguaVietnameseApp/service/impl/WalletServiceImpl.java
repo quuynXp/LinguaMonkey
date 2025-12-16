@@ -6,6 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.Wallet;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.WalletMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.WalletRepository;
 import com.connectJPA.LinguaVietnameseApp.service.WalletService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class WalletServiceImpl implements WalletService {
 
     private final WalletRepository walletRepository;
     private final WalletMapper walletMapper;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional(readOnly = true)
