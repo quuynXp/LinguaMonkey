@@ -116,7 +116,7 @@ google:
 
 grpc:
   server:
-    port: 90919091
+    port: 9091
     address: 0.0.0.0
   client:
     learning-service:

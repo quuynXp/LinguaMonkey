@@ -27,6 +27,9 @@ import com.google.gson.Gson;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -96,6 +99,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "room_messages", allEntries = true),
+        @CacheEvict(value = "user_stats", key = "#request.senderId")
+    })
     public ChatMessageResponse saveMessage(UUID roomId, ChatMessageRequest request) {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
@@ -157,11 +164,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         try {
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
             
-            // LOGIC QUAN TRỌNG: Trigger Translation
-            // Nếu là Group Chat, content gửi lên là Ciphertext mã hóa bởi RoomKey.
-            // Server dùng RoomKey để giải mã -> dịch -> mã hóa bản dịch -> lưu.
             if (room.getPurpose() != RoomPurpose.PRIVATE_CHAT) {
-                // Ta sử dụng 'content' đã lưu trong DB (đang là ciphertext)
                 triggerGroupAsyncTranslation(savedMessage, room);
             }
             
@@ -181,7 +184,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
         CompletableFuture.runAsync(() -> {
             try {
-                // 1. Decrypt Content
                 String decryptedContent = aesUtils.decrypt(message.getContent(), roomKey);
                 if (decryptedContent == null) return;
 
@@ -195,18 +197,16 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
                 if (targetLangs.isEmpty()) return;
 
-                // OPTIMIZATION: Check existing translations
                 Map<String, String> existingTranslations = message.getTranslations();
                 if (existingTranslations != null) {
                     targetLangs.removeIf(existingTranslations::containsKey);
                 }
 
-                if (targetLangs.isEmpty()) return; // All needed languages are present
+                if (targetLangs.isEmpty()) return;
 
                 Map<String, String> newTranslations = new HashMap<>();
                 List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-                // 2. Call Python Translate (Only for missing languages)
                 for (String lang : targetLangs) {
                     futures.add(grpcClientService.callTranslateAsync("", decryptedContent, "auto", lang)
                         .thenAccept(res -> {
@@ -220,7 +220,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-                // 3. Encrypt & Save
                 if (!newTranslations.isEmpty()) {
                     chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(message.getId().getChatMessageId()).ifPresent(msg -> {
                         Map<String, String> current = msg.getTranslations();
@@ -280,13 +279,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 dataPayload.put("initialFocusMessageId", response.getChatMessageId().toString());
                 dataPayload.put("senderId", savedMessage.getSenderId().toString());
                 
-                // Group Chat & Private Chat content handling for notification
-                // Note: For notifications, we send Ciphertext. Client decrypts it locally if possible, or shows "You have a new message".
                 dataPayload.put("isEncrypted", "true"); 
-                dataPayload.put("content", "🔒 Tin nhắn mới"); // Don't leak content in Push payload
+                dataPayload.put("content", "🔒 Tin nhắn mới");
                 
                 if (savedMessage.getSenderEphemeralKey() != null) {
-                    // Private E2EE metadata
                     dataPayload.put("senderEphemeralKey", savedMessage.getSenderEphemeralKey());
                     dataPayload.put("initializationVector", savedMessage.getInitializationVector());
                 }
@@ -305,6 +301,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     }
 
     @Override
+    @Cacheable(value = "room_messages", key = "{#roomId, #pageable.pageNumber, #pageable.pageSize}")
     public Page<ChatMessageResponse> getMessagesByRoom(UUID roomId, Pageable pageable) {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId).orElse(null);
         RoomPurpose purpose = room != null ? room.getPurpose() : RoomPurpose.GROUP_CHAT;
@@ -314,12 +311,20 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "room_messages", allEntries = true),
+        @CacheEvict(value = "user_stats", key = "#request.senderId")
+    })
     public ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request) {
         return this.saveMessage(roomId, request);
     }
 
     @Override
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "room_messages", allEntries = true),
+        @CacheEvict(value = "user_stats", allEntries = true)
+    })
     public void deleteChatMessage(UUID id) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(id)
@@ -339,6 +344,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse editChatMessage(UUID messageId, String newContent) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
@@ -370,6 +376,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse addReaction(UUID messageId, String reaction, UUID userId) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
@@ -388,6 +395,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse markAsRead(UUID messageId, UUID userId) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
@@ -406,6 +414,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse generateAIResponse(ChatMessageResponse userMessage) {
         try {
             ChatMessage aiMessage = ChatMessage.builder()
@@ -435,6 +444,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     }
 
     @Override
+    @Cacheable(value = "user_stats", key = "#userId")
     public ChatStatsResponse getStatsByUser(UUID userId) {
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         long totalMessages = chatMessageRepository.countBySenderIdAndIsDeletedFalse(userId);

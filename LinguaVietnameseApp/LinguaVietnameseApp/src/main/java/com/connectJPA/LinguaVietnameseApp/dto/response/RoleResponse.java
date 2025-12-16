@@ -7,6 +7,8 @@ import lombok.Data;
 import java.time.OffsetDateTime;
 
 @Data
+@AllArgsConstructor
+@NoArgsConstructor
 public class RoleResponse {
     private String roleName;
     private boolean isDeleted;
