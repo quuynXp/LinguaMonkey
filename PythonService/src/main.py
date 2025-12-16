@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import (
-    FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, APIRouter, Query
+    FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, APIRouter, Query, BackgroundTasks
 )
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -67,7 +67,6 @@ class ActiveSpeakerManager:
             current_time = time.time()
             current_speaker = self.speaker_status.get(room_id)
             if current_speaker != user_id:
-                # Debounce: only change speaker if > 1s since last change to avoid flickering
                 if current_time - self.last_speaker_change[room_id] > 1.0:
                     self.speaker_status[room_id] = user_id
                     self.last_speaker_change[room_id] = current_time
@@ -177,11 +176,27 @@ async def manual_translate(request: TranslationRequest, redis: Redis = Depends(g
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @protected_router.post("/chat-ai")
-async def chat_endpoint(request: ChatRequest, user: dict = Depends(verify_token_http), db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis_client)):
+async def chat_endpoint(
+    request: ChatRequest, 
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(verify_token_http), 
+    db: AsyncSession = Depends(get_db), 
+    redis: Redis = Depends(get_redis_client)
+):
     try:
         user_id = user.get("sub")
+        # Profile now includes 'conversation_summary' from Redis
         user_profile = await get_user_profile(user_id, db, redis)
-        response, error = await chat_with_ai(request.message, request.history, "en", user_profile)
+        
+        # Pass background_tasks and redis to trigger summarization if history > 10
+        response, error = await chat_with_ai(
+            request.message, 
+            request.history, 
+            "en", 
+            user_profile, 
+            background_tasks=background_tasks,
+            redis_client=redis
+        )
         if error: raise HTTPException(status_code=500, detail=error)
         return {"reply": response}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
@@ -201,6 +216,15 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
         return
     db_session = AsyncSessionLocal()
     redis = await get_redis_client()
+    # Note: Websockets can't easily use FastAPI BackgroundTasks dependency, 
+    # but our logic in chat_with_ai_stream handles summarization if we pass redis/background_tasks.
+    # Creating a standalone background task list for this session if needed, 
+    # but here we might just fire-and-forget inside chat_ai logic if we adapted it, 
+    # or purely rely on http endpoint for summarization triggers. 
+    # For this implementation, we pass redis so logic inside chat_ai can use create_task if desired,
+    # or we simply skip bg summarization on WS to keep it stable, depending on preference.
+    # To fully support it, we would need to manually handle the async task.
+    
     try:
         user_profile = await get_user_profile(user_id_str, db_session, redis)
         while True:
@@ -212,7 +236,8 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                 room_id_str = msg.get("roomId")
                 if not raw_prompt: continue
                 
-                async for chunk in chat_with_ai_stream(raw_prompt, history, user_profile):
+                # Pass redis to allow reading summary, but maybe skip writing tasks here to avoid event loop complexity
+                async for chunk in chat_with_ai_stream(raw_prompt, history, user_profile, redis_client=redis):
                       await websocket.send_text(json.dumps({
                         "type": "chat_response_chunk", "content": chunk, "roomId": room_id_str
                     }))
@@ -231,6 +256,9 @@ async def audio_endpoint(websocket: WebSocket, token: str = Query(...), roomId: 
     await audio_manager.connect(websocket, normalized_room_id, user_id=user_id, native_lang=nativeLang)
     buffer_key = f"{normalized_room_id}_{user_id}"
     loop = asyncio.get_running_loop()
+    
+    redis = await get_redis_client()
+    translator = get_translator(redis)
 
     async def handle_interim_async(text: str, detected_lang_code: str):
         if len(text) > 1:
@@ -246,6 +274,7 @@ async def audio_endpoint(websocket: WebSocket, token: str = Query(...), roomId: 
         try:
             clean_text = text.strip()
             if not clean_text: return
+            
             last_text = user_last_final_text[buffer_key]
             if clean_text.lower() == last_text.lower(): return
             user_last_final_text[buffer_key] = clean_text 
@@ -265,12 +294,34 @@ async def audio_endpoint(websocket: WebSocket, token: str = Query(...), roomId: 
             if clean_text.endswith(('.', '?', '!', '。')) or len(new_full) > 200: 
                 user_text_cache[buffer_key] = ""
 
+            needed_langs = audio_manager.get_required_languages(normalized_room_id)
+            src_lang_simple = detected_lang_code.split('-')[0].lower()
+            
+            target_langs = []
+            for lang in needed_langs:
+                if lang != src_lang_simple:
+                    target_langs.append(lang)
+
+            translations_map = {}
+            if target_langs:
+                tasks = []
+                for target in target_langs:
+                    tasks.append(translator.translate(clean_text, detected_lang_code, target))
+                
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for idx, target in enumerate(target_langs):
+                    res = results[idx]
+                    if isinstance(res, tuple):
+                        translations_map[target] = res[0]
+
             await audio_manager.broadcast_subtitle(
                 original_full=clean_text, 
                 detected_lang=detected_lang_code, 
                 room_id=normalized_room_id, 
                 sender_id=user_id, 
-                is_final=True
+                is_final=True,
+                translations=translations_map 
             )
         except Exception as e: logger.error(f"Handle final error: {e}")
 
@@ -290,7 +341,8 @@ async def audio_endpoint(websocket: WebSocket, token: str = Query(...), roomId: 
                     for meta in connections:
                         if str(meta["user_id"]) == str(user_id):
                             meta["config"] = msg_json["config"]
-                            if "nativeLang" in msg_json: meta["native_lang"] = msg_json["nativeLang"]
+                            if "nativeLang" in msg_json: 
+                                meta["native_lang"] = str(msg_json["nativeLang"]).split('-')[0].lower()
                             break
                     continue
 
@@ -298,7 +350,6 @@ async def audio_endpoint(websocket: WebSocket, token: str = Query(...), roomId: 
                 if b64_audio:
                     pcm_data = binascii.a2b_base64(b64_audio)
                     transcriber.write_stream(pcm_data)
-                    # --- ACTIVE SPEAKER CHECK ---
                     await speaker_manager.process_audio_chunk(normalized_room_id, user_id, pcm_data)
 
             except Exception: continue

@@ -11,7 +11,8 @@ import {
   ScrollView,
   Pressable,
   Animated,
-  Easing
+  Easing,
+  StyleSheet
 } from 'react-native';
 import {
   RTCView,
@@ -28,7 +29,6 @@ import LiveAudioStream from 'react-native-live-audio-stream';
 
 import { useAppStore } from '../../stores/appStore';
 import { useUserStore } from '../../stores/UserStore';
-import { useChatStore } from '../../stores/ChatStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useTokenStore } from '../../stores/tokenStore';
 import { API_BASE_URL } from '../../api/apiConfig';
@@ -40,48 +40,70 @@ import { useFriendships } from '../../hooks/useFriendships';
 import { getAvatarSource } from '../../utils/avatarUtils';
 
 const PAGE_SIZE = 6;
+const REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '👏'];
 
-const normalizeLexiconText = (text: string) => {
-  if (!text) return "";
-  return text.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ").trim();
+const ParticipantNameResolver = ({ userId, style, fallback = "User" }: { userId: string, style?: any, fallback?: string }) => {
+  const { useUserProfile } = useUsers();
+  const { data: profile } = useUserProfile(userId);
+  const displayName = profile?.nickname || profile?.fullname || `${fallback} ${userId.slice(0, 4)}`;
+  return <Text style={style}>{displayName}</Text>;
 };
 
-const getLexiconKey = (lang: string, text: string) => {
-  const langCode = lang ? lang.split('-')[0].toLowerCase() : 'en';
-  return `${langCode}:${normalizeLexiconText(text)}`;
+const useParticipantName = (userId: string) => {
+  const { useUserProfile } = useUsers();
+  const { data: profile } = useUserProfile(userId);
+  return profile?.nickname || profile?.fullname || `User ${userId.slice(0, 4)}`;
 };
 
-const clientSideTranslate = (text: string, srcLang: string, targetLang: string): string | null => {
-  const lexicon = useChatStore.getState().lexiconMaster;
-  if (!lexicon || lexicon.size === 0 || !text) return null;
+const FloatingReaction = React.memo(({ emoji, onComplete }: { emoji: string, onComplete: () => void }) => {
+  const animValue = useRef(new Animated.Value(0)).current;
 
-  const words = text.split(/\s+/).filter(w => w);
-  const translatedParts: string[] = [];
-  let i = 0;
-  let hasMatch = false;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(animValue, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease)
+      })
+    ]).start(() => onComplete());
+  }, []);
 
-  while (i < words.length) {
-    let matched = false;
-    for (let j = Math.min(words.length - i, 6); j >= 1; j--) {
-      const phrase = words.slice(i, i + j).join(' ');
-      const key = getLexiconKey(srcLang, phrase);
-      const entry = lexicon.get(key);
+  const translateY = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -300]
+  });
 
-      if (entry && entry.translations && entry.translations[targetLang]) {
-        translatedParts.push(entry.translations[targetLang]);
-        i += j;
-        matched = true;
-        hasMatch = true;
-        break;
+  const opacity = animValue.interpolate({
+    inputRange: [0, 0.7, 1],
+    outputRange: [1, 1, 0]
+  });
+
+  const scale = animValue.interpolate({
+    inputRange: [0, 0.1, 1],
+    outputRange: [0.5, 1.2, 1]
+  });
+
+  const randomX = Math.random() * 40 - 20;
+
+  return (
+    <Animated.Text style={[
+      styles.floatingEmoji,
+      {
+        opacity,
+        transform: [
+          { translateY },
+          { translateX: randomX },
+          { scale }
+        ]
       }
-    }
-    if (!matched) {
-      translatedParts.push(words[i]);
-      i++;
-    }
-  }
-  return hasMatch ? translatedParts.join(' ') : null;
-};
+    ]}>
+      {emoji}
+    </Animated.Text>
+  );
+});
+
+FloatingReaction.displayName = 'FloatingReaction';
 
 const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, currentUserId: string, onClose: () => void }) => {
   const { t } = useTranslation();
@@ -170,7 +192,7 @@ const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, c
   );
 };
 
-const SmoothVideoItem = React.memo(({ stream, style, label, isActiveSpeaker }: { stream: MediaStream, style: any, label: string, isActiveSpeaker: boolean }) => {
+const SmoothVideoItem = React.memo(({ stream, style, userId, isActiveSpeaker }: { stream: MediaStream, style: any, userId: string, isActiveSpeaker: boolean }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -187,7 +209,7 @@ const SmoothVideoItem = React.memo(({ stream, style, label, isActiveSpeaker }: {
       <View style={[styles.videoWrapper, isActiveSpeaker && styles.activeSpeakerBorder]}>
         <RTCView streamURL={stream.toURL()} style={{ flex: 1 }} objectFit="cover" zOrder={0} />
         <View style={styles.nameTag}>
-          <Text style={styles.nameTagText}>{label}</Text>
+          <ParticipantNameResolver userId={userId} style={styles.nameTagText} />
         </View>
         {isActiveSpeaker && (
           <View style={styles.activeIcon}>
@@ -201,7 +223,9 @@ const SmoothVideoItem = React.memo(({ stream, style, label, isActiveSpeaker }: {
 
 SmoothVideoItem.displayName = 'SmoothVideoItem';
 
-const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
+const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId, targetLang }: any) => {
+  const senderName = useParticipantName(data?.senderId || "");
+
   if (!data || mode === 'off' || !data.originalFull?.trim()) return null;
 
   if (data.isFiller && data.senderId !== currentUserId) {
@@ -213,7 +237,8 @@ const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
   }
 
   const isMe = data.senderId === currentUserId;
-  const { originalFull, translated } = data;
+  const { originalFull, translations } = data;
+  const translatedText = translations ? (translations[targetLang] || translations['en'] || "") : "";
 
   if (isMe) {
     return (
@@ -226,31 +251,30 @@ const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId }: any) => {
 
   const showOriginal = mode === 'dual' || mode === 'original';
   const showTranslated = mode === 'dual' || mode === 'native';
-  const effectiveShowOriginal = showOriginal || (mode === 'native' && !translated);
+  const effectiveShowOriginal = showOriginal || (mode === 'native' && !translatedText);
 
   return (
     <View style={styles.subtitleContainer}>
-      <Text style={[styles.subtitleSender, { textAlign: 'center' }]}>{t('partner') || 'Đối phương'}</Text>
-
+      <Text style={[styles.subtitleSender, { textAlign: 'center' }]}>{senderName}</Text>
       {effectiveShowOriginal && (
         <Text style={[
           styles.subtitleTextOriginal,
           { textAlign: 'center' },
-          mode === 'native' && !translated && { opacity: 0.6, fontSize: 14 }
+          mode === 'native' && !translatedText && { opacity: 0.6, fontSize: 14 }
         ]}>
           {originalFull}
         </Text>
       )}
-
-      {showTranslated && translated ? (
-        <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translated}</Text>
+      {showTranslated && translatedText ? (
+        <Text style={[styles.subtitleTextTranslated, { textAlign: 'center' }]}>{translatedText}</Text>
       ) : null}
     </View>
   );
 }, (prev, next) => {
   return prev.data?.originalFull === next.data?.originalFull &&
-    prev.data?.translated === next.data?.translated &&
-    prev.mode === next.mode;
+    prev.data?.isFiller === next.data?.isFiller &&
+    prev.mode === next.mode &&
+    prev.targetLang === next.targetLang;
 });
 
 SubtitleOverlay.displayName = 'SubtitleOverlay';
@@ -260,7 +284,17 @@ type WebRTCParams = {
 };
 
 type SubtitleData = {
-  originalFull: string; originalLang: string; translated: string; translatedLang: string; senderId: string; status?: 'processing' | 'complete' | 'noise'; isFiller?: boolean;
+  originalFull: string;
+  originalLang: string;
+  translations: Record<string, string>;
+  senderId: string;
+  status?: 'processing' | 'complete' | 'noise';
+  isFiller?: boolean;
+};
+
+type ReactionItem = {
+  id: string;
+  emoji: string;
 };
 
 const iceServers = [
@@ -277,7 +311,7 @@ const WebRTCCallScreen = () => {
   const { user } = useUserStore();
   const accessToken = useTokenStore.getState().accessToken;
   const { nativeLanguage, callPreferences, setCallPreferences } = useAppStore();
-  const targetLang = callPreferences.nativeLanguage || nativeLanguage || 'vi';
+  const targetLang = (callPreferences.nativeLanguage || nativeLanguage || 'vi').split('-')[0];
 
   const { useUpdateVideoCall } = useVideoCalls();
   const { mutate: updateCallStatus } = useUpdateVideoCall();
@@ -295,6 +329,7 @@ const WebRTCCallScreen = () => {
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
+  const [reactions, setReactions] = useState<ReactionItem[]>([]);
 
   const [showSettings, setShowSettings] = useState(false);
   const [settingTab, setSettingTab] = useState<'subtitle' | 'participants'>('subtitle');
@@ -327,22 +362,17 @@ const WebRTCCallScreen = () => {
       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
     }
-
     setTimeout(() => {
       if (isManuallyClosed.current) return;
       try {
         LiveAudioStream.stop();
         LiveAudioStream.init(audioOptions);
-
         LiveAudioStream.on('data', (base64Data: string) => {
           if (wsAudio.current?.readyState === WebSocket.OPEN && isMicOn) {
             wsAudio.current.send(JSON.stringify({ audio: base64Data }));
           }
         });
-
-        if (isMicOn) {
-          LiveAudioStream.start();
-        }
+        if (isMicOn) LiveAudioStream.start();
       } catch (e) {
         console.error("❌ Audio Init Error:", e);
       }
@@ -378,51 +408,45 @@ const WebRTCCallScreen = () => {
     ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-
         if (data.type === 'subtitle') {
           if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
-
-          let translated = data.translated || "";
-
-          if (!translated && data.originalFull && data.senderId !== user?.userId && !data.isFiller) {
-            const localTrans = clientSideTranslate(data.originalFull, data.originalLang, targetLang);
-            if (localTrans) translated = localTrans;
-          }
-
-          setFullSubtitle({ ...data, translated });
+          setFullSubtitle(data);
           if (data.status === 'complete') {
             subtitleTimeoutRef.current = setTimeout(() => setFullSubtitle(null), 4000);
           }
-        }
-        else if (data.type === 'subtitle_translation') {
-          if (data.targetLang && data.targetLang !== targetLang.split('-')[0]) return;
-          setFullSubtitle(prev => {
-            if (prev && prev.originalFull === data.originalFull) {
-              return { ...prev, translated: data.translated };
-            }
-            return prev;
-          });
         }
       } catch (_) { }
     };
     ws.onclose = () => {
       if (!isManuallyClosed.current) setTimeout(connectAudioSocket, 5000);
     };
-  }, [roomId, accessToken, targetLang, initSubtitleAudioStream, user?.userId]);
+  }, [roomId, accessToken, targetLang, initSubtitleAudioStream]);
 
   const getMediaStream = useCallback(async () => {
     try {
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 24 },
-          facingMode: 'user'
+          width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 }, facingMode: 'user'
         }
       });
       return stream;
     } catch (e) { return null; }
+  }, []);
+
+  const handleUserLeft = useCallback((userId: string) => {
+    if (peerConnections.current.has(userId)) {
+      try {
+        const pc = peerConnections.current.get(userId);
+        pc?.close();
+        peerConnections.current.delete(userId);
+      } catch (e) { console.warn("Error closing pc:", e); }
+    }
+    setRemoteStreams(prev => {
+      const newMap = new Map(prev);
+      if (newMap.delete(userId)) return newMap;
+      return prev;
+    });
   }, []);
 
   const createPeerConnection = useCallback(async (partnerId: string, shouldCreateOffer: boolean) => {
@@ -434,6 +458,9 @@ const WebRTCCallScreen = () => {
       localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
     }
 
+    // --- FORCE ASSIGNMENT (BYPASS TS CHECK) ---
+    // TS Error: Property 'onicecandidate' does not exist...
+    // Runtime: It DOES exist. We cast to 'any' to fix compilation.
     (pc as any).onicecandidate = (event: any) => {
       if (event.candidate) {
         sendSignalingMessage({ type: 'ice_candidate', targetId: partnerId }, { candidate: event.candidate });
@@ -447,18 +474,25 @@ const WebRTCCallScreen = () => {
       }
     };
 
+    (pc as any).oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+        handleUserLeft(partnerId);
+      }
+    };
+    // ------------------------------------------
+
     if (shouldCreateOffer) {
       const offer = await pc.createOffer({});
       await pc.setLocalDescription(offer);
       sendSignalingMessage({ type: 'offer', targetId: partnerId }, offer);
     }
     return pc;
-  }, []);
+  }, [handleUserLeft]);
 
   const sendSignalingMessage = useCallback((meta: any, payloadData?: any) => {
     if (wsSignal.current?.readyState === WebSocket.OPEN) {
       wsSignal.current.send(JSON.stringify({
-        type: meta.type === 'JOIN_ROOM' ? 'JOIN_ROOM' : 'webrtc_signal',
+        type: meta.type === 'JOIN_ROOM' || meta.type === 'REACTION' ? meta.type : 'webrtc_signal',
         roomId, senderId: user?.userId, payload: { ...meta, ...payloadData }
       }));
     }
@@ -489,6 +523,16 @@ const WebRTCCallScreen = () => {
           return;
         }
 
+        if (data.type === 'REACTION' && data.payload?.emoji) {
+          addReaction(data.payload.emoji);
+          return;
+        }
+
+        if (data.type === 'USER_LEFT' && data.senderId) {
+          handleUserLeft(data.senderId);
+          return;
+        }
+
         if (data.type === 'webrtc_signal' || data.type === 'JOIN_ROOM') {
           const senderId = String(data.senderId);
           if (senderId === String(user?.userId)) return;
@@ -512,7 +556,7 @@ const WebRTCCallScreen = () => {
         }
       } catch (_) { }
     };
-  }, [roomId, accessToken, user?.userId, createPeerConnection, sendSignalingMessage]);
+  }, [roomId, accessToken, user?.userId, createPeerConnection, sendSignalingMessage, handleUserLeft]);
 
   useEffect(() => {
     sendAudioConfig();
@@ -544,6 +588,20 @@ const WebRTCCallScreen = () => {
     };
   }, []);
 
+  const addReaction = (emoji: string) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setReactions(prev => [...prev, { id, emoji }]);
+  };
+
+  const removeReaction = (id: string) => {
+    setReactions(prev => prev.filter(r => r.id !== id));
+  };
+
+  const sendReaction = (emoji: string) => {
+    addReaction(emoji);
+    sendSignalingMessage({ type: 'REACTION' }, { emoji });
+  };
+
   const toggleMic = () => {
     const newState = !isMicOn;
     setIsMicOn(newState);
@@ -567,7 +625,6 @@ const WebRTCCallScreen = () => {
   };
 
   const remoteStreamsArr = Array.from(remoteStreams.entries());
-
   const visibleStreams = useMemo(() => {
     let sorted = [...remoteStreamsArr];
     if (activeSpeakerId) {
@@ -577,10 +634,7 @@ const WebRTCCallScreen = () => {
         sorted.unshift(active);
       }
     }
-    if (!isViewAll) {
-      return sorted.slice(0, PAGE_SIZE);
-    }
-    return sorted;
+    return isViewAll ? sorted : sorted.slice(0, PAGE_SIZE);
   }, [remoteStreamsArr, activeSpeakerId, isViewAll]);
 
   const remainingCount = Math.max(0, remoteStreamsArr.length - visibleStreams.length);
@@ -594,7 +648,7 @@ const WebRTCCallScreen = () => {
               <SmoothVideoItem
                 key={id}
                 stream={stream}
-                label={`User ${id.slice(0, 4)}`}
+                userId={id}
                 isActiveSpeaker={id === activeSpeakerId}
                 style={{
                   width: isViewAll ? '30%' : '45%',
@@ -604,7 +658,6 @@ const WebRTCCallScreen = () => {
               />
             ))}
           </View>
-
           {!isViewAll && remainingCount > 0 && (
             <TouchableOpacity style={styles.viewMoreBtn} onPress={() => setIsViewAll(true)}>
               <Text style={styles.viewMoreText}>+{remainingCount} others</Text>
@@ -629,12 +682,28 @@ const WebRTCCallScreen = () => {
           </View>
         )}
 
+        {/* REACTION OVERLAY */}
+        <View style={styles.reactionOverlay} pointerEvents="none">
+          {reactions.map(r => (
+            <FloatingReaction key={r.id} emoji={r.emoji} onComplete={() => removeReaction(r.id)} />
+          ))}
+        </View>
+
         <SubtitleOverlay
           data={fullSubtitle}
           mode={callPreferences.subtitleMode}
           t={t}
           currentUserId={user?.userId}
+          targetLang={targetLang}
         />
+
+        <View style={styles.reactionBar}>
+          {REACTION_EMOJIS.map(emoji => (
+            <TouchableOpacity key={emoji} onPress={() => sendReaction(emoji)} style={styles.reactionBtn}>
+              <Text style={styles.reactionText}>{emoji}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         <TouchableOpacity style={styles.endCallButton} onPress={handleCallEnd}>
           <Icon name="call-end" size={30} color="white" />
@@ -663,7 +732,6 @@ const WebRTCCallScreen = () => {
                 <Text style={[styles.tabText, settingTab === 'participants' && styles.tabTextActive]}>{t('participants')}</Text>
               </Pressable>
             </View>
-
             {settingTab === 'subtitle' && (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 15 }}>
                 {['dual', 'native', 'original', 'off'].map(m => (
@@ -675,14 +743,13 @@ const WebRTCCallScreen = () => {
                 ))}
               </View>
             )}
-
             {settingTab === 'participants' && (
               <ScrollView style={{ marginTop: 15 }}>
                 {remoteStreamsArr.length === 0 && <Text style={{ color: '#9ca3af', textAlign: 'center' }}>No one else is here.</Text>}
                 {remoteStreamsArr.map(([id]) => (
                   <TouchableOpacity key={id} style={styles.participantRow} onPress={() => { setShowSettings(false); setSelectedProfileId(id); }}>
                     <View style={styles.participantAvatar}><Icon name="person" size={20} color="white" /></View>
-                    <Text style={styles.participantName}>User {id.slice(0, 6)}...</Text>
+                    <ParticipantNameResolver userId={id} style={styles.participantName} />
                     {id === activeSpeakerId && <Icon name="graphic-eq" size={20} color="#22c55e" style={{ marginRight: 10 }} />}
                     <Icon name="info-outline" size={24} color="#6366f1" />
                   </TouchableOpacity>
@@ -709,7 +776,7 @@ const WebRTCCallScreen = () => {
 const windowWidth = Dimensions.get('window').width;
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
-  scrollGrid: { paddingTop: 80, paddingBottom: 150, alignItems: 'center' },
+  scrollGrid: { paddingTop: 80, paddingBottom: 220, alignItems: 'center' },
   gridWrapper: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', width: '100%' },
   videoWrapper: { flex: 1, backgroundColor: '#1f2937', borderRadius: 8, overflow: 'hidden' },
   activeSpeakerBorder: { borderWidth: 2, borderColor: '#22c55e' },
@@ -721,8 +788,8 @@ const styles = createScaledSheet({
   localVideoContainer: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563', backgroundColor: '#374151' },
   localVideo: { flex: 1 },
   cameraOffPlaceholder: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#1f2937' },
-  endCallButton: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5 },
-  subtitleContainer: { position: 'absolute', bottom: 120, alignSelf: 'center', padding: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.8)', maxWidth: windowWidth * 0.9, marginHorizontal: 10 },
+  endCallButton: { position: 'absolute', bottom: 30, alignSelf: 'center', backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5, zIndex: 20 },
+  subtitleContainer: { position: 'absolute', bottom: 160, alignSelf: 'center', padding: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.8)', maxWidth: windowWidth * 0.9, marginHorizontal: 10 },
   subtitleSender: { color: '#9ca3af', fontSize: 12, fontWeight: 'bold', marginBottom: 2 },
   subtitleTextOriginal: { color: '#e5e7eb', marginBottom: 4, flexShrink: 1, fontSize: 18 },
   subtitleTextTranslated: { color: '#fbbf24', fontWeight: 'bold', fontSize: 18, flexShrink: 1 },
@@ -758,7 +825,13 @@ const styles = createScaledSheet({
   btnAdmire: { backgroundColor: '#fce7f3' },
   btnAdmired: { backgroundColor: '#db2777' },
   btnDisabled: { backgroundColor: '#4b5563' },
-  miniBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14 }
+  miniBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
+  // Reaction Styles
+  reactionBar: { position: 'absolute', bottom: 100, flexDirection: 'row', alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 30, padding: 5, gap: 10 },
+  reactionBtn: { padding: 8 },
+  reactionText: { fontSize: 24 },
+  reactionOverlay: { position: 'absolute', bottom: 150, left: 0, right: 0, alignItems: 'center', height: 400, justifyContent: 'flex-end', zIndex: 10 },
+  floatingEmoji: { fontSize: 40, position: 'absolute', bottom: 0 }
 });
 
 export default WebRTCCallScreen;

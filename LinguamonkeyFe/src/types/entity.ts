@@ -670,6 +670,7 @@ export interface RolePermission extends BaseEntity {
 export interface Room extends BaseEntity {
     roomId: string;
     roomName: string;
+    secretKey?: string;
     creatorId?: string;
     maxMembers: number;
     purpose?: Enums.RoomPurpose;

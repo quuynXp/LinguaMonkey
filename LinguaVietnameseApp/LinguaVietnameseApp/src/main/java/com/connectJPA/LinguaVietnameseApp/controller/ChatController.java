@@ -1,27 +1,19 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
-import com.connectJPA.LinguaVietnameseApp.dto.ChatMessageBody;
 import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
-import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.RoomMemberId;
-import com.connectJPA.LinguaVietnameseApp.enums.NotificationType;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
-import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
-import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
-import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -31,9 +23,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault; // ✅ ADDED MISSING IMPORT
+import org.springframework.data.web.PageableDefault;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -44,11 +35,9 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/chat")
@@ -61,10 +50,6 @@ public class ChatController {
     private final MessageSource messageSource;
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
-    private final GrpcClientService grpcClientService;
-    private final AuthenticationService authenticationService;
-    private final NotificationService notificationService;
-    private final UserRepository userRepository;
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Data
@@ -106,16 +91,12 @@ public class ChatController {
     public ResponseEntity<AppApiResponse<ChatStatsResponse>> getStats(
             @PathVariable UUID userId,
             Locale locale) {
-
         ChatStatsResponse stats = chatMessageService.getStatsByUser(userId);
-
-        AppApiResponse<ChatStatsResponse> res = AppApiResponse.<ChatStatsResponse>builder()
+        return ResponseEntity.ok(AppApiResponse.<ChatStatsResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("chat.stats.success", null, locale))
                 .result(stats)
-                .build();
-
-        return ResponseEntity.ok(res);
+                .build());
     }
 
     @Operation(summary = "Delete a chat message", description = "Soft delete a chat message by ID (only within 5 mins)")
@@ -137,9 +118,7 @@ public class ChatController {
             @RequestBody ChatMessageRequest request,
             Locale locale) {
         ChatMessageResponse updatedMessage = chatMessageService.editChatMessage(id, request.getContent());
-        
         messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId(), updatedMessage);
-        
         return AppApiResponse.<ChatMessageResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("chatMessage.updated.success", null, locale))
@@ -155,87 +134,17 @@ public class ChatController {
             SimpMessageHeaderAccessor headerAccessor) {
         
         log.info("📥 [STOMP] Received message for room: {}", roomId);
-        
-        String authorization = headerAccessor.getFirstNativeHeader("Authorization");
-        String token = extractToken(authorization, headerAccessor);
 
         UUID senderId = messageRequest.getSenderId();
-        
         if (senderId == null) {
             log.error("❌ [STOMP] senderId is NULL in request!");
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
-        Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
-                .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-
-        log.info("✅ [STOMP] Saving message with senderId: {}", senderId);
-        
         ChatMessageResponse message = chatMessageService.saveMessage(roomId, messageRequest);
-
-        // --- CRITICAL FIX: ENSURE E2EE FIELDS ARE PASSED BACK TO RECEIVER ---
-        if (message.getPurpose() == RoomPurpose.PRIVATE_CHAT && messageRequest.getSenderEphemeralKey() != null) {
-            log.info("🔐 [E2EE] Patching response with keys for receiver");
-            message.setSenderEphemeralKey(messageRequest.getSenderEphemeralKey());
-            message.setInitializationVector(messageRequest.getInitializationVector());
-            message.setUsedPreKeyId(messageRequest.getUsedPreKeyId());
-        }
-        // -------------------------------------------------------------------
-
-        if (message.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
-            messagingTemplate.convertAndSendToUser(
-                    message.getSenderId().toString(), "/queue/messages", message);
-            messagingTemplate.convertAndSendToUser(
-                    message.getReceiverId().toString(), "/queue/messages", message);
-
-            sendPushNotification(senderId, message.getReceiverId(), room, message.getContent());
-        } else if (message.getPurpose() == RoomPurpose.GROUP_CHAT) {
-            messagingTemplate.convertAndSend("/topic/room/" + roomId, message);
-
-            List<RoomMember> members = roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(roomId);
-            for (RoomMember member : members) {
-                UUID memberId = member.getId().getUserId();
-                if (!memberId.equals(senderId)) {
-                    sendPushNotification(senderId, memberId, room, message.getContent());
-                }
-            }
-        } else if (message.getPurpose() == RoomPurpose.AI_CHAT) {
-            messagingTemplate.convertAndSendToUser(
-                    message.getSenderId().toString(), "/queue/messages", message);
-
-            Pageable pageable = PageRequest.of(0, 10);
-            Page<ChatMessageResponse> historyPage = chatMessageService.getMessagesByRoom(roomId, pageable);
-            
-            List<ChatMessageResponse> history = historyPage.getContent();
-
-            try {
-                String aiResponseText = grpcClientService.callChatWithAIAsync(
-                        token,
-                        senderId.toString(),
-                        message.getContent(),
-                        history.stream()
-                                .map(msg -> new ChatMessageBody(msg.getSenderId().equals(senderId) ? "user" : "assistant", msg.getContent()))
-                                .collect(Collectors.toList())
-                ).get();
-
-                ChatMessageRequest aiMessageRequest = ChatMessageRequest.builder()
-                        .roomId(roomId)
-                        .senderId(null)
-                        .content(aiResponseText)
-                        .messageType(messageRequest.getMessageType())
-                        .purpose(RoomPurpose.AI_CHAT)
-                        .receiverId(senderId)
-                        .isRead(false)
-                        .isDeleted(false)
-                        .build();
-
-                ChatMessageResponse aiResponse = chatMessageService.saveMessage(roomId, aiMessageRequest);
-                messagingTemplate.convertAndSendToUser(
-                        senderId.toString(), "/queue/messages", aiResponse);
-            } catch (Exception e) {
-                log.error("AI Chat processing failed", e);
-                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            }
+        
+        if (message.getPurpose() == RoomPurpose.AI_CHAT) {
+             chatMessageService.generateAIResponse(message);
         }
     }
 
@@ -294,44 +203,6 @@ public class ChatController {
             Principal principal) {
         
         request.setUserId(UUID.fromString(principal.getName()));
-        
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/status", request);
-    }
-
-    private String extractToken (String authorization, SimpMessageHeaderAccessor headerAccessor){
-        String authToken = headerAccessor.getFirstNativeHeader("X-Auth-Token");
-        if (authToken != null && authToken.startsWith("Bearer ")) {
-            return authToken.substring(7);
-        }
-
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            return null;
-        }
-        return authorization.substring(7);
-    }
-
-    private void sendPushNotification(UUID senderId, UUID receiverId, Room room, String messageContent) {
-        if (receiverId == null) return;
-
-        User sender = userRepository.findByUserIdAndIsDeletedFalse(senderId)
-                .orElse(null);
-        String senderName = (sender != null && sender.getFullname() != null) ? sender.getFullname() : "Tin nhắn mới";
-
-        String title = (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) ? senderName : room.getRoomName();
-        String payload = String.format("{\"screen\":\"Chat\", \"stackScreen\":\"ChatDetail\", \"chatId\":\"%s\"}", room.getRoomId());
-
-        NotificationRequest notificationRequest = NotificationRequest.builder()
-                .userId(receiverId)
-                .title(title)
-                .content(messageContent)
-                .type(NotificationType.MESSAGE.name())
-                .payload(payload)
-                .build();
-
-        try {
-            notificationService.createPushNotification(notificationRequest);
-        } catch (Exception e) {
-            log.error("Failed to send push notification for message to user {}: {}", receiverId, e.getMessage());
-        }
     }
 }

@@ -26,6 +26,7 @@ public class RoomResponse {
     private int maxMembers;
 
     private String password;
+    private String secretKey;
     
     private UUID creatorId;
     private String creatorName;
@@ -53,7 +54,7 @@ public class RoomResponse {
     private String lastMessageSelfContent;
     private String lastMessageSelfEphemeralKey;
     private String lastMessageSelfInitializationVector;
-    
+
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime createdAt;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)

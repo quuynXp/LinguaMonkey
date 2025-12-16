@@ -59,4 +59,7 @@ public class Room extends BaseEntity {
     @Column(name = "status", nullable = false)
     @Builder.Default
     private RoomStatus status = RoomStatus.ACTIVE;
+
+    @Column(name = "secret_key", columnDefinition = "TEXT")
+    private String secretKey;
 }

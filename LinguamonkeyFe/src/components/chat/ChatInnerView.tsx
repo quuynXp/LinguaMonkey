@@ -63,7 +63,6 @@ const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en'
     return date.toLocaleTimeString(locale, timeOptions);
 };
 
-// --- MODIFIED MEDIA MODAL WITH DEBUG LOGS ---
 const MediaViewerModal = ({ visible, url, type, onClose }: { visible: boolean; url: string | null; type: 'IMAGE' | 'VIDEO' | null; onClose: () => void }) => {
     if (!visible || !url) return null;
     const finalUrl = getDirectMediaUrl(url, type);
@@ -83,10 +82,7 @@ const MediaViewerModal = ({ visible, url, type, onClose }: { visible: boolean; u
                         controls={true}
                         resizeMode="contain"
                         paused={false}
-                        onError={(e) => {
-                            console.error("[MediaViewer] Video Error:", e);
-                            if (finalUrl !== url) console.log("Try raw url if needed:", url);
-                        }}
+                        onError={(e) => console.error("[MediaViewer] Video Error:", e)}
                     />
                 ) : (
                     <Image
@@ -137,9 +133,13 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const { showToast } = useToast();
     const navigation = useNavigation<any>();
     const { user } = useUserStore();
-    const navHeaderHeight = useHeaderHeight();
 
-    const keyboardOffset = Platform.OS === 'ios' ? (navHeaderHeight > 0 ? navHeaderHeight : 90) : 0;
+    // --- KEYBOARD FIX START ---
+    const navHeaderHeight = useHeaderHeight();
+    // iOS cần offset bằng chiều cao header để không bị đè.
+    // Android thường tự động xử lý tốt hơn với behavior='height', nên offset = 0 hoặc nhỏ.
+    const keyboardOffset = Platform.OS === 'ios' ? navHeaderHeight : 0;
+    // --- KEYBOARD FIX END ---
 
     const chatSettings = useAppStore(state => state.chatSettings);
     const nativeLanguage = useAppStore(state => state.nativeLanguage);
@@ -205,13 +205,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 const finalTranslation = eagerTrans || dbMapTrans;
                 const senderProfile = msg.senderProfile || membersMap[senderId];
                 const isEncrypted = !!msg.senderEphemeralKey;
-                let displayContent = '';
 
+                let displayContent = '';
                 if (msg.decryptedContent) displayContent = msg.decryptedContent;
                 else if (isEncrypted) displayContent = '';
                 else displayContent = msg.content || '';
 
-                // Ensure mediaUrl is extracted from the correct place
                 const rawMediaUrl = msg.mediaUrl || (msg as any).media_url || null;
 
                 return {
@@ -262,7 +261,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const handleSendMessage = () => {
         const now = Date.now();
-        if (now - lastSentRef.current < 500) return; // Debounce 500ms
+        if (now - lastSentRef.current < 500) return;
 
         if (inputText.trim() === "") return;
         lastSentRef.current = now;
@@ -274,17 +273,20 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         } else {
             sendMessage(roomId, inputText, 'TEXT');
             setInputText("");
-            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+            // Scroll to bottom immediately after sending
+            setTimeout(() => {
+                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+            }, 100);
         }
     };
 
     const handleUploadSuccess = (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => {
-        // Log result to verify upload response
-        console.log("Upload Success Result:", result);
         const finalUrl = result?.secure_url || result?.url || result?.fileUrl;
         if (finalUrl) {
             sendMessage(roomId, '', type, finalUrl);
-            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+            setTimeout(() => {
+                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+            }, 100);
         } else {
             showToast({ message: "Upload failed: No URL returned", type: "error" });
         }
@@ -318,22 +320,23 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const isTranslating = translatingId === item.id;
         const showDecryptionError = item.isEncrypted && item.decryptedContent?.includes('!! Decryption Failed');
 
-        // --- DEBUGGING LOGIC ---
         let displayMediaUrl = null;
         if (isMedia && item.mediaUrl) {
-            // Log raw input
-            // console.log(`[Item Render] ID: ${item.id}, Raw MediaURL: ${item.mediaUrl}`);
             displayMediaUrl = getDirectMediaUrl(item.mediaUrl);
-            // Log processed output
-            // console.log(`[Item Render] ID: ${item.id}, Display URL: ${displayMediaUrl}`);
         }
-        // -----------------------
 
         let primaryText = item.text;
         let isWaitingForDecrypt = false;
+
         if (item.isEncrypted) {
-            if (showDecryptionError) primaryText = t('chat.decryption_failed');
-            else if (!item.decryptedContent) { primaryText = '🔒 ...'; isWaitingForDecrypt = true; }
+            if (item.decryptedContent && !showDecryptionError) {
+                primaryText = item.decryptedContent;
+            } else if (showDecryptionError) {
+                primaryText = "Tin nhắn đã mã hóa";
+            } else {
+                primaryText = '...';
+                isWaitingForDecrypt = true;
+            }
         }
 
         return (
@@ -355,14 +358,11 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                     source={{ uri: displayMediaUrl }}
                                     style={styles.msgImage}
                                     resizeMode="cover"
-                                    onError={(e) => console.log(`[Image Error] MsgId: ${item.id} URL: ${displayMediaUrl}`, e.nativeEvent.error)}
                                 />
                             )}
                             {item.messageType === 'VIDEO' && (
                                 <View style={[styles.msgImage, styles.videoPlaceholder]}>
                                     <Icon name="play-circle-outline" size={50} color="#FFF" />
-                                    {/* Debug Text to see if URL exists */}
-                                    {/* <Text style={{color:'red', fontSize:8}}>{item.mediaUrl?.substring(0,20)}...</Text> */}
                                 </View>
                             )}
                         </TouchableOpacity>
@@ -374,8 +374,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                     <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginLeft: 8 }]}>{t('chat.document')}</Text>
                                 </View>
                             )}
-                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, isWaitingForDecrypt && { fontStyle: 'italic', opacity: 0.8 }]}>{primaryText}</Text>
-                            {showDecryptionError && <Text style={[styles.textOtherTrans, { fontSize: 12, color: '#D97706', marginTop: 4, fontStyle: 'italic' }]}>{t('chat.decryption_error_hint')}</Text>}
+                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, (isWaitingForDecrypt || showDecryptionError) && { fontStyle: 'italic', opacity: 0.8 }]}>
+                                {primaryText}
+                            </Text>
+
                             {showTranslatedText && (
                                 <View style={styles.dualLineContainer}>
                                     <View style={[styles.separator, { backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' }]} />
@@ -400,9 +402,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     return (
         <ScreenLayout style={styles.container}>
+            {/* FIX: behavior="height" cho Android để đẩy toàn bộ View lên khi bàn phím hiện.
+                FIX: keyboardVerticalOffset để tránh bị header che mất trên iOS.
+            */}
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
                 keyboardVerticalOffset={keyboardOffset}
             >
                 <View style={{ flex: 1 }}>
@@ -491,7 +496,20 @@ const styles = createScaledSheet({
     inputWrapper: { borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF', paddingBottom: Platform.OS === 'ios' ? 20 : 0 },
     inputArea: { flexDirection: 'row', padding: 10, alignItems: 'center', backgroundColor: '#FFF' },
     attachBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
-    input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, maxHeight: 100, marginLeft: 5, fontSize: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+    input: {
+        flex: 1,
+        backgroundColor: '#F9FAFB',
+        borderRadius: 24,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        maxHeight: 100,
+        marginLeft: 5,
+        fontSize: 16,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        color: '#1F2937',
+        textAlignVertical: 'top'
+    },
     sendBtn: { backgroundColor: '#3B82F6', borderRadius: 24, padding: 12, marginLeft: 8, justifyContent: 'center', alignItems: 'center' },
     editBanner: { backgroundColor: '#FEF3C7', padding: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     editText: { color: '#D97706', fontSize: 12, fontWeight: 'bold' },

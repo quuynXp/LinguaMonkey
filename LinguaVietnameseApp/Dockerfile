@@ -3,11 +3,11 @@ FROM maven:3.9-eclipse-temurin-21 AS builder
 
 WORKDIR /app
 
-COPY ./LinguaVietnameseApp/pom.xml .
+COPY ./LinguaVietnameseApp/LinguaVietnameseApp/pom.xml .
 
 RUN mvn dependency:go-offline
 
-COPY ./LinguaVietnameseApp/src ./src
+COPY ./LinguaVietnameseApp/LinguaVietnameseApp/src ./src
 
 RUN mvn clean package -DskipTests
 
@@ -25,7 +25,7 @@ RUN dos2unix /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh && \
     mkdir -p /app/config
 
-EXPOSE 10000 
+EXPOSE 10000
 EXPOSE 9090
 
 ENTRYPOINT ["/app/entrypoint.sh", "java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app/app.jar"]

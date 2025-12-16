@@ -46,12 +46,14 @@ const PublicRoomListScreen = ({ navigation }: any) => {
         }).start();
     }, []);
 
-    // NOTE: Backend's `findPublicRoomsExcludingJoined` handles the filter "not currently in the room"
+    // FIXED: Explicitly added roomType: RoomType.PUBLIC to ensure backend filters correctly
+    // Without this, the backend might receive null for roomType and return an empty list
     const queryParams = {
         page: 0,
         size: 20,
         purpose: selectedFilter,
         roomName: searchQuery || undefined,
+        roomType: RoomType.PUBLIC,
     };
 
     const { data: roomsData, isLoading, isError, refetch } = usePublicRooms(queryParams);
@@ -202,7 +204,6 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                             {t('purpose.quiz')}
                         </Text>
                     </TouchableOpacity>
-                    {/* Add COURSE_CHAT filter if appropriate to list ALL course rooms */}
                 </View>
 
                 {isLoading ? (

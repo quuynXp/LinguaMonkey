@@ -14,6 +14,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
+import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
@@ -21,6 +22,7 @@ import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
+import com.connectJPA.LinguaVietnameseApp.utils.AESUtils;
 import com.google.gson.Gson;
 
 import lombok.RequiredArgsConstructor;
@@ -37,10 +39,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -57,7 +58,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final NotificationService notificationService;
     private final UserService userService;
     private final RedisTemplate<String, Object> redisTemplate;
-    
+    private final GrpcClientService grpcClientService;
+    private final AESUtils aesUtils;
     private final Gson gson = new Gson();
 
     @Lazy
@@ -83,14 +85,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     public Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size) {
-        if (keyword == null || keyword.isBlank()) {
-            return Page.empty();
-        }
+        if (keyword == null || keyword.isBlank()) return Page.empty();
         try {
             Pageable pageable = PageRequest.of(page, size);
             return chatMessageRepository.searchMessagesByKeyword(keyword, roomId, pageable);
         } catch (Exception e) {
-            log.error("Error while searching messages with keyword: {}", keyword, e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -124,15 +123,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         if (message.getContent() == null || message.getContent().trim().isEmpty()) {
-            if (message.getMessageType() == MessageType.IMAGE) {
-                message.setContent("📷 [Hình ảnh]"); 
-            } else if (message.getMessageType() == MessageType.VIDEO) {
-                message.setContent("🎥 [Video]");
-            } else if (message.getMessageType() == MessageType.AUDIO) {
-                message.setContent("🎤 [Audio]");
-            } else if (message.getMessageType() == MessageType.DOCUMENT) {
-                message.setContent("📄 [Tài liệu]");
-            }
+            if (message.getMessageType() == MessageType.IMAGE) message.setContent("📷 [Hình ảnh]"); 
+            else if (message.getMessageType() == MessageType.VIDEO) message.setContent("🎥 [Video]");
+            else if (message.getMessageType() == MessageType.AUDIO) message.setContent("🎤 [Audio]");
+            else if (message.getMessageType() == MessageType.DOCUMENT) message.setContent("📄 [Tài liệu]");
         }
         
         if (message.getId() == null) {
@@ -157,82 +151,163 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         ChatMessageResponse response = mapToResponse(savedMessage, room.getPurpose());
-        
         if (isAiBot) response.setSenderProfile(null); 
         else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
         try {
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
             
-            List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
-                .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(request.getSenderId())).toList();
-
-            Map<String, Object> event = new HashMap<>();
-            event.put("type", "NEW_MESSAGE_EVENT");
-            event.put("messageId", savedMessage.getId().getChatMessageId().toString());
-            event.put("roomId", roomId.toString());
-            event.put("content", savedMessage.getContent());
-            event.put("senderId", savedMessage.getSenderId().toString());
+            // LOGIC QUAN TRỌNG: Trigger Translation
+            // Nếu là Group Chat, content gửi lên là Ciphertext mã hóa bởi RoomKey.
+            // Server dùng RoomKey để giải mã -> dịch -> mã hóa bản dịch -> lưu.
+            if (room.getPurpose() != RoomPurpose.PRIVATE_CHAT) {
+                // Ta sử dụng 'content' đã lưu trong DB (đang là ciphertext)
+                triggerGroupAsyncTranslation(savedMessage, room);
+            }
             
-            try {
-                redisTemplate.convertAndSend("chat_events", event);
-            } catch (Exception redisEx) {
-                log.error("Redis publish failed for message {}", savedMessage.getId().getChatMessageId(), redisEx);
-            }
-
-            for (UUID uId : memberIds) {
-                try {
-                    messagingTemplate.convertAndSendToUser(uId.toString(), "/queue/notifications", response);
-                } catch (Exception wsEx) { log.warn("Failed to send private WS notification to user {}", uId); }
-
-                try {
-                    Map<String, String> dataPayload = new HashMap<>();
-                    dataPayload.put("screen", "TabApp");
-                    dataPayload.put("stack", "ChatStack");
-                    dataPayload.put("screenName", "GroupChatScreen");
-                    dataPayload.put("roomId", roomId.toString());
-                    dataPayload.put("initialFocusMessageId", response.getChatMessageId().toString());
-                    dataPayload.put("senderId", savedMessage.getSenderId().toString());
-                    
-                    boolean isEncrypted = savedMessage.getSenderEphemeralKey() != null;
-                    String contentForNotification;
-                    
-                    if (isEncrypted) {
-                        contentForNotification = "🔒 Tin nhắn bí mật";
-                        dataPayload.put("isEncrypted", "true");
-                        dataPayload.put("ciphertext", savedMessage.getContent()); 
-                        dataPayload.put("senderEphemeralKey", savedMessage.getSenderEphemeralKey());
-                        dataPayload.put("initializationVector", savedMessage.getInitializationVector());
-                        dataPayload.put("content", "🔒 Tin nhắn bí mật"); 
-                    } else {
-                        contentForNotification = savedMessage.getContent();
-                        dataPayload.put("isEncrypted", "false");
-                        dataPayload.put("content", savedMessage.getContent());
-                    }
-                    
-                    String payloadJson = gson.toJson(dataPayload);
-                    NotificationRequest nreq = NotificationRequest.builder()
-                        .userId(uId)
-                        .title("Tin nhắn mới")
-                        .content(contentForNotification)
-                        .type("CHAT_MESSAGE")
-                        .payload(payloadJson)
-                        .build();
-                    notificationService.createPushNotification(nreq);
-                } catch (Exception pushEx) { log.error("Failed to create push notification for user {}", uId); }
-            }
+            notifyMembers(savedMessage, room, response, request.getSenderId());
         } catch (Exception e) {
-            log.error("Broadcast/Notification failed for message {}", savedMessage.getId().getChatMessageId(), e);
+            log.error("Broadcast failed", e);
         }
 
         return response;
+    }
+
+    private void triggerGroupAsyncTranslation(ChatMessage message, Room room) {
+        if (message.getMessageType() != MessageType.TEXT) return;
+        
+        String roomKey = room.getSecretKey();
+        if (roomKey == null || roomKey.isEmpty()) return;
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                // 1. Decrypt Content
+                String decryptedContent = aesUtils.decrypt(message.getContent(), roomKey);
+                if (decryptedContent == null) return;
+
+                List<RoomMember> members = roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(room.getRoomId());
+                Set<String> targetLangs = members.stream()
+                    .map(m -> userRepository.findById(m.getId().getUserId()).orElse(null))
+                    .filter(Objects::nonNull)
+                    .map(User::getNativeLanguageCode)
+                    .filter(l -> l != null && !l.isEmpty() && !l.equals("vi"))
+                    .collect(Collectors.toSet());
+
+                if (targetLangs.isEmpty()) return;
+
+                // OPTIMIZATION: Check existing translations
+                Map<String, String> existingTranslations = message.getTranslations();
+                if (existingTranslations != null) {
+                    targetLangs.removeIf(existingTranslations::containsKey);
+                }
+
+                if (targetLangs.isEmpty()) return; // All needed languages are present
+
+                Map<String, String> newTranslations = new HashMap<>();
+                List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+                // 2. Call Python Translate (Only for missing languages)
+                for (String lang : targetLangs) {
+                    futures.add(grpcClientService.callTranslateAsync("", decryptedContent, "auto", lang)
+                        .thenAccept(res -> {
+                            if (res != null && res.getError().isEmpty()) {
+                                synchronized (newTranslations) {
+                                    newTranslations.put(lang, res.getTranslatedText());
+                                }
+                            }
+                        }));
+                }
+
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+                // 3. Encrypt & Save
+                if (!newTranslations.isEmpty()) {
+                    chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(message.getId().getChatMessageId()).ifPresent(msg -> {
+                        Map<String, String> current = msg.getTranslations();
+                        if (current == null) current = new HashMap<>();
+                        
+                        for (Map.Entry<String, String> entry : newTranslations.entrySet()) {
+                            String encryptedTrans = aesUtils.encrypt(entry.getValue(), roomKey);
+                            current.put(entry.getKey(), encryptedTrans);
+                        }
+                        
+                        msg.setTranslations(current);
+                        chatMessageRepository.save(msg);
+                        
+                        Map<String, Object> updateEvent = new HashMap<>();
+                        updateEvent.put("type", "TRANSLATION_UPDATE");
+                        updateEvent.put("id", message.getId().getChatMessageId().toString());
+                        updateEvent.put("roomId", msg.getRoomId().toString());
+                        updateEvent.put("translations", current);
+                        
+                        messagingTemplate.convertAndSend("/topic/room/" + msg.getRoomId(), updateEvent);
+                    });
+                }
+            } catch (Exception e) {
+                log.error("Translation error", e);
+            }
+        });
+    }
+
+    private void notifyMembers(ChatMessage savedMessage, Room room, ChatMessageResponse response, UUID senderId) {
+         List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId())
+            .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(senderId)).toList();
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("type", "NEW_MESSAGE_EVENT");
+        event.put("messageId", savedMessage.getId().getChatMessageId().toString());
+        event.put("roomId", room.getRoomId().toString());
+        event.put("content", savedMessage.getContent());
+        event.put("senderId", savedMessage.getSenderId().toString());
+        
+        try {
+            redisTemplate.convertAndSend("chat_events", event);
+        } catch (Exception redisEx) {
+            log.error("Redis publish failed", redisEx);
+        }
+
+        for (UUID uId : memberIds) {
+            try {
+                messagingTemplate.convertAndSendToUser(uId.toString(), "/queue/notifications", response);
+            } catch (Exception wsEx) { log.warn("Failed to send private WS notification to user {}", uId); }
+
+            try {
+                Map<String, String> dataPayload = new HashMap<>();
+                dataPayload.put("screen", "TabApp");
+                dataPayload.put("stack", "ChatStack");
+                dataPayload.put("screenName", "GroupChatScreen");
+                dataPayload.put("roomId", room.getRoomId().toString());
+                dataPayload.put("initialFocusMessageId", response.getChatMessageId().toString());
+                dataPayload.put("senderId", savedMessage.getSenderId().toString());
+                
+                // Group Chat & Private Chat content handling for notification
+                // Note: For notifications, we send Ciphertext. Client decrypts it locally if possible, or shows "You have a new message".
+                dataPayload.put("isEncrypted", "true"); 
+                dataPayload.put("content", "🔒 Tin nhắn mới"); // Don't leak content in Push payload
+                
+                if (savedMessage.getSenderEphemeralKey() != null) {
+                    // Private E2EE metadata
+                    dataPayload.put("senderEphemeralKey", savedMessage.getSenderEphemeralKey());
+                    dataPayload.put("initializationVector", savedMessage.getInitializationVector());
+                }
+                
+                String payloadJson = gson.toJson(dataPayload);
+                NotificationRequest nreq = NotificationRequest.builder()
+                    .userId(uId)
+                    .title("Tin nhắn mới")
+                    .content("Bạn có tin nhắn mới")
+                    .type("CHAT_MESSAGE")
+                    .payload(payloadJson)
+                    .build();
+                notificationService.createPushNotification(nreq);
+            } catch (Exception pushEx) { log.error("Failed to create push notification", pushEx); }
+        }
     }
 
     @Override
     public Page<ChatMessageResponse> getMessagesByRoom(UUID roomId, Pageable pageable) {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId).orElse(null);
         RoomPurpose purpose = room != null ? room.getPurpose() : RoomPurpose.GROUP_CHAT;
-        
         return chatMessageRepository.findByRoomIdAndIsDeletedFalseOrderById_SentAtDesc(roomId, pageable)
                 .map(entity -> mapToResponse(entity, purpose));
     }
@@ -283,6 +358,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
             response.setPurpose(room.getPurpose());
+            
+            if (room.getPurpose() != RoomPurpose.PRIVATE_CHAT) {
+                triggerGroupAsyncTranslation(message, room);
+            }
+
             return response;
         } catch (AppException e) { throw e; }
         catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
@@ -366,42 +446,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Override
     @Transactional
     public ChatMessageResponse saveTranslation(UUID messageId, String targetLang, String translatedText) {
-        try {
-            ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
-                    .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
-
-            Map<String, String> translations = message.getTranslations();
-            if (translations == null) {
-                translations = new HashMap<>();
-            }
-            
-            translations.put(targetLang, translatedText);
-            message.setTranslations(translations);
-            
-            ChatMessage saved = chatMessageRepository.save(message);
-
-            MessageTranslation mt = MessageTranslation.builder()
-                    .chatMessageId(messageId)
-                    .targetLang(targetLang)
-                    .translatedText(translatedText)
-                    .build();
-            messageTranslationRepository.save(mt);
-
-            Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
-                    .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-
-            ChatMessageResponse response = mapToResponse(saved, room.getPurpose());
-            
-            try {
-                messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), response);
-            } catch (Exception e) {
-                 log.error("Failed to broadcast translation update", e);
-            }
-
-            return response;
-        } catch (Exception e) {
-            log.error("Error saving translation for message {}", messageId, e);
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        return null; 
     } 
 }

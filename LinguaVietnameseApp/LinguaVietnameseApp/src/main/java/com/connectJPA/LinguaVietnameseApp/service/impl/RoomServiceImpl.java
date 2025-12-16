@@ -27,6 +27,7 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
+import com.connectJPA.LinguaVietnameseApp.utils.AESUtils;
 import com.connectJPA.LinguaVietnameseApp.utils.UserStatusUtils;
 
 import lombok.RequiredArgsConstructor;
@@ -57,6 +58,7 @@ public class RoomServiceImpl implements RoomService {
     private final UserMapper userMapper;
     private final ChatMessageRepository chatMessageRepository;
     private final NotificationService notificationService;
+    private final AESUtils aesUtils;
 
     private UUID getCurrentUserUUID() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -66,7 +68,6 @@ public class RoomServiceImpl implements RoomService {
         try {
             return UUID.fromString(auth.getName());
         } catch (IllegalArgumentException e) {
-            log.warn("Current Principal name is not a valid UUID: {}", auth.getName());
             return null;
         }
     }
@@ -75,6 +76,8 @@ public class RoomServiceImpl implements RoomService {
         RoomResponse response = roomMapper.toResponse(room);
         long memberCount = roomRepository.countMembersByRoomId(room.getRoomId());
         response.setMemberCount((int) memberCount);
+        
+        response.setSecretKey(room.getSecretKey());
 
         List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId());
 
@@ -105,13 +108,12 @@ public class RoomServiceImpl implements RoomService {
                     }
                 }
             } catch (Exception e) {
-                log.warn("Cannot determine partner status in toRoomResponseWithMembers: {}", e.getMessage());
+                log.warn("Partner status error", e);
             }
         }
 
         return response;
     }
-
 
     @Override
     @Transactional(readOnly = true)
@@ -122,6 +124,7 @@ public class RoomServiceImpl implements RoomService {
             RoomResponse response = roomMapper.toResponse(room);
             long memberCount = roomRepository.countMembersByRoomId(room.getRoomId());
             response.setMemberCount((int) memberCount);
+            response.setSecretKey(room.getSecretKey());
 
             if (room.getRoomType() == RoomType.PRIVATE) {
                 List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId());
@@ -138,10 +141,6 @@ public class RoomServiceImpl implements RoomService {
                 } else {
                     response.setRoomName("Unknown User");
                 }
-            } else if (room.getPurpose() == RoomPurpose.COURSE_CHAT) {
-                response.setRoomName(room.getRoomName());
-                userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
-                        .ifPresent(creator -> response.setCreatorAvatarUrl(creator.getAvatarUrl()));
             } else {
                 if (response.getRoomName() == null) response.setRoomName("Group Chat");
                 userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
@@ -152,7 +151,6 @@ public class RoomServiceImpl implements RoomService {
                     .ifPresent(msg -> {
                         response.setLastMessage(msg.getContent());
                         response.setLastMessageTime(msg.getId().getSentAt());
-                        response.setLastMessageTime(msg.getId().getSentAt());
                         response.setLastMessageSenderId(msg.getSenderId().toString());
                         response.setLastMessageSenderEphemeralKey(msg.getSenderEphemeralKey());
                         response.setLastMessageInitializationVector(msg.getInitializationVector());
@@ -160,7 +158,6 @@ public class RoomServiceImpl implements RoomService {
                         response.setLastMessageSelfEphemeralKey(msg.getSelfEphemeralKey());
                         response.setLastMessageSelfInitializationVector(msg.getSelfInitializationVector());
                     });
-                    
 
             return response;
         });
@@ -170,27 +167,17 @@ public class RoomServiceImpl implements RoomService {
     @Transactional(readOnly = true)
     public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
         UUID currentUserId = getCurrentUserUUID();
-        
-        Page<Room> rooms = roomRepository.findAllPublicRoomsWithPriority(
-                roomName, 
-                creatorId, 
-                purpose, 
-                roomType, 
-                currentUserId,
-                pageable
-        );
+        Page<Room> rooms = roomRepository.findAllPublicRoomsWithPriority(roomName, creatorId, purpose, roomType, currentUserId, pageable);
 
         return rooms.map(room -> {
             RoomResponse response = roomMapper.toResponse(room);
             long count = roomRepository.countMembersByRoomId(room.getRoomId());
             response.setMemberCount((int) count);
-
             userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
                     .ifPresent(user -> {
                         response.setCreatorName(StringUtils.hasText(user.getNickname()) ? user.getNickname() : user.getFullname());
                         response.setCreatorAvatarUrl(user.getAvatarUrl());
                     });
-            
             return response;
         });
     }
@@ -211,16 +198,15 @@ public class RoomServiceImpl implements RoomService {
                     .purpose(RoomPurpose.COURSE_CHAT)
                     .roomType(RoomType.PUBLIC)
                     .roomCode(generateUniqueRoomCode())
+                    .secretKey(aesUtils.generateRoomKey()) // Generates Key
                     .isDeleted(false)
                     .createdAt(OffsetDateTime.now())
                     .updatedAt(OffsetDateTime.now())
                     .build();
             room = roomRepository.save(room);
-            log.info("Created Course Room for Course ID: {}", courseId);
         }
 
         boolean isCreatorInRoom = roomMemberRepository.existsById_RoomIdAndId_UserIdAndIsDeletedFalse(room.getRoomId(), creatorId);
-        
         if (!isCreatorInRoom) {
             RoomMember member = RoomMember.builder()
                     .id(new RoomMemberId(room.getRoomId(), creatorId))
@@ -231,7 +217,6 @@ public class RoomServiceImpl implements RoomService {
                     .joinedAt(OffsetDateTime.now())
                     .build();
             roomMemberRepository.save(member);
-            log.info("Ensured Creator {} is added to Course Room {}", creatorId, room.getRoomId());
         }
     }
 
@@ -254,7 +239,6 @@ public class RoomServiceImpl implements RoomService {
                     .joinedAt(OffsetDateTime.now())
                     .build();
             roomMemberRepository.save(member);
-            log.info("Added User {} to Course Room {}", userId, room.getRoomId());
         }
     }
 
@@ -267,6 +251,11 @@ public class RoomServiceImpl implements RoomService {
         Room room = roomMapper.toEntity(request);
         room.setRoomCode(generateUniqueRoomCode());
         room.setUpdatedAt(OffsetDateTime.now());
+        
+        if (room.getRoomType() != RoomType.PRIVATE) {
+            room.setSecretKey(aesUtils.generateRoomKey()); // Generates Key
+        }
+        
         room = roomRepository.save(room);
 
         RoomMember creatorMember = RoomMember.builder()
@@ -290,13 +279,8 @@ public class RoomServiceImpl implements RoomService {
 
             if (!memberIdsToAdd.isEmpty()) {
                 List<User> invitedUsers = userRepository.findAllById(memberIdsToAdd);
-
                 for (User user : invitedUsers) {
-                    if (initialMembers.size() >= room.getMaxMembers()) {
-                        log.warn("Room {} reached max members, stopping addition.", room.getRoomId());
-                        break;
-                    }
-
+                    if (initialMembers.size() >= room.getMaxMembers()) break;
                     RoomMember member = RoomMember.builder()
                             .id(new RoomMemberId(room.getRoomId(), user.getUserId()))
                             .room(room)
@@ -311,25 +295,20 @@ public class RoomServiceImpl implements RoomService {
                 }
             }
         }
-
         return toRoomResponseWithMembers(room);
     }
 
     @Override
     @Transactional
     public RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2) {
-        if (userId1.equals(userId2)) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        }
+        if (userId1.equals(userId2)) throw new AppException(ErrorCode.INVALID_KEY);
 
-        // Changed logic to handle multiple existing private rooms
         List<Room> existingRooms = roomRepository.findPrivateRoomsBetweenUsers(userId1, userId2);
         
         if (!existingRooms.isEmpty()) {
             Room selectedRoom = existingRooms.get(0);
             OffsetDateTime maxTime = selectedRoom.getUpdatedAt();
 
-            // Check for room with the nearest message
             if (existingRooms.size() > 1) {
                 for (Room r : existingRooms) {
                      Optional<ChatMessage> lastMsg = chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(r.getRoomId());
@@ -340,7 +319,6 @@ public class RoomServiceImpl implements RoomService {
                              selectedRoom = r;
                          }
                      } else {
-                         // Fallback to updatedAt if no messages
                          if (r.getUpdatedAt() != null && (maxTime == null || r.getUpdatedAt().isAfter(maxTime))) {
                              maxTime = r.getUpdatedAt();
                              selectedRoom = r;
@@ -348,7 +326,6 @@ public class RoomServiceImpl implements RoomService {
                      }
                 }
             }
-
             restoreMemberIfDeleted(selectedRoom, userId1);
             restoreMemberIfDeleted(selectedRoom, userId2);
             return toRoomResponseWithMembers(selectedRoom);
@@ -439,23 +416,19 @@ public class RoomServiceImpl implements RoomService {
 
         if (Boolean.TRUE.equals(currentMember.getIsAdmin())) {
             RoomMember newAdmin = null;
-
             if (targetAdminId != null) {
                 newAdmin = remainingMembers.stream()
                         .filter(m -> m.getId().getUserId().equals(targetAdminId))
                         .findFirst()
                         .orElse(null);
             }
-
             if (newAdmin == null) {
                 Collections.shuffle(remainingMembers);
                 newAdmin = remainingMembers.get(0);
             }
-
             newAdmin.setIsAdmin(true);
             newAdmin.setRole(RoomRole.ADMIN);
             roomMemberRepository.save(newAdmin);
-
             room.setCreatorId(newAdmin.getId().getUserId());
             roomRepository.save(room);
         }
@@ -500,7 +473,6 @@ public class RoomServiceImpl implements RoomService {
                     .joinedAt(OffsetDateTime.now())
                     .build();
             roomMemberRepository.save(member);
-
             sendInviteNotification(user.getUserId(), room);
         }
     }
@@ -524,7 +496,6 @@ public class RoomServiceImpl implements RoomService {
     @Transactional(readOnly = true)
     public List<MemberResponse> getRoomMembers(UUID roomId) {
         List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId);
-
         return members.stream().map(m -> {
             User u = m.getUser();
             String displayName = u.getFullname();
@@ -549,11 +520,8 @@ public class RoomServiceImpl implements RoomService {
     @Transactional(readOnly = true)
     public List<RoomResponse> getAiChatHistory(UUID userId) {
         try {
-            if (userId == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+            if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
             List<Room> rooms = roomRepository.findByCreatorIdAndPurposeAndIsDeletedFalse(userId, RoomPurpose.AI_CHAT);
-
             return rooms.stream()
                     .sorted(Comparator.comparing(Room::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                     .map(room -> {
@@ -571,35 +539,25 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public RoomResponse findOrCreateAiChatRoom(UUID userId) {
-        if (userId == null) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        }
+        if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
 
         List<Room> aiRooms = roomRepository.findByCreatorIdAndPurposeAndIsDeletedFalse(userId, RoomPurpose.AI_CHAT);
         aiRooms.sort(Comparator.comparing(Room::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
 
         if (!aiRooms.isEmpty()) {
             Room latestRoom = aiRooms.get(0);
-
             Optional<ChatMessage> lastMessageOpt = chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(latestRoom.getRoomId());
 
             if (lastMessageOpt.isPresent()) {
                 ChatMessage lastMessage = lastMessageOpt.get();
                 long hoursSinceLastMessage = ChronoUnit.HOURS.between(lastMessage.getId().getSentAt(), OffsetDateTime.now());
-
-                if (hoursSinceLastMessage < 8) {
-                    log.info("Reusing AI room {} (Last active {} hours ago)", latestRoom.getRoomId(), hoursSinceLastMessage);
-                    return toRoomResponseWithMembers(latestRoom); 
-                }
+                if (hoursSinceLastMessage < 8) return toRoomResponseWithMembers(latestRoom); 
             } else {
                  long hoursSinceCreation = ChronoUnit.HOURS.between(latestRoom.getCreatedAt(), OffsetDateTime.now());
-                 if (hoursSinceCreation < 8) {
-                     return toRoomResponseWithMembers(latestRoom);
-                 }
+                 if (hoursSinceCreation < 8) return toRoomResponseWithMembers(latestRoom);
             }
         }
 
-        log.info("Creating new AI room for user {}", userId);
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -617,12 +575,9 @@ public class RoomServiceImpl implements RoomService {
     @Override
     public RoomResponse getRoomById(UUID id) {
         try {
-            if (id == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+            if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-
             return toRoomResponseWithMembers(room);
         } catch (Exception e) {
             log.error("Error while fetching room by ID {}: {}", id, e.getMessage());
@@ -646,21 +601,15 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional(readOnly = true)
     public RoomResponse getCourseRoomByCourseId(UUID courseId) {
-        if (courseId == null) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        }
-
+        if (courseId == null) throw new AppException(ErrorCode.INVALID_KEY);
         Room room = roomRepository.findByCourseIdAndIsDeletedFalse(courseId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-
         RoomResponse response = toRoomResponseWithMembers(room);
-        
         userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
                 .ifPresent(creator -> {
                     response.setCreatorName(StringUtils.hasText(creator.getNickname()) ? creator.getNickname() : creator.getFullname());
                     response.setCreatorAvatarUrl(creator.getAvatarUrl());
                 });
-
         return response;
     }
 
@@ -715,9 +664,7 @@ public class RoomServiceImpl implements RoomService {
     @Transactional
     public RoomResponse updateRoom(UUID id, RoomRequest request) {
         try {
-            if (id == null || request == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+            if (id == null || request == null) throw new AppException(ErrorCode.INVALID_KEY);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -741,9 +688,7 @@ public class RoomServiceImpl implements RoomService {
     @Transactional
     public void deleteRoom(UUID id) {
         try {
-            if (id == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+            if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -785,9 +730,7 @@ public class RoomServiceImpl implements RoomService {
     @Transactional
     @Override
     public RoomResponse findOrCreateQuizRoom(UUID userId) {
-        if (userId == null) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        }
+        if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -808,7 +751,6 @@ public class RoomServiceImpl implements RoomService {
                     .roomType(RoomType.PUBLIC)
                     .maxMembers(10)
                     .build();
-
             return this.createRoom(newRoomRequest);
         }
 
