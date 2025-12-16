@@ -137,8 +137,6 @@ services:
         value: "0.0.0.0"
 
     healthCheckPath: /actuator/health/render
-    initialDelaySeconds: 180
-    healthCheckTimeout: 600
     numInstances: 1
 
   # ==========================================

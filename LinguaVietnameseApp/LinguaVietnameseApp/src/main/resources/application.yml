@@ -116,7 +116,7 @@ google:
 
 grpc:
   server:
-    port: 9091
+    port: 90919091
     address: 0.0.0.0
   client:
     learning-service:
@@ -135,6 +135,9 @@ cloudinary:
   api_secret: ${PROD_CLOUDINARY_API_SECRET}
 
 management:
+  health:
+    probes:
+      enabled: true
   endpoints:
     web:
       base-path: /actuator

@@ -62,7 +62,9 @@ public class SecurityConfig {
                     "/api/v1/certificates",
                     "/ws/**",
                     "/actuator/**",
-                    "/actuator/health/**"
+                    "/actuator/health/**",
+                    "/api/v1/health",
+                    "/actuator/health"
                 ).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/users").permitAll() 
                 .requestMatchers(HttpMethod.GET, "/api/v1/users/*/profile").permitAll()
