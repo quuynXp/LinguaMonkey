@@ -16,8 +16,6 @@ import mmkvStorage from '../utils/storage';
 const AI_BOT_ID = "00000000-0000-0000-0000-000000000000";
 const CACHE_PREFIX_MSGS = 'room_msgs_';
 
-// --- TYPES ---
-
 type ExtendedMessage = Message & {
   selfContent?: string;
   selfEphemeralKey?: string;
@@ -117,17 +115,13 @@ interface UseChatState {
   decryptNewMessages: (roomId: string, newMessages: Message[]) => Promise<void>;
   _processDecryptionQueue: (roomId: string, messages: Message[]) => void;
   updateDecryptedContent: (roomId: string, messageId: string, decryptedContent: string) => void;
-
-  // NEW: Merges translation updates from server into existing messages
   mergeTranslationUpdate: (roomId: string, messageId: string, translations: Record<string, string>) => void;
 }
-
-// --- HELPER FUNCTIONS ---
 
 const normalizeLexiconText = (text: string) => {
   if (!text) return "";
   return text
-    .replace(/[^\w\s]/g, '')
+    .replace(/[^\w\s]/g, "")
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
@@ -153,12 +147,12 @@ const isSameMessage = (localMsg: Message, serverMsg: Message): boolean => {
       if (localMsg.messageType === serverMsg.messageType) {
         if (localMsg.mediaUrl && localMsg.mediaUrl === serverMsg.mediaUrl) return true;
         if (localMsg.content === serverMsg.content) return true;
+        if (localMsg.messageType === 'TEXT') return true;
       }
     }
   }
   return false;
 };
-
 
 const normalizeMessage = (msg: any): Message => {
   if (!msg) {
@@ -230,7 +224,6 @@ const upsertMessageList = (currentList: Message[], newMessage: Message): { list:
       ...newMessage,
       decryptedContent: newMessage.decryptedContent || existing.decryptedContent,
       isLocal: false,
-      // Merge translations if update comes later
       translationsMap: { ...existing.translationsMap, ...newMessage.translationsMap }
     };
     return { list, isNew: false };
@@ -376,9 +369,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           }
         }
 
-        if (isGroupStrategy && msg.translationsMap) {
-        }
-
         return { id: msg.id.chatMessageId, text };
       } catch (e) {
         return { id: msg.id.chatMessageId, text: '!! Decryption Failed' };
@@ -387,7 +377,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     set(state => {
       const roomMsgs = state.messagesByRoom[roomId] || [];
-      const newRoomMsgs = roomMsgs.map(m => { /* update logic */ return m; });
+      const decryptedMap = new Map();
+      results.forEach(r => decryptedMap.set(r.id, r.text));
+
+      const newRoomMsgs = roomMsgs.map(m => {
+        if (decryptedMap.has(m.id.chatMessageId)) {
+          return { ...m, decryptedContent: decryptedMap.get(m.id.chatMessageId) };
+        }
+        return m;
+      });
 
       if (newRoomMsgs.length > 0) {
         mmkvStorage.setItem(CACHE_PREFIX_MSGS + roomId, JSON.stringify(newRoomMsgs.slice(0, 50)));
@@ -413,7 +411,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         const cachedMsgs = JSON.parse(cachedMsgsJson);
         set(state => ({
           messagesByRoom: { ...state.messagesByRoom, [room.roomId]: cachedMsgs },
-          loadingByRoom: { ...state.loadingByRoom, [room.roomId]: false } // Show content immediately
+          loadingByRoom: { ...state.loadingByRoom, [room.roomId]: false }
         }));
 
         get().decryptNewMessages(room.roomId, cachedMsgs);
@@ -434,24 +432,31 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
 
     const lexicon = get().lexiconMaster;
+    if (lexicon.size === 0) {
+      await get().fetchLexiconMaster();
+    }
+
+    // Normalized input array for tokenization
     const normalizedInput = normalizeLexiconText(text);
+    if (!normalizedInput) return;
+
     const words = normalizedInput.split(' ').filter(w => w);
 
     let translatedText = '';
     let matchedWordsCount = 0;
 
-    for (let i = 0; i < words.length; i++) {
+    for (let i = 0; i < words.length;) {
       let bestMatch = '';
       let bestTranslation = '';
       let bestJ = 0;
 
-      for (let j = Math.min(words.length - i, 6); j >= 1; j--) {
-        let phrase = words.slice(i, i + j).join(' ');
-        let translations = lexicon.get(phrase);
-        if (!translations && j === 1) {
-          const cleanWord = phrase.replace(/(.)\1+/g, '$1');
-          translations = lexicon.get(cleanWord);
-        }
+      // Greedy Longest Prefix Match (max window 6 words)
+      for (let j = Math.min(words.length - i, 8); j >= 1; j--) {
+        const phrase = words.slice(i, i + j).join(' ');
+        const phraseKey = normalizeLexiconText(phrase); // Normalize key again to be safe
+
+        let translations = lexicon.get(phraseKey);
+
         if (translations && translations[targetLang]) {
           bestMatch = phrase;
           bestTranslation = translations[targetLang];
@@ -462,17 +467,20 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
       if (bestJ > 0) {
         translatedText += bestTranslation + ' ';
-        i += bestJ - 1;
+        i += bestJ;
         matchedWordsCount += bestJ;
       } else {
         translatedText += words[i] + ' ';
+        i++;
       }
     }
 
     const finalLocalTranslation = translatedText.trim();
     const totalWords = words.length;
     const matchRatio = totalWords > 0 ? (matchedWordsCount / totalWords) : 0;
-    const isClientGoodEnough = matchRatio >= 0.7 || (totalWords <= 5 && matchedWordsCount >= 1);
+
+    // Strict coverage check for simple sentences
+    const isClientGoodEnough = matchRatio >= 0.8 || (totalWords <= 5 && matchedWordsCount >= totalWords);
 
     if (isClientGoodEnough && finalLocalTranslation.length > 0) {
       set(state => ({
@@ -481,9 +489,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           [messageId]: { ...(state.eagerTranslations[messageId] || {}), [targetLang]: finalLocalTranslation }
         }
       }));
-      return;
+    } else {
+      console.log(`Client translation miss (${Math.round(matchRatio * 100)}%). Waiting for server update via STOMP.`);
     }
-
   },
 
   fetchLexiconMaster: async () => {
@@ -492,7 +500,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       const res = await instance.get<AppApiResponse<LexiconEntry[]>>('/api/py/lexicon/top', { params: { limit: 5000 } });
       const lexiconData = res.data.result || [];
       const newLexicon = new Map<string, Record<string, string>>();
+
       lexiconData.forEach(entry => {
+        // Critical: Normalize keys EXACTLY like we normalize input
         const key = normalizeLexiconText(entry.original_text);
         const existing = newLexicon.get(key);
         if (existing) {
@@ -588,7 +598,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
               return { messagesByRoom: { ...state.messagesByRoom, [roomId]: list } };
             });
 
-            if (newMsg.senderEphemeralKey) {
+            if (newMsg.senderEphemeralKey || newMsg.senderId === useUserStore.getState().user?.userId) {
               get().decryptNewMessages(roomId, [newMsg]);
             } else {
               const { chatSettings, nativeLanguage } = useAppStore.getState();
@@ -757,6 +767,14 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       aiChatHistory: aiFormatMessages,
       loadingByRoom: { ...get().loadingByRoom, [roomId]: false },
     });
+  },
+
+  sendAiPrompt: (content) => {
+    const { activeAiRoomId, aiWsConnected } = get();
+    if (!activeAiRoomId || !aiWsConnected) return;
+    set((state) => ({ aiChatHistory: [...state.aiChatHistory, { id: Date.now().toString(), role: 'user', content, roomId: activeAiRoomId }], isAiStreaming: true }));
+    const history = get().aiChatHistory.map((m) => ({ role: m.role, content: m.content }));
+    pythonAiWsService.sendMessage({ type: 'chat_request', prompt: content, history: history.slice(0, -1), roomId: activeAiRoomId, messageType: 'TEXT' });
   },
 
   sendAiWelcomeMessage: (localizedText: string) => {
@@ -955,14 +973,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       set((s) => ({ pendingPublishes: [...s.pendingPublishes, { destination: dest, payload: payload }] }));
       get().initStompClient();
     }
-  },
-
-  sendAiPrompt: (content) => {
-    const { activeAiRoomId, aiWsConnected } = get();
-    if (!activeAiRoomId || !aiWsConnected) return;
-    set((state) => ({ aiChatHistory: [...state.aiChatHistory, { id: Date.now().toString(), role: 'user', content, roomId: activeAiRoomId }], isAiStreaming: true }));
-    const history = get().aiChatHistory.map((m) => ({ role: m.role, content: m.content }));
-    pythonAiWsService.sendMessage({ type: 'chat_request', prompt: content, history: history.slice(0, -1), roomId: activeAiRoomId, messageType: 'TEXT' });
   },
 
   connectVideoSubtitles: (roomId, targetLang) => {

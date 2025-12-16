@@ -39,6 +39,9 @@ const STORAGE_KEYS = {
     ROOM_KEY_PREFIX: 'e2ee_room_key_',
 };
 
+// FIX: AES-CBC requires 16 bytes IV (AES-GCM used 12)
+const IV_LENGTH_BYTES = 16;
+
 class E2EEService {
     private readonly MIN_PREKEYS_TO_UPLOAD = 50;
 
@@ -47,7 +50,6 @@ class E2EEService {
     private signedPreKeyPair?: CryptoKeyPair;
     private userId?: string;
 
-    // Cache Room Key (Shared Secret) for Group Chats
     private roomKeys: Map<string, string> = new Map();
     private sessionKeyCache: Map<string, string> = new Map();
     private preKeyIdCache: Map<string, number> = new Map();
@@ -73,10 +75,7 @@ class E2EEService {
     }
 
     async getRoomKey(roomId: string): Promise<string | null> {
-        // 1. Check Memory
         if (this.roomKeys.has(roomId)) return this.roomKeys.get(roomId)!;
-
-        // 2. Check Persistent (MMKV)
         const cached = mmkvStorage.getString(STORAGE_KEYS.ROOM_KEY_PREFIX + roomId);
         if (cached) {
             this.roomKeys.set(roomId, cached);
@@ -89,16 +88,22 @@ class E2EEService {
         const key = await this.getRoomKey(roomId);
         if (!key) throw new Error(`Missing key for room ${roomId}`);
 
+        // encryptAES returns [IV_B64, Ciphertext_B64]
         const [iv, cipher] = await encryptAES(content, key);
 
-        // Format: IV(12 bytes) + Ciphertext
+        // Format: IV(16 bytes) + Ciphertext
         const ivBuf = base64ToArrayBuffer(iv);
         const cipherBuf = base64ToArrayBuffer(cipher);
+
+        // Safety check
+        if (ivBuf.byteLength !== IV_LENGTH_BYTES) {
+            console.warn(`[E2EE] Warning: Generated IV length is ${ivBuf.byteLength}, expected ${IV_LENGTH_BYTES}`);
+        }
+
         const combined = new Uint8Array(ivBuf.byteLength + cipherBuf.byteLength);
         combined.set(new Uint8Array(ivBuf), 0);
         combined.set(new Uint8Array(cipherBuf), ivBuf.byteLength);
 
-        // Fix: Explicitly access .buffer to pass ArrayBuffer to arrayBufferToBase64
         return this.arrayBufferToBase64(combined.buffer);
     }
 
@@ -108,11 +113,11 @@ class E2EEService {
 
         try {
             const combined = base64ToArrayBuffer(combinedBase64);
-            const ivLen = 12;
-            if (combined.byteLength < ivLen) return "Error: Data too short";
 
-            const ivBuf = combined.slice(0, ivLen);
-            const cipherBuf = combined.slice(ivLen);
+            if (combined.byteLength < IV_LENGTH_BYTES) return "Error: Data too short";
+
+            const ivBuf = combined.slice(0, IV_LENGTH_BYTES);
+            const cipherBuf = combined.slice(IV_LENGTH_BYTES);
 
             const ivBase64 = this.arrayBufferToBase64(ivBuf);
             const cipherBase64 = this.arrayBufferToBase64(cipherBuf);
@@ -124,7 +129,6 @@ class E2EEService {
         }
     }
 
-    // Helper for array buffer to base64
     private arrayBufferToBase64(buffer: ArrayBuffer): string {
         let binary = '';
         const bytes = new Uint8Array(buffer);
@@ -136,7 +140,7 @@ class E2EEService {
     }
 
     // --- PRIVATE CHAT LOGIC (Signal / Double Ratchet) ---
-
+    // (Giữ nguyên logic Private Chat như cũ vì nó dùng Session Key riêng)
     private async saveKeysToStorage() {
         if (!this.identityKeyPair || !this.signingKeyPair) return;
         mmkvStorage.setItem(STORAGE_KEYS.IDENTITY_KEY, JSON.stringify(this.identityKeyPair));
@@ -160,12 +164,6 @@ class E2EEService {
             }
         } catch (e) { console.error("Load Keys Failed", e); }
         return false;
-    }
-
-    private async clearLocalKeys(): Promise<void> {
-        await mmkvStorage.removeItem(STORAGE_KEYS.IDENTITY_KEY);
-        await mmkvStorage.removeItem(STORAGE_KEYS.SIGNING_KEY);
-        await mmkvStorage.removeItem(STORAGE_KEYS.SIGNED_PRE_KEY);
     }
 
     async generateKeyBundleAndUpload(userId: string): Promise<void> {

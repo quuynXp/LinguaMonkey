@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -6,7 +6,6 @@ import { useTranslation } from "react-i18next";
 import { LessonQuestionResponse } from "../../types/dto";
 import { QuestionType } from "../../types/enums";
 import { getDirectMediaUrl } from "../../utils/mediaUtils";
-import MediaNotFound from "../common/MediaNotFound";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -14,27 +13,20 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
     const { t } = useTranslation();
     const [imgError, setImgError] = useState(false);
 
-    // Xử lý URL an toàn
     const rawMediaUrl = getDirectMediaUrl(question.mediaUrl);
-    // Nếu URL rỗng thì coi như không có media
     const mediaUrl = rawMediaUrl || "";
 
     const isVideoOrAudio = mediaUrl && (
         mediaUrl.endsWith('.mp4') ||
         mediaUrl.endsWith('.mp3') ||
         mediaUrl.includes('export=view') ||
-        mediaUrl.includes('export=download') // Google Drive stream link
+        mediaUrl.includes('export=download')
     ) && (question.questionType === QuestionType.VIDEO || question.questionType === QuestionType.AUDIO);
 
     const isImage = mediaUrl && !isVideoOrAudio;
 
-    // Cấu hình Player cho Video dài/Streaming
     const player = useVideoPlayer(isVideoOrAudio ? mediaUrl : "", (player) => {
         player.loop = false;
-        // Video học tập dài không nên auto-play để tiết kiệm data, trừ khi user bấm
-        // player.play(); 
-
-        // Cho phép nghe tiếng khi tắt màn hình (quan trọng cho bài giảng dài)
         player.staysActiveInBackground = true;
     });
 
@@ -48,22 +40,20 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
                         player={player}
                         style={styles.videoView}
                         contentFit="contain"
-                        allowsFullscreen={true}        // Cho phép phóng to
-                        allowsPictureInPicture={true}  // Cho phép thu nhỏ xem khi làm việc khác
-                        nativeControls={true}          // Hiển thị thanh tua (seek), volume chuẩn của máy
+                        allowsFullscreen={true}
+                        allowsPictureInPicture={true}
+                        nativeControls={true}
                     />
-
-                    {/* Nút Replay chỉ hiện bổ trợ, vì native controls đã có nút tua lại */}
                     <TouchableOpacity style={styles.audioButton} onPress={() => player.replay()}>
                         <Icon name="replay" size={20} color="#FFF" />
-                        <Text style={styles.audioButtonText}>{t("action.replay") || "Phát lại"}</Text>
+                        <Text style={styles.audioButtonText}>{t("action.replay") || "Replay"}</Text>
                     </TouchableOpacity>
                 </View>
             );
         }
 
         if (isImage) {
-            if (imgError) return <MediaNotFound type="Image" />;
+            if (imgError) return <View style={[styles.contextImage, styles.center]}><Text>Image unavailable</Text></View>;
             return (
                 <Image
                     source={{ uri: mediaUrl }}
@@ -109,7 +99,7 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
             )}
 
             {question.questionType === QuestionType.SPEAKING && (
-                <Text style={styles.questionText}>{t("quiz.readAloud") || "Đọc to câu trên"}</Text>
+                <Text style={styles.questionText}>{t("quiz.readAloud") || "Read aloud"}</Text>
             )}
         </View>
     );
@@ -121,6 +111,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         width: '100%'
     },
+    center: { justifyContent: 'center', alignItems: 'center' },
     questionText: {
         fontSize: 18,
         fontWeight: '600',
@@ -134,19 +125,19 @@ const styles = StyleSheet.create({
         width: '100%',
         alignItems: 'center',
         marginBottom: 16,
-        backgroundColor: '#000', // Nền đen cho video trông chuyên nghiệp hơn
+        backgroundColor: '#000',
         borderRadius: 12,
         overflow: 'hidden'
     },
     videoView: {
         width: '100%',
-        aspectRatio: 16 / 9, // Tỉ lệ chuẩn YouTube/Bài giảng
-        height: undefined,   // Để aspectRatio tự tính chiều cao
+        aspectRatio: 16 / 9,
+        height: undefined,
     },
     audioButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(79, 70, 229, 0.9)', // Màu trong suốt nhẹ
+        backgroundColor: 'rgba(79, 70, 229, 0.9)',
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 20,
@@ -162,7 +153,7 @@ const styles = StyleSheet.create({
     },
     contextImage: {
         width: '100%',
-        height: 220, // Tăng chiều cao ảnh lên chút
+        height: 220,
         borderRadius: 12,
         backgroundColor: '#F3F4F6',
         marginBottom: 12

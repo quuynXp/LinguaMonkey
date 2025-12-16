@@ -101,7 +101,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Transactional
     @Caching(evict = {
         @CacheEvict(value = "room_messages", allEntries = true),
-        @CacheEvict(value = "user_stats", key = "#request.senderId")
+        @CacheEvict(value = "user_statistics", key = "#request.senderId")
     })
     public ChatMessageResponse saveMessage(UUID roomId, ChatMessageRequest request) {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
@@ -180,19 +180,33 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         if (message.getMessageType() != MessageType.TEXT) return;
         
         String roomKey = room.getSecretKey();
-        if (roomKey == null || roomKey.isEmpty()) return;
+        if (roomKey == null || roomKey.isEmpty()) {
+            log.warn("Translation Skipped: No Room Key for Room {}", room.getRoomId());
+            return;
+        }
 
         CompletableFuture.runAsync(() -> {
             try {
                 String decryptedContent = aesUtils.decrypt(message.getContent(), roomKey);
-                if (decryptedContent == null) return;
+                
+                if (decryptedContent == null || decryptedContent.isEmpty()) {
+                    log.error("Async Translate: Decryption FAILED for message {}. Ciphertext or Key invalid.", message.getId().getChatMessageId());
+                    return;
+                }
+                
+                if (decryptedContent.contains("ciphertext")) {
+                      log.warn("Async Translate: Decrypted content looks like JSON/Ciphertext wrapper. Skipping.");
+                      return;
+                }
+
+                log.info("Async Translate: Decryption success. Length: {}", decryptedContent.length());
 
                 List<RoomMember> members = roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(room.getRoomId());
                 Set<String> targetLangs = members.stream()
                     .map(m -> userRepository.findById(m.getId().getUserId()).orElse(null))
                     .filter(Objects::nonNull)
                     .map(User::getNativeLanguageCode)
-                    .filter(l -> l != null && !l.isEmpty() && !l.equals("vi"))
+                    .filter(l -> l != null && !l.isEmpty()) 
                     .collect(Collectors.toSet());
 
                 if (targetLangs.isEmpty()) return;
@@ -201,7 +215,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 if (existingTranslations != null) {
                     targetLangs.removeIf(existingTranslations::containsKey);
                 }
-
                 if (targetLangs.isEmpty()) return;
 
                 Map<String, String> newTranslations = new HashMap<>();
@@ -214,6 +227,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                                 synchronized (newTranslations) {
                                     newTranslations.put(lang, res.getTranslatedText());
                                 }
+                            } else {
+                                log.warn("gRPC Translation failed for lang: {}", lang);
                             }
                         }));
                 }
@@ -240,10 +255,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                         updateEvent.put("translations", current);
                         
                         messagingTemplate.convertAndSend("/topic/room/" + msg.getRoomId(), updateEvent);
+                        log.info("Async Translate: Updated {} translations for message {}", newTranslations.size(), message.getId().getChatMessageId());
                     });
                 }
             } catch (Exception e) {
-                log.error("Translation error", e);
+                log.error("Async Translation Critical Error", e);
             }
         });
     }
@@ -273,9 +289,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             try {
                 Map<String, String> dataPayload = new HashMap<>();
                 
-                // FIXED: Direct navigation to ChatStack instead of TabApp
                 dataPayload.put("screen", "ChatStack"); 
-                // FIXED: Key should be stackScreen to match frontend navigationRef destructuring
                 dataPayload.put("stackScreen", "GroupChatScreen"); 
                 
                 dataPayload.put("roomId", room.getRoomId().toString());
@@ -316,7 +330,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Transactional
     @Caching(evict = {
         @CacheEvict(value = "room_messages", allEntries = true),
-        @CacheEvict(value = "user_stats", key = "#request.senderId")
+        @CacheEvict(value = "user_statistics", key = "#request.senderId")
     })
     public ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request) {
         return this.saveMessage(roomId, request);
@@ -326,7 +340,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Transactional
     @Caching(evict = {
         @CacheEvict(value = "room_messages", allEntries = true),
-        @CacheEvict(value = "user_stats", allEntries = true)
+        @CacheEvict(value = "user_statistics", allEntries = true)
     })
     public void deleteChatMessage(UUID id) {
         try {
@@ -447,7 +461,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     }
 
     @Override
-    @Cacheable(value = "user_stats", key = "#userId")
+    @Cacheable(value = "user_statistics", key = "#userId")
     public ChatStatsResponse getStatsByUser(UUID userId) {
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         long totalMessages = chatMessageRepository.countBySenderIdAndIsDeletedFalse(userId);

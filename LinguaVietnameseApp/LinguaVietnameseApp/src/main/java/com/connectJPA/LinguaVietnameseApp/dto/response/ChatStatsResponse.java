@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import lombok.*;
 
+import java.io.Serializable;
 import java.time.OffsetDateTime;
 
 @Getter
@@ -9,7 +10,9 @@ import java.time.OffsetDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ChatStatsResponse {
+public class ChatStatsResponse implements Serializable {
+    private static final long serialVersionUID = 1L;
+    
     private long totalMessages;
     private long translationsUsed;
     private long videoCalls;

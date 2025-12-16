@@ -45,6 +45,10 @@ export const LessonInputArea = ({
         if (reviewMode && selectedAnswer) {
             if (question.questionType === QuestionType.FILL_IN_THE_BLANK || question.questionType === QuestionType.WRITING) {
                 setTextInput(String(selectedAnswer));
+            } else if (question.questionType === QuestionType.ORDERING) {
+                setOrderedList(String(selectedAnswer).split(" "));
+            } else if (question.questionType === QuestionType.MATCHING) {
+                try { setMatches(typeof selectedAnswer === 'string' ? JSON.parse(selectedAnswer) : selectedAnswer); } catch { }
             }
         } else if (!reviewMode) {
             setTextInput("");
@@ -142,8 +146,13 @@ export const LessonInputArea = ({
 
     if (question.questionType === QuestionType.ORDERING) {
         const handleSelectFragment = (val: string) => {
-            if (orderedList.includes(val)) setOrderedList(prev => prev.filter(k => k !== val));
-            else setOrderedList(prev => [...prev, val]);
+            if (!orderedList.includes(val)) setOrderedList(prev => [...prev, val]);
+        };
+
+        const handleRemoveFragment = (val: string) => {
+            if (!isAnswered && !reviewMode) {
+                setOrderedList(prev => prev.filter(k => k !== val));
+            }
         };
 
         return (
@@ -151,8 +160,11 @@ export const LessonInputArea = ({
                 <Text style={styles.label}>Order the sentence:</Text>
                 <View style={styles.orderDisplayArea}>
                     {(reviewMode ? String(selectedAnswer || "").split(" ") : orderedList).map((val, index) => (
-                        <View key={index} style={styles.chipSelected}><Text style={styles.chipTextSelected}>{val}</Text></View>
+                        <TouchableOpacity key={index} style={styles.chipSelected} onPress={() => handleRemoveFragment(val)} disabled={isAnswered || reviewMode}>
+                            <Text style={styles.chipTextSelected}>{val}</Text>
+                        </TouchableOpacity>
                     ))}
+                    {orderedList.length === 0 && <Text style={{ color: '#9CA3AF' }}>Tap words below to arrange</Text>}
                 </View>
                 {!reviewMode && (
                     <View style={styles.chipContainer}>
@@ -218,7 +230,7 @@ export const LessonInputArea = ({
                 </View>
                 <View style={styles.actionRow}>
                     {!isAnswered && !reviewMode && renderSkipButton()}
-                    {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(JSON.stringify(matches)), Object.keys(matches).length === 0 || isLoading)}
+                    {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(JSON.stringify(matches)), Object.keys(matches).length !== leftSide.length || isLoading)}
                 </View>
             </View>
         );
@@ -301,9 +313,7 @@ const styles = StyleSheet.create({
     label: { fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 8 },
     resultBox: { marginTop: 16, padding: 16, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },
     textLabel: { fontWeight: '600', color: '#6B7280' },
-    resultText: { fontSize: 16, fontWeight: '600' },
     textCorrect: { color: '#10B981', fontWeight: 'bold' },
-    textWrong: { color: '#EF4444', fontWeight: 'bold', textDecorationLine: 'line-through' },
     orderDisplayArea: { minHeight: 60, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16, alignItems: 'center' },
     chipContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
     chip: { backgroundColor: '#EEF2FF', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: '#C7D2FE' },

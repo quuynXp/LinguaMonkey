@@ -30,11 +30,8 @@ function hexToBase64(hex: string): string {
 
 export async function generateKeyPair(): Promise<CryptoKeyPair> {
     const key = ec.genKeyPair();
-
     const privateKey = key.getPrivate('hex');
-
     const publicKey = key.getPublic(false, 'hex');
-
     return { publicKey, privateKey };
 }
 
@@ -108,7 +105,8 @@ export async function encryptAES(content: string, keyBase64: string): Promise<[s
 
         return [
             iv.toString(CryptoJS.enc.Base64),
-            encrypted.toString()
+            // FIX: Use ciphertext directly to avoid OpenSSL formatting (Salted__) which breaks Java
+            encrypted.ciphertext.toString(CryptoJS.enc.Base64)
         ];
     } catch (e: any) {
         throw new Error(`Encryption failed: ${e.message}`);

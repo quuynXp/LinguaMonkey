@@ -16,7 +16,6 @@ import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionDiscount;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionEnrollment;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionLesson;
 import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
-import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.Role;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserRole;
@@ -307,9 +306,6 @@ public class CourseServiceImpl implements CourseService {
             
             List<UUID> newLessonIds = request.getLessonIds();
             
-            // Danh sách LessonId mới
-            List<UUID> lessonIdsToKeep = new ArrayList<>(newLessonIds);
-            
             // 2. Xóa các CourseVersionLesson không còn trong danh sách mới
             existingCvlList.stream()
                     .filter(cvl -> !newLessonIds.contains(cvl.getLesson().getLessonId()))
@@ -345,7 +341,13 @@ public class CourseServiceImpl implements CourseService {
             cvlRepository.saveAll(updatedCvlList);
 
             // 4. Cập nhật lại list lessons trong version entity
-            version.setLessons(updatedCvlList);
+            // FIX: Use clear() and addAll() to prevent "referenced by the owning entity instance" exception
+            if (version.getLessons() == null) {
+                version.setLessons(new ArrayList<>(updatedCvlList));
+            } else {
+                version.getLessons().clear();
+                version.getLessons().addAll(updatedCvlList);
+            }
         }
 
         boolean isValid = true;

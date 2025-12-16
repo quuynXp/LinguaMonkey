@@ -1,5 +1,5 @@
 server:
-  port: ${PORT:10000}
+  port: ${SERVER_PORT:${PORT:10000}}
   address: 0.0.0.0
   tomcat:
     connection-timeout: 1200000
@@ -7,6 +7,7 @@ server:
     threads:
       max: 200
       min-spare: 10
+  shutdown: graceful
 
 spring:
   datasource:
@@ -115,7 +116,7 @@ google:
 
 grpc:
   server:
-    port: ${GRPC_PORT:9091}
+    port: ${GRPC_SERVER_PORT:${GRPC_PORT:9091}}
     address: 0.0.0.0
   client:
     learning-service:
