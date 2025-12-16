@@ -48,7 +48,7 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
     private final DailyChallengeService dailyChallengeService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final GrpcClientService grpcClientService;
-    private final CourseRepository courseRepository; 
+    private final CourseRepository courseRepository;
     private final NotificationService notificationService;
 
     private static final String HISTORY_CACHE_KEY = "user:history:";
@@ -347,27 +347,32 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         ProficiencyLevel nextLevel = getNextLevel(currentLevel);
         DifficultyLevel diffLevel = mapProficiencyToDifficulty(nextLevel);
         
-        // Find candidate courses to suggest (Public, Matching Next Level)
         List<Course> candidateCourses = courseRepository.findByLatestPublicVersion_DifficultyLevelAndApprovalStatus(
             diffLevel, 
             com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED
         );
 
         String candidateCoursesText = candidateCourses.stream()
-            .limit(5) // Limit context size
+            .limit(5)
             .map(c -> "- " + c.getTitle() + " (" + c.getLatestPublicVersion().getDifficultyLevel() + ")")
             .collect(Collectors.joining("\n"));
 
-        // 3. PROMPT: Construct detailed prompt for Gemini
+        // 3. PROMPT: Construct detailed prompt for Gemini - REQUEST JSON FORMAT
         String prompt = String.format(
             "Analyze this user's learning data (provided in context). They are currently at level %s.\n" +
             "1. Evaluate their roadmap progress and course enrollments.\n" +
             "2. If they have completed most requirements for %s, check if they are ready for %s.\n" +
             "3. Suggest specific improvements based on their weak skills.\n" +
             "4. Recommend one of these available courses if suitable:\n%s\n\n" +
-            "Format output:\n" +
-            "Provide a short, encouraging 2-sentence tip for the user.\n" +
-            "IF AND ONLY IF the user is clearly ready for the next level based on high accuracy/completion, append exactly: '[LEVEL_UP: %s]'.",
+            "OUTPUT FORMAT: Please return ONLY a JSON object (no markdown, no extra text) with the following structure:\n" +
+            "{\n" +
+            "  \"title\": \"A short catchy title for today's advice\",\n" +
+            "  \"summary\": \"A 2-sentence encouraging summary of their progress.\",\n" +
+            "  \"action_items\": [\"Specific action 1\", \"Specific action 2\", \"Specific action 3\"],\n" +
+            "  \"course_recommendation\": \"Name of recommended course or null if none\",\n" +
+            "  \"level_up_trigger\": false\n" +
+            "}\n" +
+            "Note: Set 'level_up_trigger' to true ONLY if the user is clearly ready for %s based on high accuracy (>85%%) and completion.",
             currentLevel, currentLevel, nextLevel, candidateCoursesText, nextLevel
         );
 
@@ -377,23 +382,24 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 .thenAccept(suggestion -> {
                     if (suggestion != null && !suggestion.isEmpty()) {
                         
-                        // 5. LOGIC: Check for Level Up Trigger
-                        if (suggestion.contains("[LEVEL_UP:")) {
-                            updateUserLevel(user, suggestion);
-                            // Remove the technical tag from the message shown to user
-                            suggestion = suggestion.replaceAll("\\[LEVEL_UP:.*?\\]", "").trim();
+                        // Clean markdown code blocks if present (Gemini often wraps JSON in ```json ... ```)
+                        String cleanJson = suggestion.replaceAll("```json", "").replaceAll("```", "").trim();
+
+                        // 5. LOGIC: Check for Level Up Trigger (Simple text check on JSON string to avoid heavy parsing here)
+                        if (cleanJson.contains("\"level_up_trigger\": true") || cleanJson.contains("\"level_up_trigger\":true")) {
+                             updateUserLevel(user, nextLevel);
                         }
 
-                        // Save suggestion to DB for UI display
-                        user.setLatestImprovementSuggestion(suggestion);
+                        // Save suggestion to DB
+                        user.setLatestImprovementSuggestion(cleanJson);
                         user.setLastSuggestionGeneratedAt(OffsetDateTime.now());
                         userRepository.save(user);
 
                         // 6. NOTIFICATION: Push to user
                         NotificationRequest notifRequest = NotificationRequest.builder()
                                 .userId(userId)
-                                .title("Daily AI Coach \uD83E\uDD16") // Robot emoji
-                                .content(suggestion)
+                                .title("Daily AI Coach \uD83E\uDD16")
+                                .content("Your daily learning analysis is ready! Check your progress.")
                                 .type("AI_SUGGESTION")
                                 .build();
                         notificationService.createPushNotification(notifRequest);
@@ -430,28 +436,22 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         };
     }
 
-    private void updateUserLevel(User user, String aiResponse) {
-        Pattern pattern = Pattern.compile("\\[LEVEL_UP:\\s*([A-Z0-9]+)\\]");
-        Matcher matcher = pattern.matcher(aiResponse);
-        if (matcher.find()) {
-            String newLevelStr = matcher.group(1);
-            try {
-                ProficiencyLevel newLevel = ProficiencyLevel.valueOf(newLevelStr);
-                user.setProficiency(newLevel);
-                log.info("User {} auto-upgraded to level {} by AI Analysis.", user.getUserId(), newLevel);
-                
-                // Send specific congratulation notification
-                NotificationRequest levelUpNotif = NotificationRequest.builder()
-                        .userId(user.getUserId())
-                        .title("Level Up! \uD83C\uDF89")
-                        .content("Congratulations! Based on your recent progress, you have been promoted to " + newLevel + "!")
-                        .type("LEVEL_UP")
-                        .build();
-                notificationService.createPushNotification(levelUpNotif);
-                
-            } catch (IllegalArgumentException e) {
-                log.warn("AI suggested invalid level: {}", newLevelStr);
-            }
+    private void updateUserLevel(User user, ProficiencyLevel newLevel) {
+        try {
+            user.setProficiency(newLevel);
+            log.info("User {} auto-upgraded to level {} by AI Analysis.", user.getUserId(), newLevel);
+            
+            // Send specific congratulation notification
+            NotificationRequest levelUpNotif = NotificationRequest.builder()
+                    .userId(user.getUserId())
+                    .title("Level Up! \uD83C\uDF89")
+                    .content("Congratulations! Based on your recent progress, you have been promoted to " + newLevel + "!")
+                    .type("LEVEL_UP")
+                    .build();
+            notificationService.createPushNotification(levelUpNotif);
+            
+        } catch (IllegalArgumentException e) {
+            log.warn("AI suggested invalid level upgrade.");
         }
     }
 

@@ -2,7 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.ser.OffsetDateTimeSerializer;
-import lombok.Data;
+import lombok.*;
 
 import java.time.OffsetDateTime;
 

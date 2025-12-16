@@ -74,7 +74,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     private ChatMessageResponse mapToResponse(ChatMessage entity, RoomPurpose purpose) {
         ChatMessageResponse response = chatMessageMapper.toResponse(entity);
-        response.setTranslations(entity.getTranslations()); 
+        response.setTranslations(entity.getTranslations());
         response.setPurpose(purpose);
         response.setMediaUrl(entity.getMediaUrl());
         response.setSenderEphemeralKey(entity.getSenderEphemeralKey());
@@ -272,9 +272,12 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
             try {
                 Map<String, String> dataPayload = new HashMap<>();
-                dataPayload.put("screen", "TabApp");
-                dataPayload.put("stack", "ChatStack");
-                dataPayload.put("screenName", "GroupChatScreen");
+                
+                // FIXED: Direct navigation to ChatStack instead of TabApp
+                dataPayload.put("screen", "ChatStack"); 
+                // FIXED: Key should be stackScreen to match frontend navigationRef destructuring
+                dataPayload.put("stackScreen", "GroupChatScreen"); 
+                
                 dataPayload.put("roomId", room.getRoomId().toString());
                 dataPayload.put("initialFocusMessageId", response.getChatMessageId().toString());
                 dataPayload.put("senderId", savedMessage.getSenderId().toString());

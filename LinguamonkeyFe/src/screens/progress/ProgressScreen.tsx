@@ -21,6 +21,13 @@ import { createScaledSheet } from "../../utils/scaledStyles"
 type Tab = "sessions" | "tests" | "stats"
 type Period = "week" | "month" | "year"
 
+interface AiSuggestionData {
+    title?: string;
+    summary?: string;
+    action_items?: string[];
+    course_recommendation?: string | null;
+}
+
 const ProgressScreen = () => {
     const navigation = useNavigation()
     const { t } = useTranslation()
@@ -161,15 +168,61 @@ const ProgressScreen = () => {
         )
     }
 
+    const safeParseSuggestion = (raw: string): AiSuggestionData | string => {
+        try {
+            // Remove markdown code blocks if present
+            const clean = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+            const parsed = JSON.parse(clean);
+            if (typeof parsed === 'object') return parsed;
+            return raw;
+        } catch (e) {
+            return raw;
+        }
+    }
+
     const renderAiSuggestion = () => {
         if (!stats.improvementSuggestion) return null;
+
+        const content = safeParseSuggestion(stats.improvementSuggestion);
+        const isStructured = typeof content === 'object';
+
         return (
             <View style={styles.aiCard}>
                 <View style={styles.aiHeader}>
-                    <Icon name="auto-awesome" size={20} color="#FFFFFF" />
-                    <Text style={styles.aiTitle}>{t("history.stats.aiCoach")}</Text>
+                    <View style={styles.aiIconContainer}>
+                        <Icon name="auto-awesome" size={20} color="#FFFFFF" />
+                    </View>
+                    <Text style={styles.aiTitle}>
+                        {isStructured ? (content as AiSuggestionData).title : t("history.stats.aiCoach")}
+                    </Text>
                 </View>
-                <Text style={styles.aiText}>{stats.improvementSuggestion}</Text>
+
+                {isStructured ? (
+                    <View style={styles.aiContentContainer}>
+                        <Text style={styles.aiSummary}>{(content as AiSuggestionData).summary}</Text>
+
+                        <View style={styles.divider} />
+
+                        <Text style={styles.sectionHeader}>Action Plan:</Text>
+                        {(content as AiSuggestionData).action_items?.map((item, idx) => (
+                            <View key={idx} style={styles.actionItem}>
+                                <Icon name="check-circle-outline" size={16} color="#A5B4FC" style={{ marginTop: 2 }} />
+                                <Text style={styles.actionText}>{item}</Text>
+                            </View>
+                        ))}
+
+                        {(content as AiSuggestionData).course_recommendation && (
+                            <View style={styles.recommendationBox}>
+                                <Icon name="school" size={16} color="#4F46E5" />
+                                <Text style={styles.recommendationText}>
+                                    Recommended: <Text style={{ fontWeight: '700' }}>{(content as AiSuggestionData).course_recommendation}</Text>
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                ) : (
+                    <Text style={styles.aiText}>{content as string}</Text>
+                )}
             </View>
         )
     }
@@ -285,11 +338,6 @@ const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: "#F8FAFC" },
     header: { justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: "#FFF", borderBottomWidth: 1, borderColor: "#E5E7EB" },
     headerTitle: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
-    tabContainer: { flexDirection: "row", padding: 16, backgroundColor: "#FFF", gap: 12 },
-    tab: { flex: 1, flexDirection: "row", padding: 10, borderRadius: 8, justifyContent: "center", alignItems: "center", gap: 8, backgroundColor: "#F3F4F6" },
-    activeTab: { backgroundColor: "#4F46E5" },
-    tabText: { fontWeight: "600", color: "#6B7280" },
-    activeTabText: { color: "#FFF" },
     filterContainer: { flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
     filterButton: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, backgroundColor: "#E5E7EB" },
     activeFilter: { backgroundColor: "#EEF2FF" },
@@ -308,18 +356,26 @@ const styles = createScaledSheet({
     statLabel: { fontSize: 12, color: "#6B7280", marginTop: 4 },
     statSubLabel: { fontSize: 10, color: "#9CA3AF", marginTop: 2 },
 
-    aiCard: { backgroundColor: "#4F46E5", borderRadius: 12, padding: 16, elevation: 4 },
-    aiHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-    aiTitle: { color: "#FFF", fontWeight: "700", fontSize: 14 },
-    aiText: { color: "#E0E7FF", fontSize: 13, lineHeight: 20, fontStyle: 'italic' },
+    // AI Card Styles - Updated
+    aiCard: { backgroundColor: "#4338ca", borderRadius: 16, padding: 20, elevation: 4, shadowColor: "#4338ca", shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+    aiHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
+    aiIconContainer: { backgroundColor: "rgba(255,255,255,0.2)", padding: 6, borderRadius: 20 },
+    aiTitle: { color: "#FFF", fontWeight: "800", fontSize: 16, flex: 1 },
+    aiContentContainer: { gap: 8 },
+    aiSummary: { color: "#E0E7FF", fontSize: 14, lineHeight: 22, fontStyle: 'italic' },
+    divider: { height: 1, backgroundColor: "rgba(255,255,255,0.2)", marginVertical: 8 },
+    sectionHeader: { color: "#A5B4FC", fontSize: 12, fontWeight: "700", textTransform: 'uppercase', marginBottom: 4 },
+    actionItem: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginBottom: 6 },
+    actionText: { color: "#FFF", fontSize: 14, lineHeight: 20, flex: 1 },
+    recommendationBox: { marginTop: 8, backgroundColor: "#EEF2FF", borderRadius: 8, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    recommendationText: { color: "#4338ca", fontSize: 13, flex: 1 },
+    aiText: { color: "#E0E7FF", fontSize: 14, lineHeight: 20 },
 
     // Charts
     chartContainer: { backgroundColor: "#FFF", padding: 16, borderRadius: 12, elevation: 2 },
     chartHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
     chartTitle: { fontSize: 16, fontWeight: "700", color: "#374151", marginBottom: 16 },
-    // **Điều chỉnh: Bỏ justifyContent: 'space-between' và thêm padding để chartBody không chiếm full width màn hình và dùng ScrollView bọc chartBody**
     chartBody: { flexDirection: 'row', alignItems: 'flex-end', height: 160, paddingHorizontal: 8, gap: 20 },
-    // **Điều chỉnh: Bỏ flex: 1 và đặt chiều rộng cố định (width: 32) cho mỗi cột để nó không bị giãn quá mức**
     chartColumn: { alignItems: 'center', width: 32 },
     barContainer: { height: 130, width: '100%', justifyContent: 'flex-end', alignItems: 'center' },
     bar: { width: 16, borderRadius: 6 },

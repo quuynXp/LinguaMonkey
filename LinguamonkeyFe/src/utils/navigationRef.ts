@@ -7,6 +7,7 @@ let pendingActions: (() => void)[] = [];
 interface NotificationPayload {
   screen?: string;
   stackScreen?: string;
+  screenName?: string; // Backwards compatibility for payload variations
   [key: string]: any;
 }
 
@@ -35,16 +36,20 @@ export const handleNotificationNavigation = (raw: any) => {
     return;
   }
 
-  const { screen, stackScreen, ...params } = data;
-  console.log("🚀 Notification Navigation ->", { screen, stackScreen, params });
+  const { screen, stackScreen, screenName, ...params } = data;
 
-  gotoTab(screen, stackScreen, params);
+  // Resolve the nested screen target
+  const targetNestedScreen = stackScreen || screenName;
+
+  console.log("🚀 Notification Navigation ->", { screen, targetNestedScreen, params });
+
+  gotoTab(screen, targetNestedScreen, params);
 };
 
 export function resetToTab(
   destination:
     | 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile'
-    | 'AdminStack' | 'SetupInitScreen' | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'ResetPasswordScreen' | 'PaymentStack' | 'CourseStack' | 'RoadmapStack',
+    | 'AdminStack' | 'SetupInitScreen' | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'ResetPasswordScreen' | 'PaymentStack' | 'CourseStack' | 'RoadmapStack' | 'ChatStack',
   stackScreen?: string,
   stackParams?: object
 ) {
@@ -121,7 +126,7 @@ export function gotoTab(
   }
 
   RootNavigationRef.dispatch(action);
-  console.log('[navigationRef] goto ->', screenName, nestedScreen);
+  console.log('[navigationRef] goto ->', screenName, nestedScreen, nestedParams);
 }
 
 export function goBack(): boolean {
