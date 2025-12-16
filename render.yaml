@@ -137,8 +137,8 @@ services:
         value: "0.0.0.0"
 
     healthCheckPath: /actuator/health/render
-    initialDelaySeconds: 120 # Đợi 60s trước khi bắt đầu check
-    healthCheckTimeout: 300 # Cho phép chờ tối đa 5 phút (Java start rất lâu)
+    initialDelaySeconds: 180
+    healthCheckTimeout: 600
     numInstances: 1
 
   # ==========================================
