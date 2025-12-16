@@ -292,33 +292,31 @@ const LoginScreen = ({ navigation }) => {
         </View>
         {loginInput.loginMethod === 'email' && !loginInput.useOtpForEmail && (
           <>
-            <View style={styles.dividerContainer}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{t('orContinueWith')}</Text>
-              <View style={styles.dividerLine} />
-            </View>
-            {/* COMMENTED_OUT_GOOGLE_BUTTON_START */}
-            {Platform.OS !== 'ios' && (
-              <TouchableOpacity
-                style={[styles.socialButton, (isLoading || !googleRequest) && styles.loginButtonDisabled]}
-                onPress={() => { /* googlePromptAsync() */ }}
-                disabled={true}
-              >
-                <Image source={require('../../assets/icons/google-icon.png')} style={{ width: 20, height: 20 }} />
-                <Text style={styles.socialButtonText}>{t('loginWithGoogle')}</Text>
-              </TouchableOpacity>
-            )}
-            {/* COMMENTED_OUT_GOOGLE_BUTTON_END */}
-            {/* COMMENTED_OUT_FACEBOOK_BUTTON_START */}
-            <TouchableOpacity
-              style={[styles.socialButton, (isLoading || !fbRequest) && styles.loginButtonDisabled, Platform.OS === 'ios' && { marginTop: Platform.OS !== 'ios' ? 16 : 0 }]}
-              onPress={() => { /* fbPromptAsync() */ }}
-              disabled={true}
-            >
-              <Icon name="facebook" size={20} color="#1877F2" />
-              <Text style={styles.socialButtonText}>{t('loginWithFacebook')}</Text>
-            </TouchableOpacity>
-            {/* COMMENTED_OUT_FACEBOOK_BUTTON_END */}
+            {/*             Ẩn toàn bộ đoạn JSX cho Social Login theo yêu cầu:
+            <View style={styles.dividerContainer}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>{t('orContinueWith')}</Text>
+              <View style={styles.dividerLine} />
+            </View>
+            {Platform.OS !== 'ios' && (
+              <TouchableOpacity
+                style={[styles.socialButton, (isLoading || !googleRequest) && styles.loginButtonDisabled]}
+                onPress={() => { / * googlePromptAsync() * / }}
+                disabled={true}
+              >
+                <Image source={require('../../assets/icons/google-icon.png')} style={{ width: 20, height: 20 }} />
+                <Text style={styles.socialButtonText}>{t('loginWithGoogle')}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.socialButton, (isLoading || !fbRequest) && styles.loginButtonDisabled, Platform.OS === 'ios' && { marginTop: Platform.OS !== 'ios' ? 16 : 0 }]}
+              onPress={() => { / * fbPromptAsync() * / }}
+              disabled={true}
+            >
+              <Icon name="facebook" size={20} color="#1877F2" />
+              <Text style={styles.socialButtonText}>{t('loginWithFacebook')}</Text>
+            </TouchableOpacity>
+            */}
           </>
         )}
         <View style={styles.footer}>

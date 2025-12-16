@@ -1,5 +1,5 @@
 server:
-  port: ${PORT:8080}
+  port: ${PORT:10000}
   address: 0.0.0.0
   tomcat:
     connection-timeout: 1200000
@@ -10,7 +10,6 @@ server:
 
 spring:
   datasource:
-    # url: ${SPRING_DATASOURCE_URL}
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
@@ -116,7 +115,7 @@ google:
 
 grpc:
   server:
-    port: 9091
+    port: ${GRPC_PORT:9091}
     address: 0.0.0.0
   client:
     learning-service:
