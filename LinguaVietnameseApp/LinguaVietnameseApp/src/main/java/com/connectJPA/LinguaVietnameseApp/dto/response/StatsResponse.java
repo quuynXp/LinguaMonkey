@@ -31,15 +31,4 @@ public class StatsResponse {
     // Charts Data
     private List<ChartDataPoint> timeChartData;
     private List<ChartDataPoint> accuracyChartData;
-
-    @Getter
-    @Setter
-    @Builder
-    @AllArgsConstructor
-    @NoArgsConstructor
-    public static class ChartDataPoint {
-        private String label; // e.g., "Mon", "Tue"
-        private double value;
-        private String fullDate;
-    }
 }

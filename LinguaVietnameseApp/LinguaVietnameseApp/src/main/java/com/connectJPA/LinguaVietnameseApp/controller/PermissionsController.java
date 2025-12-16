@@ -31,7 +31,7 @@ public class PermissionsController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved permissions"),
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @GetMapping
     public AppApiResponse<Page<PermissionResponse>> getAllPermissions(
             @Parameter(description = "Permission name filter") @RequestParam(required = false) String name,
@@ -50,7 +50,7 @@ public class PermissionsController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved permission"),
             @ApiResponse(responseCode = "404", description = "Permission not found")
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @GetMapping("/{id}")
     public AppApiResponse<PermissionResponse> getPermissionById(
             @Parameter(description = "Permission ID") @PathVariable UUID id,
@@ -68,7 +68,7 @@ public class PermissionsController {
             @ApiResponse(responseCode = "201", description = "Permission created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid permission data")
     })
-    @PreAuthorize("hasRole('ADMIN')")
+   @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PostMapping
     public AppApiResponse<PermissionResponse> createPermission(
             @Valid @RequestBody PermissionRequest request,
@@ -87,7 +87,7 @@ public class PermissionsController {
             @ApiResponse(responseCode = "404", description = "Permission not found"),
             @ApiResponse(responseCode = "400", description = "Invalid permission data")
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PutMapping("/{id}")
     public AppApiResponse<PermissionResponse> updatePermission(
             @Parameter(description = "Permission ID") @PathVariable UUID id,
@@ -106,7 +106,7 @@ public class PermissionsController {
             @ApiResponse(responseCode = "200", description = "Permission deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Permission not found")
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deletePermission(
             @Parameter(description = "Permission ID") @PathVariable UUID id,

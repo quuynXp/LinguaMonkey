@@ -28,4 +28,6 @@ public interface StatisticsService {
     DashboardStatisticsResponse getDashboardStatistics(UUID userId, LocalDate startDate, LocalDate endDate);
 
     DepositRevenueResponse getDepositRevenueStatistics(LocalDate startDate, LocalDate endDate, String aggregate);
+
+    StudyHistoryResponse getStudyHistory(UUID userId, LocalDate startDate, LocalDate endDate, String period);
 }

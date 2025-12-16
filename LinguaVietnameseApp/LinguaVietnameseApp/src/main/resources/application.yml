@@ -1,5 +1,5 @@
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${PORT:8080}
   address: 0.0.0.0
   tomcat:
     connection-timeout: 1200000
@@ -116,7 +116,7 @@ google:
 
 grpc:
   server:
-    port: 9090
+    port: 9091
     address: 0.0.0.0
   client:
     learning-service:

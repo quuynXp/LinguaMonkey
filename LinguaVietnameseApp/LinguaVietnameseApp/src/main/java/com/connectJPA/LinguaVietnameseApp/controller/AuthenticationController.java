@@ -50,12 +50,10 @@ public class AuthenticationController {
             @RequestHeader(value = "User-Agent", required = false, defaultValue = "") String userAgent,
             HttpServletResponse response) {
 
-        // Bạn cần thêm logic này vào AuthenticationService
         AuthenticationResponse authResponse = authenticationService.loginWithGoogle(
                 request.idToken(), deviceId, ip, userAgent
         );
 
-        // Chuẩn hóa hàm trả về response
         return createAuthResponseEntity(authResponse, response, "Google login successful");
     }
 
@@ -70,16 +68,13 @@ public class AuthenticationController {
             @RequestHeader(value = "User-Agent", required = false, defaultValue = "") String userAgent,
             HttpServletResponse response) {
 
-        // Bạn cần thêm logic này vào AuthenticationService
         AuthenticationResponse authResponse = authenticationService.loginWithFacebook(
                 request.accessToken(), deviceId, ip, userAgent
         );
 
-        // Chuẩn hóa hàm trả về response
         return createAuthResponseEntity(authResponse, response, "Facebook login successful");
     }
 
-    // ENDPOINT MỚI 1: Check Reset Methods
     @PostMapping("/check-reset-methods")
     @Operation(summary = "Check available password reset methods (Email/Phone)")
     public AppApiResponse<Map<String, Object>> checkResetMethods(@RequestBody Map<String, String> body) {
@@ -95,7 +90,6 @@ public class AuthenticationController {
                 .build();
     }
 
-    // ENDPOINT MỚI 2: Request Password Reset OTP
     @PostMapping("/request-password-reset-otp")
     @Operation(summary = "Request OTP for password reset via Email or Phone")
     public AppApiResponse<Void> requestPasswordResetOtp(@RequestBody Map<String, String> body) {
@@ -113,7 +107,6 @@ public class AuthenticationController {
                 .build();
     }
 
-    // ENDPOINT MỚI 3: Verify Password Reset OTP
     @PostMapping("/verify-password-reset-otp")
     @Operation(summary = "Verify reset OTP and get a secure reset token")
     public AppApiResponse<Map<String, String>> verifyPasswordResetOtp(@RequestBody Map<String, String> body) {
@@ -129,7 +122,6 @@ public class AuthenticationController {
                 .build();
     }
 
-    // --- Controller method for logoutAll ---
     @PostMapping("/logout-all")
     public AppApiResponse<Void> logoutAll(@RequestHeader("userId") UUID userId) {
         authenticationService.logoutAll(userId);

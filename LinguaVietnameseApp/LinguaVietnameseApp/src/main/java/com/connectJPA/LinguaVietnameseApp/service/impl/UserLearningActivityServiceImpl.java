@@ -254,8 +254,8 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         List<Object[]> weakSkills = userLearningActivityRepository.findWeakestSkills(userId, startOdt, endOdt);
         String weakestSkill = weakSkills.isEmpty() ? "NONE" : weakSkills.get(0)[0].toString();
 
-        List<StatsResponse.ChartDataPoint> timeChart = new ArrayList<>();
-        List<StatsResponse.ChartDataPoint> accuracyChart = new ArrayList<>();
+        List<ChartDataPoint> timeChart = new ArrayList<>();
+        List<ChartDataPoint> accuracyChart = new ArrayList<>();
         Map<String, Integer> dailyHeatmap = new HashMap<>(); 
         
         Map<LocalDate, Long> dbDailyTime = new HashMap<>();
@@ -289,8 +289,8 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             List<Double> accList = dailyAccuracy.getOrDefault(temp, Collections.emptyList());
             double accVal = accList.isEmpty() ? 0.0 : accList.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
 
-            timeChart.add(new StatsResponse.ChartDataPoint(label, (double)finalMinutes, temp.toString()));
-            accuracyChart.add(new StatsResponse.ChartDataPoint(label, accVal, temp.toString()));
+            timeChart.add(new ChartDataPoint(label, (double)finalMinutes, temp.toString()));
+            accuracyChart.add(new ChartDataPoint(label, accVal, temp.toString()));
             
             temp = temp.plusDays(1);
         }

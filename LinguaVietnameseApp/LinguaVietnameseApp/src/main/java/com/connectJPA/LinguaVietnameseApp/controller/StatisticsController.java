@@ -35,6 +35,7 @@ public class StatisticsController {
             @ApiResponse(responseCode = "400", description = "Invalid date range")
     })
     @GetMapping("/user/{userId}/dashboard")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #userId.toString() == authentication.name")
     public AppApiResponse<DashboardStatisticsResponse> getDashboardStatistics(
             @Parameter(description = "User ID") @PathVariable UUID userId,
             @Parameter(description = "Period shortcut (optional): day, week, month, year") @RequestParam(required = false) String period,
@@ -69,6 +70,49 @@ public class StatisticsController {
                 .result(dashboardData)
                 .build();
     }
+
+    @Operation(summary = "Get study history with stats for Progress screen", 
+            description = "Returns sessions list + stats aggregated by period (day/week/month/year)")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved study history"),
+        @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    @GetMapping("/user/{userId}/study-history")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #userId.toString() == authentication.name")
+    public AppApiResponse<StudyHistoryResponse> getStudyHistory(
+            @Parameter(description = "User ID") @PathVariable UUID userId,
+            @Parameter(description = "Period: day, week, month, year") @RequestParam(defaultValue = "week") String period,
+            Locale locale) {
+        
+        LocalDate today = LocalDate.now();
+        LocalDate startDate;
+        LocalDate endDate = today;
+        
+        switch (period.toLowerCase()) {
+            case "day" -> {
+                startDate = today;
+                endDate = today;
+            }
+            case "month" -> {
+                startDate = today.minusMonths(1).plusDays(1);
+            }
+            case "year" -> {
+                startDate = today.minusYears(1).plusDays(1);
+            }
+            default -> { // week
+                startDate = today.minusWeeks(1).plusDays(1);
+            }
+        }
+        
+        StudyHistoryResponse history = statisticsService.getStudyHistory(userId, startDate, endDate, period);
+        
+        return AppApiResponse.<StudyHistoryResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("statistics.study.history.success", null, locale))
+                .result(history)
+                .build();
+    }
+
     @GetMapping("/overview")
     public AppApiResponse<StatisticsOverviewResponse> overview(
             @RequestParam(value = "userId", required = false) UUID userId,
@@ -138,6 +182,7 @@ public class StatisticsController {
             @ApiResponse(responseCode = "400", description = "Invalid date range")
     })
     @GetMapping("/user/{userId}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #userId.toString() == authentication.name")
     public AppApiResponse<StatisticsResponse> getUserStatistics(
             @Parameter(description = "User ID") @PathVariable UUID userId,
             @RequestParam(required = false) String period,

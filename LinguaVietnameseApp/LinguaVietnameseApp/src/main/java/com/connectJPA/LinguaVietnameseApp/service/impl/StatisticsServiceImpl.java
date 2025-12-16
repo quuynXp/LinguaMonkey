@@ -45,89 +45,6 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final UserLearningActivityMapper userLearningActivityMapper;
     private final BadgeRepository badgeRepository;
 
-    /* --------------------------------------------------------------------- */
-    /* UTILITY METHODS */
-    /* --------------------------------------------------------------------- */
-    
-    private List<TimeSeriesPoint> buildTimeSeries(LocalDate startDate,
-                                                  LocalDate endDate,
-                                                  String aggregate,
-                                                  List<Transaction> transactions) {
-        if (transactions == null) transactions = Collections.emptyList();
-
-        Map<LocalDate, BucketAggregate> byDate = new HashMap<>();
-        for (Transaction t : transactions) {
-            if (t == null || t.getCreatedAt() == null) continue;
-            LocalDate d = t.getCreatedAt().toLocalDate();
-            BucketAggregate b = byDate.computeIfAbsent(d, k -> new BucketAggregate(BigDecimal.ZERO, 0L));
-            
-            boolean shouldAggregateRevenue = t.getAmount() != null && 
-                                             (t.getType() == TransactionType.DEPOSIT || "USD".equalsIgnoreCase(t.getCurrency()));
-
-            if (shouldAggregateRevenue) {
-                b.revenue = b.revenue.add(t.getAmount());
-            }
-            b.count++;
-        }
-
-        List<BucketRange> buckets = new ArrayList<>();
-        long days = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-
-        if ("day".equalsIgnoreCase(aggregate)) {
-            LocalDate cur = startDate;
-            while (!cur.isAfter(endDate)) {
-                buckets.add(new BucketRange(cur, cur.plusDays(1)));
-                cur = cur.plusDays(1);
-            }
-        } else if ("week".equalsIgnoreCase(aggregate)) {
-            long chunk = Math.max(1, (long) Math.ceil(days / 4.0));
-            LocalDate cur = startDate;
-            while (!cur.isAfter(endDate)) {
-                LocalDate next = cur.plusDays(chunk);
-                if (next.isAfter(endDate.plusDays(1))) next = endDate.plusDays(1);
-                buckets.add(new BucketRange(cur, next));
-                cur = next;
-            }
-        } else if ("month".equalsIgnoreCase(aggregate)) {
-            LocalDate cur = LocalDate.of(startDate.getYear(), startDate.getMonth(), 1);
-            LocalDate finalMonth = LocalDate.of(endDate.getYear(), endDate.getMonth(), 1);
-            while (!cur.isAfter(finalMonth)) {
-                buckets.add(new BucketRange(cur, cur.plusMonths(1)));
-                cur = cur.plusMonths(1);
-            }
-        } else {
-            LocalDate cur = startDate;
-            while (!cur.isAfter(endDate)) {
-                buckets.add(new BucketRange(cur, cur.plusDays(1)));
-                cur = cur.plusDays(1);
-            }
-        }
-
-        List<TimeSeriesPoint> series = new ArrayList<>();
-        int weekIdx = 1;
-        for (BucketRange b : buckets) {
-            BigDecimal sum = BigDecimal.ZERO;
-            long cnt = 0;
-            LocalDate d = b.start;
-            while (d.isBefore(b.end)) {
-                BucketAggregate ag = byDate.get(d);
-                if (ag != null) {
-                    sum = sum.add(ag.revenue);
-                    cnt += ag.count;
-                }
-                d = d.plusDays(1);
-            }
-            String label = switch (aggregate.toLowerCase()) {
-                case "day" -> String.format("%02d/%02d", b.start.getDayOfMonth(), b.start.getMonthValue());
-                case "week" -> "W" + weekIdx++;
-                case "month" -> b.start.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, Locale.ENGLISH);
-                default -> b.start.toString();
-            };
-            series.add(new TimeSeriesPoint(label, sum, cnt));
-        }
-        return series;
-    }
-
     // Helper tính streak
     private int calculateStreak(UUID userId) {
         int streak = 0;
@@ -161,47 +78,299 @@ public class StatisticsServiceImpl implements StatisticsService {
         BucketRange(LocalDate s, LocalDate e) { start = s; end = e; }
     }
 
-    // --- FIX CHÍNH Ở ĐÂY: getDashboardStatistics ---
+    @Override
+    public StudyHistoryResponse getStudyHistory(UUID userId, LocalDate startDate, LocalDate endDate, String period) {
+        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        
+        List<UserLearningActivity> currentActivities = userLearningActivityRepository
+                .findByUserIdAndCreatedAtBetween(userId, start, end);
+        
+        List<StudySessionResponse> sessions = currentActivities.stream()
+                .map(this::mapToStudySession)
+                .sorted(Comparator.comparing(StudySessionResponse::getDate).reversed())
+                .collect(Collectors.toList());
+        
+        StatsResponse currentStats = calculateStats(userId, startDate, endDate, currentActivities, period);
+        
+        Map<String, Integer> dailyActivity = currentActivities.stream()
+                .collect(Collectors.groupingBy(
+                        a -> a.getCreatedAt().toLocalDate().toString(),
+                        Collectors.summingInt(a -> 1)
+                ));
+        
+        return StudyHistoryResponse.builder()
+                .sessions(sessions)
+                .stats(currentStats)
+                .dailyActivity(dailyActivity)
+                .build();
+    }
+
+    private StudySessionResponse mapToStudySession(UserLearningActivity activity) {
+        return StudySessionResponse.builder()
+                .id(activity.getActivityId())
+                .type(activity.getActivityType().name())
+                .date(activity.getCreatedAt())
+                .duration((long)activity.getDurationInSeconds())
+                .score(activity.getScore())
+                .maxScore(activity.getMaxScore())
+                .experience(activity.getScore() != null ? activity.getScore().intValue() : 0)
+                .skills(List.of(activity.getActivityType().name()))
+                .completed(true)
+                .build();
+    }
+
+    private StatsResponse calculateStats(UUID userId, 
+                                        LocalDate startDate, 
+                                        LocalDate endDate,
+                                        List<UserLearningActivity> currentActivities,
+                                        String period) {
+        long totalTimeSeconds = currentActivities.stream()
+                .filter(a -> a.getDurationInSeconds() != null)
+                .mapToLong(UserLearningActivity::getDurationInSeconds)
+                .sum();
+        
+        double averageAccuracy = currentActivities.stream()
+                .filter(a -> a.getMaxScore() != null && a.getMaxScore() > 0 && a.getScore() != null)
+                .mapToDouble(a -> (a.getScore().doubleValue() / a.getMaxScore()) * 100)
+                .average()
+                .orElse(0.0);
+        
+        long totalCoins = currentActivities.stream()
+                .filter(a -> a.getScore() != null)
+                .mapToLong(a -> a.getScore().longValue())
+                .sum();
+        
+        long totalExperience = totalCoins; // Giả định 1:1
+        
+        int lessonsCompleted = (int) currentActivities.stream()
+                .filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETION)
+                .count();
+        
+        LocalDate prevStartDate;
+        LocalDate prevEndDate;
+        
+        switch (period.toLowerCase()) {
+            case "day" -> {
+                prevStartDate = startDate.minusDays(1);
+                prevEndDate = startDate.minusDays(1);
+            }
+            case "month" -> {
+                prevStartDate = startDate.minusMonths(1);
+                prevEndDate = endDate.minusMonths(1);
+            }
+            case "year" -> {
+                prevStartDate = startDate.minusYears(1);
+                prevEndDate = endDate.minusYears(1);
+            }
+            default -> { // week
+                prevStartDate = startDate.minusWeeks(1);
+                prevEndDate = endDate.minusWeeks(1);
+            }
+        }
+        
+        OffsetDateTime prevStart = prevStartDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime prevEnd = prevEndDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        
+        List<UserLearningActivity> prevActivities = userLearningActivityRepository
+                .findByUserIdAndCreatedAtBetween(userId, prevStart, prevEnd);
+        
+        long prevTimeSeconds = prevActivities.stream()
+                .filter(a -> a.getDurationInSeconds() != null)
+                .mapToLong(UserLearningActivity::getDurationInSeconds)
+                .sum();
+        
+        double prevAccuracy = prevActivities.stream()
+                .filter(a -> a.getMaxScore() != null && a.getMaxScore() > 0 && a.getScore() != null)
+                .mapToDouble(a -> (a.getScore().doubleValue() / a.getMaxScore()) * 100)
+                .average()
+                .orElse(0.0);
+        
+        long prevCoins = prevActivities.stream()
+                .filter(a -> a.getScore() != null)
+                .mapToLong(a -> a.getScore().longValue())
+                .sum();
+        
+        double timeGrowth = calculateGrowthPercent(totalTimeSeconds, prevTimeSeconds);
+        double accuracyGrowth = calculateGrowthPercent((long) averageAccuracy, (long) prevAccuracy);
+        double coinsGrowth = calculateGrowthPercent(totalCoins, prevCoins);
+        
+        String weakestSkill = findWeakestSkill(currentActivities);
+        
+        String aiSuggestion = generateImprovementSuggestion(weakestSkill, averageAccuracy);
+        
+        List<ChartDataPoint> timeChartData = buildTimeChartData(startDate, endDate, currentActivities);
+        List<ChartDataPoint> accuracyChartData = buildAccuracyChartData(startDate, endDate, currentActivities);
+        
+        return StatsResponse.builder()
+                .totalSessions(currentActivities.size())
+                .totalTimeSeconds((int) totalTimeSeconds)
+                .totalExperience((int) totalExperience)
+                .totalCoins((int) totalCoins)
+                .lessonsCompleted(lessonsCompleted)
+                .averageAccuracy(averageAccuracy)
+                .averageScore(averageAccuracy) // Giả định averageScore = averageAccuracy
+                .timeGrowthPercent(timeGrowth)
+                .accuracyGrowthPercent(accuracyGrowth)
+                .coinsGrowthPercent(coinsGrowth)
+                .weakestSkill(weakestSkill)
+                .improvementSuggestion(aiSuggestion)
+                .timeChartData(timeChartData)
+                .accuracyChartData(accuracyChartData)
+                .build();
+    }
+
+    private double calculateGrowthPercent(long current, long previous) {
+        if (previous == 0) return current > 0 ? 100.0 : 0.0;
+        return ((double) (current - previous) / previous) * 100.0;
+    }
+
+    private String findWeakestSkill(List<UserLearningActivity> activities) {
+        Map<ActivityType, Double> skillAccuracies = activities.stream()
+                .filter(a -> a.getMaxScore() != null && a.getMaxScore() > 0 && a.getScore() != null)
+                .collect(Collectors.groupingBy(
+                        UserLearningActivity::getActivityType,
+                        Collectors.averagingDouble(a -> (a.getScore().doubleValue() / a.getMaxScore()) * 100)
+                ));
+        
+        return skillAccuracies.entrySet().stream()
+                .min(Map.Entry.comparingByValue())
+                .map(e -> e.getKey().name())
+                .orElse("NONE");
+    }
+
+    private String generateImprovementSuggestion(String weakestSkill, double averageAccuracy) {
+        if (averageAccuracy >= 90) {
+            return "Excellent work! Keep maintaining this high performance level.";
+        } else if (averageAccuracy >= 75) {
+            return "Good progress! Focus on " + weakestSkill + " to reach mastery level.";
+        } else {
+            return "Consider spending more time on " + weakestSkill + " exercises to improve your accuracy.";
+        }
+    }
+
+    private List<ChartDataPoint> buildTimeChartData(LocalDate startDate, 
+                                                    LocalDate endDate, 
+                                                    List<UserLearningActivity> activities) {
+        Map<LocalDate, Long> dailyTime = activities.stream()
+                .filter(a -> a.getDurationInSeconds() != null)
+                .collect(Collectors.groupingBy(
+                        a -> a.getCreatedAt().toLocalDate(),
+                        Collectors.summingLong(UserLearningActivity::getDurationInSeconds)
+                ));
+        
+        List<ChartDataPoint> chart = new ArrayList<>();
+        LocalDate cur = startDate;
+        while (!cur.isAfter(endDate)) {
+            long duration = dailyTime.getOrDefault(cur, 0L);
+            chart.add(ChartDataPoint.builder()
+                    .label(String.format("%02d/%02d", cur.getDayOfMonth(), cur.getMonthValue()))
+                    .value(duration / 60.0) // Convert to minutes
+                    .fullDate(cur.toString())
+                    .build());
+            cur = cur.plusDays(1);
+        }
+        return chart;
+    }
+
+    private List<ChartDataPoint> buildAccuracyChartData(LocalDate startDate, 
+                                                        LocalDate endDate, 
+                                                        List<UserLearningActivity> activities) {
+        Map<LocalDate, Double> dailyAccuracy = activities.stream()
+                .filter(a -> a.getMaxScore() != null && a.getMaxScore() > 0 && a.getScore() != null)
+                .collect(Collectors.groupingBy(
+                        a -> a.getCreatedAt().toLocalDate(),
+                        Collectors.averagingDouble(a -> (a.getScore().doubleValue() / a.getMaxScore()) * 100)
+                ));
+        
+        List<ChartDataPoint> chart = new ArrayList<>();
+        LocalDate cur = startDate;
+        while (!cur.isAfter(endDate)) {
+            double accuracy = dailyAccuracy.getOrDefault(cur, 0.0);
+            chart.add(ChartDataPoint.builder()
+                    .label(String.format("%02d/%02d", cur.getDayOfMonth(), cur.getMonthValue()))
+                    .value(accuracy)
+                    .fullDate(cur.toString())
+                    .build());
+            cur = cur.plusDays(1);
+        }
+        return chart;
+    }
+
+
     @Override
     public DashboardStatisticsResponse getDashboardStatistics(UUID userId,
-                                                              LocalDate startDate,
-                                                              LocalDate endDate) {
+                                                            LocalDate startDate,
+                                                            LocalDate endDate) {
         OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
 
-        // 1. Tính toán các chỉ số trực tiếp từ DB (Sửa lỗi hiển thị 0)
-        long totalLearningTime = userLearningActivityRepository.sumDurationByUserIdAndDateRange(userId, start, end);
-        double averageAccuracy = userLearningActivityRepository.calculateAverageAccuracy(userId, start, end);
-        long totalScore = userLearningActivityRepository.sumScoreByUserIdAndDateRange(userId, start, end);
+        // 1. ✅ FIX: Tính tổng thời gian học từ activities
+        List<UserLearningActivity> activities = userLearningActivityRepository
+                .findByUserIdAndCreatedAtBetween(userId, start, end);
+        
+        long totalLearningTime = activities.stream()
+                .filter(a -> a.getDurationInSeconds() != null)
+                .mapToLong(UserLearningActivity::getDurationInSeconds)
+                .sum();
+
+        // 2. ✅ FIX: Tính accuracy từ activities có maxScore > 0
+        double averageAccuracy = activities.stream()
+                .filter(a -> a.getMaxScore() != null && a.getMaxScore() > 0 && a.getScore() != null)
+                .mapToDouble(a -> (a.getScore().doubleValue() / a.getMaxScore()) * 100)
+                .average()
+                .orElse(0.0);
+
+        // 3. ✅ FIX: Tính tổng exp/coins từ activities
+        long totalScore = activities.stream()
+                .filter(a -> a.getScore() != null)
+                .mapToLong(a -> a.getScore().longValue())
+                .sum();
+
+        // 4. Đếm lessons completed
+        int lessonsCompleted = (int) activities.stream()
+                .filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETION)
+                .count();
+
+        // 5. Đếm badges earned
+        int badgesEarnedCount = (int) activities.stream()
+                .filter(a -> a.getActivityType() == ActivityType.BADGE_EARNED)
+                .count();
+
+        // 6. Tính streak
         int currentStreak = calculateStreak(userId);
 
-        int lessonsCompleted = userLearningActivityRepository.countActivitiesByType(userId, ActivityType.LESSON_COMPLETION, start, end);
-        int badgesEarnedCount = userLearningActivityRepository.countActivitiesByType(userId, ActivityType.BADGE_EARNED, start, end);
+        // 7. ✅ FIX: Tính tổng coins từ transactions SUCCESS
+        List<Transaction> transactions = transactionRepository
+                .findByUserIdAndCreatedAtBetween(userId, start, end);
+        
+        long totalCoins = transactions.stream()
+                .filter(t -> t.getStatus() == TransactionStatus.SUCCESS && t.getCurrency() != null && "COIN".equalsIgnoreCase(t.getCurrency()))
+                .mapToLong(t -> t.getAmount() != null ? t.getAmount().longValue() : 0)
+                .sum();
 
-        // 2. Điền đầy đủ vào DTO
+        // 8. Build DTO
         OverviewMetricsDto overview = OverviewMetricsDto.builder()
                 .totalLearningTimeSeconds(totalLearningTime)
                 .lessonsCompleted(lessonsCompleted)
                 .badgesEarned(badgesEarnedCount)
                 .streakDays(currentStreak)
-                .averageAccuracy(averageAccuracy) // Fix lỗi 0%
-                .totalExperience(totalScore)      // Fix lỗi 0 exp
-                .totalCoins(totalScore)           // Giả định 1 score = 1 coin, hoặc logic quy đổi khác
+                .averageAccuracy(averageAccuracy)
+                .totalExperience(totalScore)
+                .totalCoins(totalCoins > 0 ? totalCoins : totalScore) // Fallback to score if no coin transactions
                 .build();
 
-        List<UserLearningActivity> activities = userLearningActivityRepository
-                .findByUserIdAndCreatedAtBetween(userId, start, end);
+        // 9. Build learning time chart
         List<TimeSeriesPoint> learningChart = buildLearningTimeSeries(startDate, endDate, activities);
 
+        // 10. Course progress (giữ nguyên)
         List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository
                 .findByUserIdAndIsDeletedFalse(userId);
-
         List<CourseProgressDto> courseProgressList = new ArrayList<>();
         for (CourseVersionEnrollment e : enrollments) {
             Course course = courseRepository.findById(e.getCourseVersion().getCourseId()).orElse(null);
             CourseVersion version = (course != null) ? course.getLatestPublicVersion() : null;
             if (course == null || version == null) continue;
-
             try {
                 Page<LessonProgressResponse> progressPage = lessonProgressService.getAllLessonProgress(
                         course.getCourseId().toString(),
@@ -210,7 +379,6 @@ public class StatisticsServiceImpl implements StatisticsService {
                 );
                 int completed = (int) progressPage.getContent().stream().filter(LessonProgressResponse::isCompleted).count();
                 int totalLessons = (version.getLessons() != null) ? version.getLessons().size() : 0;
-
                 courseProgressList.add(CourseProgressDto.builder()
                         .courseId(course.getCourseId())
                         .courseTitle(course.getTitle())
@@ -218,26 +386,24 @@ public class StatisticsServiceImpl implements StatisticsService {
                         .completedLessons(completed)
                         .build());
             } catch (Exception ex) {
+                // Log error
             }
         }
 
+        // 11. Badge progress
         List<BadgeResponse> earnedBadges = badgeService.getBadgesForUser(userId);
         long totalBadges = badgeRepository.countByIsDeletedFalse();
-
         BadgeProgressDto badgeProgress = BadgeProgressDto.builder()
                 .totalBadgesInSystem((int) totalBadges)
                 .earnedBadgesCount(earnedBadges.size())
                 .earnedBadges(earnedBadges)
                 .build();
 
-        List<Transaction> transactions = transactionRepository
-                .findByUserIdAndCreatedAtBetween(userId, start, end);
-
+        // 12. Transaction summary
         BigDecimal totalSpent = transactions.stream()
                 .filter(t -> t.getStatus() == TransactionStatus.SUCCESS && t.getAmount() != null)
                 .map(Transaction::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
         TransactionSummaryDto transactionSummary = TransactionSummaryDto.builder()
                 .totalTransactions(transactions.size())
                 .totalSpent(totalSpent)
@@ -260,8 +426,8 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
     private List<TimeSeriesPoint> buildLearningTimeSeries(LocalDate startDate,
-                                                          LocalDate endDate,
-                                                          List<UserLearningActivity> activities) {
+                                                        LocalDate endDate,
+                                                        List<UserLearningActivity> activities) {
         Map<LocalDate, Long> dailyDuration = activities.stream()
                 .filter(a -> a.getDurationInSeconds() != null && a.getDurationInSeconds() > 0)
                 .collect(Collectors.groupingBy(
@@ -271,15 +437,115 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         List<TimeSeriesPoint> series = new ArrayList<>();
         LocalDate cur = startDate;
+        
         while (!cur.isAfter(endDate)) {
             long duration = dailyDuration.getOrDefault(cur, 0L);
             series.add(new TimeSeriesPoint(
                     String.format("%02d/%02d", cur.getDayOfMonth(), cur.getMonthValue()),
-                    null,
+                    null, // revenue không dùng cho learning time
                     duration
             ));
             cur = cur.plusDays(1);
         }
+        
+        return series;
+    }
+
+    private List<TimeSeriesPoint> buildTimeSeries(LocalDate startDate,
+                                                LocalDate endDate,
+                                                String aggregate,
+                                                List<Transaction> transactions) {
+        if (transactions == null) transactions = Collections.emptyList();
+        
+        Map<LocalDate, BucketAggregate> byDate = new HashMap<>();
+        for (Transaction t : transactions) {
+            if (t == null || t.getCreatedAt() == null) continue;
+            LocalDate d = t.getCreatedAt().toLocalDate();
+            BucketAggregate b = byDate.computeIfAbsent(d, k -> new BucketAggregate(BigDecimal.ZERO, 0L));
+            
+            boolean shouldAggregateRevenue = t.getAmount() != null &&
+                                        (t.getType() == TransactionType.DEPOSIT || "USD".equalsIgnoreCase(t.getCurrency()));
+            if (shouldAggregateRevenue) {
+                b.revenue = b.revenue.add(t.getAmount());
+            }
+            b.count++;
+        }
+
+        List<BucketRange> buckets = new ArrayList<>();
+        long days = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        
+        if ("day".equalsIgnoreCase(aggregate)) {
+            LocalDate cur = startDate;
+            while (!cur.isAfter(endDate)) {
+                buckets.add(new BucketRange(cur, cur.plusDays(1)));
+                cur = cur.plusDays(1);
+            }
+        } else if ("week".equalsIgnoreCase(aggregate)) {
+            long weeksCount = Math.max(1, days / 7);
+            long daysPerBucket = Math.max(1, days / Math.min(weeksCount, 7));
+            LocalDate cur = startDate;
+            while (!cur.isAfter(endDate)) {
+                LocalDate next = cur.plusDays(daysPerBucket);
+                if (next.isAfter(endDate.plusDays(1))) next = endDate.plusDays(1);
+                buckets.add(new BucketRange(cur, next));
+                cur = next;
+            }
+        } else if ("month".equalsIgnoreCase(aggregate)) {
+            LocalDate cur = LocalDate.of(startDate.getYear(), startDate.getMonthValue(), 1);
+            LocalDate finalMonth = LocalDate.of(endDate.getYear(), endDate.getMonthValue(), 1);
+            while (!cur.isAfter(finalMonth)) {
+                LocalDate nextMonth = cur.plusMonths(1);
+                LocalDate bucketEnd = nextMonth;
+                if (cur.equals(finalMonth)) {
+                    bucketEnd = endDate.plusDays(1);
+                }
+                buckets.add(new BucketRange(cur, bucketEnd));
+                cur = nextMonth;
+            }
+        } else if ("year".equalsIgnoreCase(aggregate)) {
+            int startYear = startDate.getYear();
+            int endYear = endDate.getYear();
+            for (int year = startYear; year <= endYear; year++) {
+                LocalDate yearStart = LocalDate.of(year, 1, 1);
+                LocalDate yearEnd = LocalDate.of(year, 12, 31).plusDays(1);
+                if (yearStart.isBefore(startDate)) yearStart = startDate;
+                if (yearEnd.isAfter(endDate.plusDays(1))) yearEnd = endDate.plusDays(1);
+                buckets.add(new BucketRange(yearStart, yearEnd));
+            }
+        } else {
+            LocalDate cur = startDate;
+            while (!cur.isAfter(endDate)) {
+                buckets.add(new BucketRange(cur, cur.plusDays(1)));
+                cur = cur.plusDays(1);
+            }
+        }
+
+        List<TimeSeriesPoint> series = new ArrayList<>();
+        int labelIdx = 1;
+        for (BucketRange b : buckets) {
+            BigDecimal sum = BigDecimal.ZERO;
+            long cnt = 0;
+            LocalDate d = b.start;
+            while (d.isBefore(b.end)) {
+                BucketAggregate ag = byDate.get(d);
+                if (ag != null) {
+                    sum = sum.add(ag.revenue);
+                    cnt += ag.count;
+                }
+                d = d.plusDays(1);
+            }
+
+            String label = switch (aggregate.toLowerCase()) {
+                case "day" -> String.format("%02d/%02d", b.start.getDayOfMonth(), b.start.getMonthValue());
+                case "week" -> "W" + labelIdx++;
+                case "month" -> b.start.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, Locale.ENGLISH);
+                case "year" -> String.valueOf(b.start.getYear());
+                default -> b.start.toString();
+            };
+
+            series.add(new TimeSeriesPoint(label, sum, cnt));
+        }
+
         return series;
     }
 

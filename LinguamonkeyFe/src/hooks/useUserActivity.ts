@@ -14,6 +14,7 @@ import {
 import { useUserStore } from "../stores/UserStore";
 import { useToast } from "../utils/useToast";
 import { AppState, AppStateStatus } from "react-native";
+import { getStudyHistory } from "../services/statisticsApi";
 
 // --- Keys Factory ---
 export const activityKeys = {
@@ -113,22 +114,14 @@ export const useGetActivity = (id: string | null) => {
 
 export const useGetStudyHistory = (
   userId: string | undefined,
-  period: string = "month"
+  period: "day" | "week" | "month" | "year"
 ) => {
   return useQuery({
-    queryKey: activityKeys.history(userId, period),
-    queryFn: async () => {
-      if (!userId) throw new Error("User ID is missing");
-
-      const { data } = await instance.get<AppApiResponse<StudyHistoryResponse>>(
-        `${BASE}/history`,
-        { params: { userId, period } }
-      );
-      // Fallback về DEFAULT nếu API trả về null để tránh crash
-      return data.result || DEFAULT_STUDY_HISTORY;
-    },
+    queryKey: ["studyHistory", userId, period],
+    queryFn: () => getStudyHistory(userId!, period),
     enabled: !!userId,
-    staleTime: 300_000, // 5 minutes cache
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 };
 

@@ -26,6 +26,6 @@ RUN dos2unix /app/entrypoint.sh && \
     mkdir -p /app/config
 
 EXPOSE 10000
-EXPOSE 9090
+EXPOSE 9091
 
 ENTRYPOINT ["/app/entrypoint.sh", "java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app/app.jar"]

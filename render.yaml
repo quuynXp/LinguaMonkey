@@ -70,7 +70,7 @@ services:
       - key: GOOGLE_SERVICE_ACCOUNT_FILE_URL
         value: /app/config/gdrive-key.json
       - key: GRPC_SERVER_PORT
-        value: 9090
+        value: 9091
       - key: GRPC_SERVER_ADDRESS
         value: 0.0.0.0
       - key: APP_BACKEND_URL
@@ -137,7 +137,7 @@ services:
         value: "0.0.0.0"
 
     healthCheckPath: /actuator/health/render
-    initialDelaySeconds: 60 # Đợi 60s trước khi bắt đầu check
+    initialDelaySeconds: 120 # Đợi 60s trước khi bắt đầu check
     healthCheckTimeout: 300 # Cho phép chờ tối đa 5 phút (Java start rất lâu)
     numInstances: 1
 
@@ -214,7 +214,7 @@ services:
       - key: GRPC_PORT
         value: 50051
       - key: JAVA_GRPC_ADDRESS
-        value: linguavietnameseapp:9090
+        value: linguavietnameseapp:9091
 
       # --- MISSING KEYS ADDED BELOW ---
 

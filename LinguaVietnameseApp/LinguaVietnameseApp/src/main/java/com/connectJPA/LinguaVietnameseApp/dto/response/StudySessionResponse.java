@@ -19,8 +19,8 @@ public class StudySessionResponse {
     private String title;
     private OffsetDateTime date; // created_at
     private Long duration; // duration_in_seconds
-    private Integer score;
-    private Integer maxScore;
+    private Float score;
+    private Float maxScore;
     private Integer experience;
     private List<String> skills;
     private boolean completed;

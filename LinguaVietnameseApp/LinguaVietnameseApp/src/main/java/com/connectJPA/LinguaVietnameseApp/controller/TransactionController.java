@@ -200,6 +200,7 @@ public class TransactionController {
 
     @Operation(summary = "Get all transactions by user")
     @GetMapping("/user/{userId}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #userId.toString() == authentication.name")
     public AppApiResponse<Page<TransactionResponse>> getTransactionsByUser(
             @PathVariable UUID userId,
             Pageable pageable,
@@ -241,6 +242,7 @@ public class TransactionController {
 
     @Operation(summary = "Delete a transaction")
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Void> deleteTransaction(
             @PathVariable UUID id,
             Locale locale) {
