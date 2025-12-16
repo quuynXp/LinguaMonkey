@@ -16,7 +16,6 @@ import { useToast } from "../utils/useToast";
 import { AppState, AppStateStatus } from "react-native";
 import { getStudyHistory } from "../services/statisticsApi";
 
-// --- Keys Factory ---
 export const activityKeys = {
   all: ["userLearningActivities"] as const,
   lists: (params: any) => [...activityKeys.all, "list", params] as const,
@@ -30,7 +29,6 @@ export const dailyChallengeKeys = {
   today: (userId: string | undefined) => [...dailyChallengeKeys.all, "today", userId || "anonymous"] as const,
 };
 
-// --- Helper to standardize pagination return ---
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
   data: (result?.content as T[]) || [],
   pagination: {
@@ -47,38 +45,7 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 
 const BASE = "/api/v1/user-learning-activities";
 
-// UPDATE: Thêm dailyActivity và điền đầy đủ giá trị mặc định cho stats
-const DEFAULT_STUDY_HISTORY: StudyHistoryResponse = {
-  sessions: [],
-  // Map này quan trọng để tránh crash Heatmap khi chưa có dữ liệu
-  dailyActivity: {},
-  stats: {
-    totalSessions: 0,
-    totalTimeSeconds: 0,
-    totalExperience: 0,
-    totalCoins: 0,
-    lessonsCompleted: 0,
-    averageAccuracy: 0,
-    averageScore: 0,
-    timeGrowthPercent: 0,
-    accuracyGrowthPercent: 0,
-    coinsGrowthPercent: 0,
-    weakestSkill: "NONE",
-    improvementSuggestion: "",
-    timeChartData: [],
-    accuracyChartData: [],
-  },
-};
-
-// ==========================================
-// === 1. QUERIES ===
-// ==========================================
-
-export const useAllActivities = (params?: {
-  userId?: string;
-  page?: number;
-  size?: number;
-}) => {
+export const useAllActivities = (params?: { userId?: string; page?: number; size?: number; }) => {
   const { userId, page = 0, size = 10 } = params || {};
   return useQuery({
     queryKey: activityKeys.lists(params),
@@ -87,35 +54,25 @@ export const useAllActivities = (params?: {
       if (userId) qp.append("userId", userId);
       qp.append("page", String(page));
       qp.append("size", String(size));
-
-      const { data } = await instance.get<
-        AppApiResponse<PageResponse<UserLearningActivityResponse>>
-      >(`${BASE}?${qp.toString()}`);
+      const { data } = await instance.get<AppApiResponse<PageResponse<UserLearningActivityResponse>>>(`${BASE}?${qp.toString()}`);
       return mapPageResponse(data.result, page, size);
     },
     staleTime: 60_000,
   });
 };
-
 export const useGetActivity = (id: string | null) => {
   return useQuery({
     queryKey: activityKeys.detail(id!),
     queryFn: async () => {
       if (!id) return Promise.reject(new Error("ID required"));
-      const { data } = await instance.get<
-        AppApiResponse<UserLearningActivityResponse>
-      >(`${BASE}/${id}`);
+      const { data } = await instance.get<AppApiResponse<UserLearningActivityResponse>>(`${BASE}/${id}`);
       return data.result!;
     },
     enabled: !!id,
     staleTime: 60_000,
   });
 };
-
-export const useGetStudyHistory = (
-  userId: string | undefined,
-  period: "day" | "week" | "month" | "year"
-) => {
+export const useGetStudyHistory = (userId: string | undefined, period: "day" | "week" | "month" | "year") => {
   return useQuery({
     queryKey: ["studyHistory", userId, period],
     queryFn: () => getStudyHistory(userId!, period),
@@ -124,116 +81,63 @@ export const useGetStudyHistory = (
     gcTime: 10 * 60 * 1000,
   });
 };
-
-// ==========================================
-// === 2. HEARTBEAT (Tracking Online Time) ===
-// ==========================================
-
 export const useHeartbeat = (enabled: boolean = true) => {
   const userId = useUserStore((state) => state.user?.userId);
   const appState = useRef(AppState.currentState);
-
   useEffect(() => {
     if (!userId || !enabled) return;
-
-    const sendHeartbeat = async () => {
-      try {
-        await instance.post(`${BASE}/heartbeat`, null, {
-          params: { userId },
-        });
-      } catch (error) {
-        // Silently fail for heartbeat to not disrupt UX
-        console.warn("Heartbeat failed", error);
-      }
-    };
-
-    // Send immediately on mount
+    const sendHeartbeat = async () => { try { await instance.post(`${BASE}/heartbeat`, null, { params: { userId } }); } catch (error) { console.warn("Heartbeat failed", error); } };
     sendHeartbeat();
-
-    // Set interval for every 60 seconds
     const intervalId = setInterval(sendHeartbeat, 60000);
-
-    // Handle App State (don't ping background, ping immediately on resume)
     const subscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
-      if (appState.current.match(/inactive|background/) && nextAppState === "active") {
-        sendHeartbeat(); // Trigger immediately when coming back
-      }
+      if (appState.current.match(/inactive|background/) && nextAppState === "active") { sendHeartbeat(); }
       appState.current = nextAppState;
     });
-
-    return () => {
-      clearInterval(intervalId);
-      subscription.remove();
-    };
+    return () => { clearInterval(intervalId); subscription.remove(); };
   }, [userId, enabled]);
 };
-
-// ==========================================
-// === 3. CRUD & LOGGING OPERATIONS ===
-// ==========================================
-
 export const useCreateActivity = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: UserLearningActivityRequest) => {
-      const { data } = await instance.post<
-        AppApiResponse<UserLearningActivityResponse>
-      >(BASE, payload);
+      const { data } = await instance.post<AppApiResponse<UserLearningActivityResponse>>(BASE, payload);
       return data.result!;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: activityKeys.all }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
   });
 };
-
 export const useUpdateActivity = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      payload,
-    }: {
-      id: string;
-      payload: UserLearningActivityRequest;
-    }) => {
-      const { data } = await instance.put<
-        AppApiResponse<UserLearningActivityResponse>
-      >(`${BASE}/${id}`, payload);
+    mutationFn: async ({ id, payload }: { id: string; payload: UserLearningActivityRequest; }) => {
+      const { data } = await instance.put<AppApiResponse<UserLearningActivityResponse>>(`${BASE}/${id}`, payload);
       return data.result!;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: activityKeys.all }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
   });
 };
-
 export const useDeleteActivity = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      await instance.delete<AppApiResponse<void>>(`${BASE}/${id}`);
-    },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: activityKeys.all }),
+    mutationFn: async (id: string) => { await instance.delete<AppApiResponse<void>>(`${BASE}/${id}`); },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
   });
 };
-
 export const useLogActivityStart = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: LearningActivityEventRequest) => {
-      const { data } = await instance.post<
-        AppApiResponse<UserLearningActivityResponse>
-      >(`${BASE}/start`, payload);
+      const { data } = await instance.post<AppApiResponse<UserLearningActivityResponse>>(`${BASE}/start`, payload);
       return data.result!;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: activityKeys.all }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
   });
 };
 
 export const useLogActivityEnd = () => {
   const queryClient = useQueryClient();
   const currentUserId = useUserStore((state) => state.user?.userId);
+  const refreshUserProfile = useUserStore((state) => state.refreshUserProfile);
   const { showToast } = useToast();
 
   return useMutation({
@@ -248,6 +152,8 @@ export const useLogActivityEnd = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: activityKeys.all });
+
+      refreshUserProfile();
 
       const update = data.challengeUpdate;
 
@@ -279,11 +185,7 @@ export const useTodayChallenges = (userId: string | undefined) => {
       if (!userId) throw new Error("User ID is missing");
       const qp = new URLSearchParams();
       qp.append("userId", userId);
-
-      const { data } = await instance.get<
-        AppApiResponse<UserDailyChallengeResponse[]>
-      >(`/api/v1/daily-challenges/today?${qp.toString()}`);
-
+      const { data } = await instance.get<AppApiResponse<UserDailyChallengeResponse[]>>(`/api/v1/daily-challenges/today?${qp.toString()}`);
       return data.result!;
     },
     enabled: !!userId,

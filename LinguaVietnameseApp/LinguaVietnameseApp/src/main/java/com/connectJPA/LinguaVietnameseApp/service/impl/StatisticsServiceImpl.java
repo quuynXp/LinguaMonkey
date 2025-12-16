@@ -45,15 +45,12 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final UserLearningActivityMapper userLearningActivityMapper;
     private final BadgeRepository badgeRepository;
 
-    // Helper tính streak
     private int calculateStreak(UUID userId) {
         int streak = 0;
         LocalDate checkDate = LocalDate.now();
-        // Check today
         if (hasActivityOnDate(userId, checkDate)) {
             streak++;
         }
-        // Check backwards
         checkDate = checkDate.minusDays(1);
         while (hasActivityOnDate(userId, checkDate)) {
             streak++;

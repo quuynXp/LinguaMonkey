@@ -336,7 +336,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 user_text=request.user_text,
                 prompt_text=request.prompt,
                 media_bytes=media_bytes,
-                media_url=media_url,     # Truyền vào logic
+                media_url=media_url,    # Truyền vào logic
                 mime_type=request.media_type,
                 language=request.language
             )
@@ -461,6 +461,9 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         
     @authenticated_grpc_method
     async def Translate(self, request, context, claims) -> learning_pb2.TranslateResponse:
+        # LOGGING ENTRANCE TO VERIFY CONNECTIVITY
+        logging.info(f"🚀 [gRPC] Translate called: '{request.text[:20]}...' | {request.source_language} -> {request.target_language}")
+        
         translated_text, detected_lang = await self.translator.translate(
             request.text, 
             request.source_language, 

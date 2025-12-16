@@ -35,6 +35,17 @@ DATASET_SOURCES = [
 BATCH_SIZE = 2000
 INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v10" 
 
+def calculate_initial_usage(text: str) -> int:
+    word_count = len(text.split())
+    # Từ đơn (1 từ): 5000 điểm
+    if word_count == 1: return 5000
+    # Cụm ngắn (2-3 từ): 2000 điểm
+    if word_count <= 3: return 2000
+    # Câu trung bình: 500 điểm
+    if word_count <= 6: return 500
+    # Còn lại: 100 điểm
+    return 100
+
 def normalize_text(text: str) -> str:
     if not text: return ""
     text = re.sub(r'[^\w\s]', '', text)
@@ -46,10 +57,6 @@ def get_redis_key(lang: str, text: str) -> str:
 async def ingest_huggingface_data(redis: Redis):
     async with AsyncSessionLocal() as db:
         try:
-            # if await redis.exists(INGESTION_FLAG_KEY):
-            #     logger.info(f"⚡ [SKIP] Hugging Face data already ingested.")
-            #     return
-
             pipeline = redis.pipeline()
             total_processed = 0
             MAX_ITEMS_PER_LANG = 50000
@@ -112,7 +119,7 @@ async def ingest_huggingface_data(redis: Redis):
                         "original_text": text_src,
                         "original_lang": target_src_key,
                         "translations": {target_tgt_key: text_tgt},
-                        "usage_count": 100 # Đặt usage cao để ưu tiên load vào client
+                        "usage_count": priority_score
                     })
 
                     count += 1

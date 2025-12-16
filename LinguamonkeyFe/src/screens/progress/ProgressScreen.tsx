@@ -73,6 +73,9 @@ const ProgressScreen = () => {
     }, [currentTab, timeFilter])
 
     const formatStudyTime = (seconds: number) => {
+        if (seconds < 60 && seconds > 0) {
+            return `${seconds}s`
+        }
         const hours = Math.floor(seconds / 3600)
         const minutes = Math.floor((seconds % 3600) / 60)
 

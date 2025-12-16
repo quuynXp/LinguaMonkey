@@ -34,7 +34,8 @@ class HybridTranslator:
 
     def _normalize(self, text: str) -> str:
         if not text: return ""
-        text = re.sub(r'[^\w\s]', '', text)
+        # IMPORTANT: Make sure this matches Frontend normalization logic
+        text = re.sub(r'[^\w\s]', '', text) 
         text = re.sub(r'\s+', ' ', text)
         return text.strip().lower()
 
@@ -123,6 +124,10 @@ class HybridTranslator:
                 key = self._get_redis_key(src_lang, phrase)
                 cached_val = await self.redis.hget(key, target_lang)
                 
+                # DEBUG LOG FOR REDIS KEY MATCH
+                if i == 0: # Log first phrase attempt
+                    logger.info(f"   [LPM Check] Generated Key: {key} | Found: {cached_val is not None}")
+
                 if cached_val:
                     trans_text = cached_val.decode('utf-8') if isinstance(cached_val, bytes) else str(cached_val)
                     translated_chunks.append(trans_text)
@@ -142,12 +147,14 @@ class HybridTranslator:
         return final_text, (matched_words_count / n if n > 0 else 0)
 
     async def translate(self, text: str, source_lang_hint: str, target_lang: str) -> Tuple[str, str]:
+        # DEBUG LOG ENTRY
+        logger.info(f"🔍 [HybridTranslator] Incoming: '{text}' | Hint: {source_lang_hint} | Target: {target_lang}")
+
         if not text or not text.strip(): return "", source_lang_hint
 
         # --- CIPHERTEXT GUARD ---
-        # If the input looks like a JSON blob containing ciphertext, do NOT translate it.
-        # This prevents the "translating garbage" issue when FE accidentally sends E2EE payload.
         if text.strip().startswith('{') and '"ciphertext"' in text:
+            logger.warn(f"⚠️ [HybridTranslator] Ignored potential JSON ciphertext.")
             return "", source_lang_hint
 
         src_lang = self._map_language_code(source_lang_hint)
@@ -170,6 +177,8 @@ class HybridTranslator:
         if coverage >= threshold:
             logger.info(f"⚡ LPM HIT ({int(coverage*100)}%): '{text}' -> '{lpm_result}'")
             return lpm_result, detected_lang
+        else:
+             logger.info(f"📉 LPM MISS ({int(coverage*100)}%): '{text}' -> Fallback to Gemini")
         
         if not GOOGLE_API_KEY:
             return lpm_result, detected_lang

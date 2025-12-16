@@ -44,6 +44,9 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -65,12 +68,16 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final AESUtils aesUtils;
     private final Gson gson = new Gson();
 
+    // Dedicated Executor for Translations to prevent main thread blocking
+    private final ExecutorService translationExecutor = Executors.newFixedThreadPool(10);
+
     @Lazy
     private final DailyChallengeService dailyChallengeService;
     @Lazy
     private final BadgeService badgeService;
 
     private static final UUID AI_BOT_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
+    private static final String USER_STATS_CACHE_PREFIX = "user_statistics::";
 
     private ChatMessageResponse mapToResponse(ChatMessage entity, RoomPurpose purpose) {
         ChatMessageResponse response = chatMessageMapper.toResponse(entity);
@@ -99,10 +106,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-        @CacheEvict(value = "room_messages", allEntries = true),
-        @CacheEvict(value = "user_statistics", key = "#request.senderId")
-    })
+    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse saveMessage(UUID roomId, ChatMessageRequest request) {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
@@ -173,6 +177,13 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             log.error("Broadcast failed", e);
         }
 
+        // Manually invalidate stats cache for sender
+        try {
+            redisTemplate.delete(USER_STATS_CACHE_PREFIX + request.getSenderId());
+        } catch (Exception e) {
+            log.warn("Failed to evict user stats cache", e);
+        }
+
         return response;
     }
 
@@ -181,7 +192,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         
         String roomKey = room.getSecretKey();
         if (roomKey == null || roomKey.isEmpty()) {
-            log.warn("Translation Skipped: No Room Key for Room {}", room.getRoomId());
             return;
         }
 
@@ -190,16 +200,15 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 String decryptedContent = aesUtils.decrypt(message.getContent(), roomKey);
                 
                 if (decryptedContent == null || decryptedContent.isEmpty()) {
-                    log.error("Async Translate: Decryption FAILED for message {}. Ciphertext or Key invalid.", message.getId().getChatMessageId());
+                    log.error("Async Translate: Decryption FAILED for message {}.", message.getId().getChatMessageId());
                     return;
                 }
                 
-                if (decryptedContent.contains("ciphertext")) {
-                      log.warn("Async Translate: Decrypted content looks like JSON/Ciphertext wrapper. Skipping.");
+                // If the content is wrapped in JSON (shouldn't be with AESUtils, but defensive)
+                if (decryptedContent.trim().startsWith("{") && decryptedContent.contains("ciphertext")) {
+                      log.warn("Async Translate: Decrypted content looks like JSON wrapper. Aborting to avoid parsing errors.");
                       return;
                 }
-
-                log.info("Async Translate: Decryption success. Length: {}", decryptedContent.length());
 
                 List<RoomMember> members = roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(room.getRoomId());
                 Set<String> targetLangs = members.stream()
@@ -211,10 +220,14 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
                 if (targetLangs.isEmpty()) return;
 
-                Map<String, String> existingTranslations = message.getTranslations();
-                if (existingTranslations != null) {
-                    targetLangs.removeIf(existingTranslations::containsKey);
-                }
+                // Double check DB for existing translations to avoid redundant calls
+                chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(message.getId().getChatMessageId()).ifPresent(currentMsg -> {
+                      Map<String, String> existing = currentMsg.getTranslations();
+                      if(existing != null) {
+                          targetLangs.removeIf(existing::containsKey);
+                      }
+                });
+                
                 if (targetLangs.isEmpty()) return;
 
                 Map<String, String> newTranslations = new HashMap<>();
@@ -227,8 +240,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                                 synchronized (newTranslations) {
                                     newTranslations.put(lang, res.getTranslatedText());
                                 }
-                            } else {
-                                log.warn("gRPC Translation failed for lang: {}", lang);
                             }
                         }));
                 }
@@ -241,6 +252,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                         if (current == null) current = new HashMap<>();
                         
                         for (Map.Entry<String, String> entry : newTranslations.entrySet()) {
+                            // Encrypt translation with RoomKey
                             String encryptedTrans = aesUtils.encrypt(entry.getValue(), roomKey);
                             current.put(entry.getKey(), encryptedTrans);
                         }
@@ -255,13 +267,12 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                         updateEvent.put("translations", current);
                         
                         messagingTemplate.convertAndSend("/topic/room/" + msg.getRoomId(), updateEvent);
-                        log.info("Async Translate: Updated {} translations for message {}", newTranslations.size(), message.getId().getChatMessageId());
                     });
                 }
             } catch (Exception e) {
                 log.error("Async Translation Critical Error", e);
             }
-        });
+        }, translationExecutor);
     }
 
     private void notifyMembers(ChatMessage savedMessage, Room room, ChatMessageResponse response, UUID senderId) {
@@ -328,33 +339,34 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-        @CacheEvict(value = "room_messages", allEntries = true),
-        @CacheEvict(value = "user_statistics", key = "#request.senderId")
-    })
+    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request) {
         return this.saveMessage(roomId, request);
     }
 
     @Override
     @Transactional
-    @Caching(evict = {
-        @CacheEvict(value = "room_messages", allEntries = true),
-        @CacheEvict(value = "user_statistics", allEntries = true)
-    })
+    @CacheEvict(value = "room_messages", allEntries = true)
     public void deleteChatMessage(UUID id) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
             String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
+            
+            // Validate user ownership
             if (!message.getSenderId().toString().equals(currentUserId)) {
                 throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
             }
+            
             long minutesSinceSent = ChronoUnit.MINUTES.between(message.getId().getSentAt(), OffsetDateTime.now());
             if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED); 
 
             chatMessageRepository.softDeleteByChatMessageId(id);
             messageReactionRepository.softDeleteByChatMessageId(id);
+
+            // Manual cache eviction for this specific user only (optimization over allEntries)
+            redisTemplate.delete(USER_STATS_CACHE_PREFIX + message.getSenderId());
+
         } catch (AppException e) { throw e; }
         catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }
@@ -461,13 +473,49 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     }
 
     @Override
-    @Cacheable(value = "user_statistics", key = "#userId")
     public ChatStatsResponse getStatsByUser(UUID userId) {
-        User user = userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        String cacheKey = USER_STATS_CACHE_PREFIX + userId;
+        
+        try {
+            Object cachedData = redisTemplate.opsForValue().get(cacheKey);
+            if (cachedData != null) {
+                if (cachedData instanceof ChatStatsResponse) {
+                    return (ChatStatsResponse) cachedData;
+                } else if (cachedData instanceof LinkedHashMap) {
+                    String json = gson.toJson(cachedData);
+                    return gson.fromJson(json, ChatStatsResponse.class);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Redis cache fetch failed for user stats: {}", e.getMessage());
+        }
+
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
         long totalMessages = chatMessageRepository.countBySenderIdAndIsDeletedFalse(userId);
         long totalTranslations = chatMessageRepository.countTranslationsForUser(userId);
         long totalRooms = roomMemberRepository.countByIdUserIdAndIsDeletedFalse(userId);
-        return ChatStatsResponse.builder().totalMessages(totalMessages).translationsUsed(totalTranslations).joinedRooms(totalRooms).videoCalls(0).lastActiveAt(user.getLastActiveAt()).online(user.isOnline()).level(user.getLevel()).exp(user.getExp()).streak(user.getStreak()).build();
+        
+        ChatStatsResponse response = ChatStatsResponse.builder()
+                .totalMessages(totalMessages)
+                .translationsUsed(totalTranslations)
+                .joinedRooms(totalRooms)
+                .videoCalls(0)
+                .lastActiveAt(user.getLastActiveAt())
+                .online(user.isOnline())
+                .level(user.getLevel())
+                .exp(user.getExp())
+                .streak(user.getStreak())
+                .build();
+        
+        try {
+            redisTemplate.opsForValue().set(cacheKey, response, 1, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.warn("Redis cache set failed for user stats", e);
+        }
+
+        return response;
     }
 
     @Override

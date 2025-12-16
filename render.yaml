@@ -1,7 +1,4 @@
 services:
-  # ==========================================
-  # 1. BACKEND SERVICE (JAVA)
-  # ==========================================
   - type: web
     name: linguavietnameseapp
     runtime: docker
@@ -11,13 +8,14 @@ services:
     dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
     healthCheckPath: /actuator/health/render
+    initialDelaySeconds: 300
+    healthCheckTimeoutSeconds: 30
     numInstances: 1
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
       - key: SPRING_PROFILES_ACTIVE
         value: prod
-
       - key: PORT
         value: 10000
       - key: SERVER_PORT
@@ -26,8 +24,6 @@ services:
         value: 9091
       - key: GRPC_PORT
         value: 9091
-
-      # === DATABASE CONNECTION ===
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres
@@ -50,8 +46,6 @@ services:
           property: password
       - key: SPRING_DATASOURCE_URL
         value: "jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
-
-      # === REDIS CONNECTION ===
       - key: REDIS_HOST_INTERNAL
         fromService:
           type: redis
@@ -66,22 +60,16 @@ services:
           property: port
       - key: REDIS_PASSWORD
         value: "redisPass123"
-
-      # === OTHER SERVICES ===
       - key: PYTHON_SERVICE_URL
         value: http://pythonservice:10000
       - key: APP_BACKEND_URL
-        value: https://kong-7snn.onrender.com
-
-      # === GRPC CLIENT CONFIG ===
+        value: https://linguavietnameseapp-n0u9.onrender.com
       - key: PYTHON_GRPC_HOST
         value: pythonservice
       - key: PYTHON_GRPC_PORT
         value: 50051
       - key: GRPC_SERVER_ADDRESS
         value: 0.0.0.0
-
-      # === KEYS & SECRETS ===
       - key: FIREBASE_CREDENTIALS_BASE64
         value: |
           ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTEwMDkiLAogICJwcml2YXRlX2tleV9pZCI6ICI1YjlhNDZiZjFmNGMyNmY5Y2FkNzg4Zjc0YzM0NjQ5ODFiMmYxMTAzIiwKICAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklW...
@@ -149,9 +137,6 @@ services:
       - key: SERVER_ADDRESS
         value: "0.0.0.0"
 
-  # ==========================================
-  # 2. PYTHON SERVICE
-  # ==========================================
   - type: web
     name: pythonservice
     runtime: docker
@@ -246,9 +231,6 @@ services:
         value: USER_PROFILE_UPDATES
     numInstances: 1
 
-  # ==========================================
-  # 3. KONG GATEWAY
-  # ==========================================
   - type: web
     name: kong
     runtime: docker
@@ -272,9 +254,6 @@ services:
         value: bundled,rate-limiting,cors,request-transformer,proxy-cache
     numInstances: 1
 
-  # ==========================================
-  # 4. RESOURCES
-  # ==========================================
   - type: redis
     name: redis
     region: singapore

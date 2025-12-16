@@ -49,6 +49,7 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/health",
                     "/actuator/**",
+                    "/actuator/health/render",
                     "/api/v1/auth/**",
                     "/api/swagger", 
                     "/api/swagger/**",
@@ -61,10 +62,7 @@ public class SecurityConfig {
                     "/api/v1/badge",
                     "/api/v1/certificates",
                     "/ws/**",
-                    "/actuator/**",
-                    "/actuator/health/**",
-                    "/api/v1/health",
-                    "/actuator/health"
+                    "/api/v1/health"
                 ).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/users").permitAll() 
                 .requestMatchers(HttpMethod.GET, "/api/v1/users/*/profile").permitAll()

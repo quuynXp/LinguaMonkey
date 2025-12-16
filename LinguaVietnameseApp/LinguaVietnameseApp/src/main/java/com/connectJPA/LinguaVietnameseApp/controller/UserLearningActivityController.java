@@ -30,8 +30,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserLearningActivityController {
     private final UserLearningActivityService userLearningActivityService;
-    // Không cần cast/inject Impl, chỉ cần dùng Interface sau khi đã cập nhật Interface
-    // private final UserLearningActivityServiceImpl userLearningActivityServiceImpl; 
     private final MessageSource messageSource;
     private final LessonService lessonService;
 

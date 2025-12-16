@@ -20,15 +20,13 @@ import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useToast } from "../../utils/useToast";
 import { MemberResponse, UserProfileResponse } from "../../types/dto";
-import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getAvatarSource } from "../../utils/avatarUtils";
 import { getDirectMediaUrl } from "../../utils/mediaUtils";
 import { useAppStore } from "../../stores/appStore";
 import FileUploader from "../common/FileUploader";
 import Video from 'react-native-video';
-import { useHeaderHeight } from '@react-navigation/elements';
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width, height } = Dimensions.get('window');
 
@@ -115,31 +113,24 @@ const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile }: any
 
 interface ChatInnerViewProps {
     roomId: string;
-    initialRoomName?: string;
     isBubbleMode?: boolean;
-    onCloseBubble?: () => void;
-    onMinimizeBubble?: () => void;
     soundEnabled?: boolean;
     initialFocusMessageId?: string | null;
     members?: MemberResponse[];
+    customHeaderHeight?: number;
 }
 
 const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     roomId,
     isBubbleMode = false,
-    members = []
+    members = [],
+    customHeaderHeight = 0
 }) => {
     const { t } = useTranslation();
     const { showToast } = useToast();
     const navigation = useNavigation<any>();
     const { user } = useUserStore();
-
-    // --- KEYBOARD FIX START ---
-    const navHeaderHeight = useHeaderHeight();
-    // iOS cần offset bằng chiều cao header để không bị đè.
-    // Android thường tự động xử lý tốt hơn với behavior='height', nên offset = 0 hoặc nhỏ.
-    const keyboardOffset = Platform.OS === 'ios' ? navHeaderHeight : 0;
-    // --- KEYBOARD FIX END ---
+    const insets = useSafeAreaInsets();
 
     const chatSettings = useAppStore(state => state.chatSettings);
     const nativeLanguage = useAppStore(state => state.nativeLanguage);
@@ -273,7 +264,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         } else {
             sendMessage(roomId, inputText, 'TEXT');
             setInputText("");
-            // Scroll to bottom immediately after sending
             setTimeout(() => {
                 flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
             }, 100);
@@ -400,20 +390,21 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         );
     };
 
+    // Safe area handling for iOS bottom
+    const bottomPadding = Platform.OS === 'ios' ? insets.bottom : 0;
+
     return (
-        <ScreenLayout style={styles.container}>
-            {/* FIX: behavior="height" cho Android để đẩy toàn bộ View lên khi bàn phím hiện.
-                FIX: keyboardVerticalOffset để tránh bị header che mất trên iOS.
-            */}
+        <View style={{ flex: 1, backgroundColor: '#FFF' }}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                keyboardVerticalOffset={keyboardOffset}
+                behavior={Platform.OS === "ios" ? "padding" : undefined} // ANDROID FIX: undefined forces using windowSoftInputMode="adjustResize"
+                keyboardVerticalOffset={Platform.OS === "ios" ? customHeaderHeight : 0}
             >
                 <View style={{ flex: 1 }}>
                     <FlatList
                         ref={flatListRef}
                         data={messages}
+                        extraData={[eagerTranslations, loadingByRoom[roomId]]}
                         keyExtractor={item => item.id}
                         style={styles.list}
                         renderItem={renderMessageItem}
@@ -434,7 +425,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     </View>
                 )}
 
-                <View style={styles.inputWrapper}>
+                <View style={[styles.inputWrapper, { paddingBottom: Platform.OS === 'ios' ? bottomPadding : 0 }]}>
                     {isUploading && <View style={styles.uploadingOverlay}><ActivityIndicator size="small" color="#3B82F6" /></View>}
                     <View style={styles.inputArea}>
                         <FileUploader
@@ -463,12 +454,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
             <QuickProfilePopup visible={isPopupVisible} profile={selectedProfile} onClose={() => setIsPopupVisible(false)} onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }} />
             <MediaViewerModal visible={mediaViewer.visible} url={mediaViewer.url} type={mediaViewer.type} onClose={() => setMediaViewer(s => ({ ...s, visible: false }))} />
-        </ScreenLayout>
+        </View>
     );
 };
 
 const styles = createScaledSheet({
-    container: { flex: 1, backgroundColor: '#FFF' },
+    // Removed container flex: 1 here because it's handled inline
     list: { flex: 1, paddingHorizontal: 16 },
     msgRow: { flexDirection: 'row', marginVertical: 6 },
     rowUser: { justifyContent: 'flex-end' },
@@ -493,7 +484,7 @@ const styles = createScaledSheet({
     timeUser: { color: 'rgba(255,255,255,0.7)' },
     timeOther: { color: '#9CA3AF' },
     transBtn: { marginTop: 4, padding: 6, alignSelf: 'flex-start', backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6' },
-    inputWrapper: { borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF', paddingBottom: Platform.OS === 'ios' ? 20 : 0 },
+    inputWrapper: { borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF' },
     inputArea: { flexDirection: 'row', padding: 10, alignItems: 'center', backgroundColor: '#FFF' },
     attachBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
     input: {

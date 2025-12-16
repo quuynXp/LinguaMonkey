@@ -4,7 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import type { UserResponse, Character3dResponse } from '../types/dto';
 import { privateClient, mediaClient } from '../api/axiosClient';
-// Giả định i18n nằm ở thư mục cha hoặc utils, hãy chỉnh lại path nếu cần
 import i18n from '../i18n';
 
 interface DailyGoal {

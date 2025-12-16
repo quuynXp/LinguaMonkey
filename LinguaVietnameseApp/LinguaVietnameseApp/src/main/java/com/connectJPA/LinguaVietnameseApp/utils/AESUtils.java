@@ -15,7 +15,6 @@ import java.util.Base64;
 public class AESUtils {
     private static final Logger log = LoggerFactory.getLogger(AESUtils.class);
     
-    // 同步 AES/CBC/PKCS5Padding with Frontend (PKCS7)
     private static final String AES_ALGO = "AES/CBC/PKCS5Padding";
     private static final int IV_LENGTH_BYTE = 16;
 
@@ -89,7 +88,7 @@ public class AESUtils {
     }
 
     public String generateRoomKey() {
-        byte[] key = new byte[32]; // 256-bit key
+        byte[] key = new byte[32];
         new SecureRandom().nextBytes(key);
         return Base64.getEncoder().encodeToString(key);
     }

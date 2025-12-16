@@ -121,7 +121,7 @@ interface UseChatState {
 const normalizeLexiconText = (text: string) => {
   if (!text) return "";
   return text
-    .replace(/[^\w\s]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
@@ -189,7 +189,7 @@ const normalizeMessage = (msg: any): Message => {
     selfEphemeralKey: msg.selfEphemeralKey,
     selfInitializationVector: msg.selfInitializationVector,
     decryptedContent: msg.decryptedContent || null,
-    mediaUrl: msg.mediaUrl || msg.media_url || null,
+    mediaUrl: safeMediaUrl,
   };
 
   if (msg?.id?.chatMessageId) {
@@ -298,13 +298,14 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   updateDecryptedContent: (roomId, messageId, decryptedContent) => {
     set(state => {
       const msgs = state.messagesByRoom[roomId] || [];
+      const updatedMsgs = msgs.map(m => {
+        if (m.id.chatMessageId !== messageId) return m;
+        return { ...m, decryptedContent: decryptedContent };
+      });
       return {
         messagesByRoom: {
           ...state.messagesByRoom,
-          [roomId]: msgs.map(m => {
-            if (m.id.chatMessageId !== messageId) return m;
-            return { ...m, decryptedContent: decryptedContent };
-          })
+          [roomId]: updatedMsgs
         }
       };
     });
@@ -313,16 +314,17 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   mergeTranslationUpdate: (roomId, messageId, translations) => {
     set(state => {
       const msgs = state.messagesByRoom[roomId] || [];
+      const updatedMsgs = msgs.map(m => {
+        if (m.id.chatMessageId !== messageId) return m;
+        return {
+          ...m,
+          translationsMap: { ...(m.translationsMap || {}), ...translations }
+        };
+      });
       return {
         messagesByRoom: {
           ...state.messagesByRoom,
-          [roomId]: msgs.map(m => {
-            if (m.id.chatMessageId !== messageId) return m;
-            return {
-              ...m,
-              translationsMap: { ...(m.translationsMap || {}), ...translations }
-            };
-          })
+          [roomId]: updatedMsgs
         }
       };
     });
@@ -333,32 +335,32 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   decryptNewMessages: async (roomId, messagesToProcess) => {
+    if (!messagesToProcess || messagesToProcess.length === 0) return;
     get()._processDecryptionQueue(roomId, messagesToProcess);
   },
 
   _processDecryptionQueue: async (roomId, messages) => {
     const user = useUserStore.getState().user;
     const room = get().rooms[roomId];
-    if (!user?.userId || !room) return;
+    if (!user?.userId) return;
 
     e2eeService.setUserId(user.userId);
-    if (room.purpose !== RoomPurpose.PRIVATE_CHAT && room.secretKey) {
+    if (room && room.purpose !== RoomPurpose.PRIVATE_CHAT && room.secretKey) {
       await e2eeService.setRoomKey(roomId, room.secretKey);
     }
 
     const targets = messages.filter(m =>
       m.messageType === 'TEXT' &&
-      (!m.decryptedContent || m.decryptedContent.includes('!!'))
+      (!m.decryptedContent || m.decryptedContent.includes('!!') || m.decryptedContent.trim() === '')
     );
 
     if (targets.length === 0) return;
 
-    const isGroupStrategy = room.purpose !== RoomPurpose.PRIVATE_CHAT;
+    const isGroupStrategy = room?.purpose !== RoomPurpose.PRIVATE_CHAT;
 
     const results = await Promise.all(targets.map(async (msg) => {
       try {
         let text = "";
-
         if (isGroupStrategy) {
           text = await e2eeService.decryptGroupMessage(roomId, msg.content);
         } else {
@@ -368,7 +370,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
             text = msg.content;
           }
         }
-
         return { id: msg.id.chatMessageId, text };
       } catch (e) {
         return { id: msg.id.chatMessageId, text: '!! Decryption Failed' };
@@ -393,38 +394,36 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
       return { messagesByRoom: { ...state.messagesByRoom, [roomId]: newRoomMsgs } };
     });
-  },
 
-  selectRoom: async (room: Room) => {
-    const currentUserId = useUserStore.getState().user?.userId;
-    if (!currentUserId) return;
-
-    set({ currentViewedRoomId: room.roomId, loadingByRoom: { ...get().loadingByRoom, [room.roomId]: true } });
-
-    if (room.purpose !== RoomPurpose.PRIVATE_CHAT && room.secretKey) {
-      await e2eeService.setRoomKey(room.roomId, room.secretKey);
+    // Trigger eager translation for newly decrypted
+    const { chatSettings, nativeLanguage } = useAppStore.getState();
+    const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
+    if (chatSettings.autoTranslate) {
+      results.forEach(res => {
+        if (!res.text.includes('!!')) get().performEagerTranslation(res.id, res.text, targetLang);
+      });
     }
-
-    const cachedMsgsJson = mmkvStorage.getString(CACHE_PREFIX_MSGS + room.roomId);
-    if (cachedMsgsJson) {
-      try {
-        const cachedMsgs = JSON.parse(cachedMsgsJson);
-        set(state => ({
-          messagesByRoom: { ...state.messagesByRoom, [room.roomId]: cachedMsgs },
-          loadingByRoom: { ...state.loadingByRoom, [room.roomId]: false }
-        }));
-
-        get().decryptNewMessages(room.roomId, cachedMsgs);
-      } catch (e) { console.warn("Cache parse error", e); }
-    }
-
-    await get().loadMessages(room.roomId);
   },
 
   performEagerTranslation: async (messageId: string, text: string, overrideTargetLang?: string) => {
     if (!text || !messageId) return;
-    if (text.trim().startsWith('{') && text.includes('ciphertext')) return;
-    if (text.includes('!! Decryption Failed') || text.includes('🔒')) return;
+
+    // LOG DEBUG FOR USER
+    console.log(`[Lexicon-Debug] performEagerTranslation Start | MsgId: ${messageId} | Text: "${text}"`);
+
+    if (text.trim().startsWith('{') && text.includes('ciphertext')) {
+      console.warn("[Lexicon-Debug] Ignored JSON Ciphertext");
+      return;
+    }
+    if (text.includes('!! Decryption Failed') || text.includes('🔒')) {
+      console.warn("[Lexicon-Debug] Ignored Failed Decryption/Lock");
+      return;
+    }
+
+    // New check: Suspicious ciphertext (no spaces, high entropy, ends with =)
+    if (!text.includes(' ') && text.length > 20 && text.trim().endsWith('=')) {
+      console.warn(`[Lexicon-Debug] WARNING: Text looks like RAW CIPHERTEXT/BASE64. Translation will fail. Input: ${text.substring(0, 15)}...`);
+    }
 
     const { nativeLanguage, chatSettings } = useAppStore.getState();
     const targetLang = overrideTargetLang || chatSettings?.targetLanguage || nativeLanguage || 'vi';
@@ -433,11 +432,13 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     const lexicon = get().lexiconMaster;
     if (lexicon.size === 0) {
+      console.log("[Lexicon-Debug] Lexicon empty, fetching master...");
       await get().fetchLexiconMaster();
     }
 
-    // Normalized input array for tokenization
     const normalizedInput = normalizeLexiconText(text);
+    console.log(`[Lexicon-Debug] Normalized Input: "${normalizedInput}"`);
+
     if (!normalizedInput) return;
 
     const words = normalizedInput.split(' ').filter(w => w);
@@ -450,12 +451,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       let bestTranslation = '';
       let bestJ = 0;
 
-      // Greedy Longest Prefix Match (max window 6 words)
       for (let j = Math.min(words.length - i, 8); j >= 1; j--) {
         const phrase = words.slice(i, i + j).join(' ');
-        const phraseKey = normalizeLexiconText(phrase); // Normalize key again to be safe
-
+        const phraseKey = normalizeLexiconText(phrase);
         let translations = lexicon.get(phraseKey);
+
+        // Verbose check for the first few words to verify matching logic
+        if (i === 0) {
+          console.log(`[Lexicon-Debug] Checking Key: "${phraseKey}" | Found: ${!!translations}`);
+        }
 
         if (translations && translations[targetLang]) {
           bestMatch = phrase;
@@ -479,8 +483,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const totalWords = words.length;
     const matchRatio = totalWords > 0 ? (matchedWordsCount / totalWords) : 0;
 
-    // Strict coverage check for simple sentences
-    const isClientGoodEnough = matchRatio >= 0.8 || (totalWords <= 5 && matchedWordsCount >= totalWords);
+    console.log(`[Lexicon-Debug] Result: Ratio=${matchRatio} | Translated="${finalLocalTranslation}"`);
+
+    const isClientGoodEnough = matchRatio >= 0.7 || (totalWords <= 5 && matchedWordsCount >= totalWords * 0.8);
 
     if (isClientGoodEnough && finalLocalTranslation.length > 0) {
       set(state => ({
@@ -499,10 +504,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     try {
       const res = await instance.get<AppApiResponse<LexiconEntry[]>>('/api/py/lexicon/top', { params: { limit: 5000 } });
       const lexiconData = res.data.result || [];
+      console.log(`[Lexicon-Debug] Fetched ${lexiconData.length} entries from server.`);
+
       const newLexicon = new Map<string, Record<string, string>>();
 
       lexiconData.forEach(entry => {
-        // Critical: Normalize keys EXACTLY like we normalize input
         const key = normalizeLexiconText(entry.original_text);
         const existing = newLexicon.get(key);
         if (existing) {
@@ -564,14 +570,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
               return { messagesByRoom: { ...s.messagesByRoom, [roomId]: list } };
             });
 
-            if (newMsg.senderEphemeralKey) {
+            if (newMsg.senderEphemeralKey || newMsg.content) {
               get().decryptNewMessages(roomId, [newMsg]);
-            } else {
-              const { chatSettings, nativeLanguage } = useAppStore.getState();
-              if (chatSettings.autoTranslate && newMsg.messageType === 'TEXT' && newMsg.content) {
-                const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
-                get().performEagerTranslation(newMsg.id.chatMessageId, newMsg.content, targetLang);
-              }
             }
           }
         });
@@ -598,15 +598,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
               return { messagesByRoom: { ...state.messagesByRoom, [roomId]: list } };
             });
 
-            if (newMsg.senderEphemeralKey || newMsg.senderId === useUserStore.getState().user?.userId) {
-              get().decryptNewMessages(roomId, [newMsg]);
-            } else {
-              const { chatSettings, nativeLanguage } = useAppStore.getState();
-              if (chatSettings.autoTranslate && newMsg.messageType === 'TEXT' && newMsg.content) {
-                const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
-                get().performEagerTranslation(newMsg.id.chatMessageId, newMsg.content, targetLang);
-              }
-            }
+            // Always attempt decrypt/translate on incoming
+            get().decryptNewMessages(roomId, [newMsg]);
           });
         } catch (e) { console.warn('Flush subscribe error', dest, e); }
       });
@@ -622,6 +615,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   subscribeToRoom: (roomId: string) => {
     const chatDest = `/topic/room/${roomId}`;
     const statusDest = `/topic/room/${roomId}/status`;
+
     if (stompService.isConnected) {
       stompService.subscribe(chatDest, (rawMsg: any) => {
         if (rawMsg && rawMsg.type === 'VIDEO_CALL') { return; }
@@ -640,21 +634,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           return { messagesByRoom: { ...state.messagesByRoom, [roomId]: list } };
         });
 
-        if (newMsg.senderEphemeralKey || newMsg.senderId === useUserStore.getState().user?.userId) {
-          get().decryptNewMessages(roomId, [newMsg]);
-        } else {
-          const { chatSettings, nativeLanguage } = useAppStore.getState();
-          if (chatSettings.autoTranslate && newMsg.messageType === 'TEXT' && newMsg.content) {
-            const targetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
-            get().performEagerTranslation(newMsg.id.chatMessageId, newMsg.content, targetLang);
-          }
-        }
+        get().decryptNewMessages(roomId, [newMsg]);
       });
+
       stompService.subscribe(statusDest, (msg: any) => {
         if (msg.userId) { get().updateUserStatus(msg.userId, msg.status === 'ONLINE', new Date().toISOString()); }
       });
       return;
     }
+
     set((s) => ({ pendingSubscriptions: Array.from(new Set([...s.pendingSubscriptions, chatDest, statusDest])) }));
     get().initStompClient();
   },
@@ -794,11 +782,22 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     }));
   },
 
-  loadMessages: async (roomId, page = 0, size = 20) => { // Increase size for better UX
+  loadMessages: async (roomId, page = 0, size = 25) => {
     const state = get();
-    // Allow reloading page 0 to refresh cache
     if (state.loadingByRoom[roomId] && page !== 0) return;
     set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: true } }));
+
+    // Pre-load from cache if page 0
+    if (page === 0) {
+      const cachedMsgsJson = mmkvStorage.getString(CACHE_PREFIX_MSGS + roomId);
+      if (cachedMsgsJson) {
+        try {
+          const cachedMsgs = JSON.parse(cachedMsgsJson);
+          set(s => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: cachedMsgs } }));
+          get().decryptNewMessages(roomId, cachedMsgs);
+        } catch (e) { }
+      }
+    }
 
     try {
       const res = await instance.get<AppApiResponse<PageResponse<any>>>(`/api/v1/chat/room/${roomId}/messages`, { params: { page, size, sort: 'id.sentAt,desc' } });
@@ -810,15 +809,13 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         const currentMsgs = currentState.messagesByRoom[roomId] || [];
         let mergedList = page === 0 ? [] : [...currentMsgs];
 
-        // Merge logic (upsert)
         newMessages.forEach(msg => {
           const { list } = upsertMessageList(mergedList, msg);
           mergedList = list;
         });
 
-        // 4. SAVE TO MMKV (Only first page to keep cache small/relevant)
         if (page === 0) {
-          mmkvStorage.setItem(CACHE_PREFIX_MSGS + roomId, JSON.stringify(mergedList.slice(0, 50))); // Cache top 50
+          mmkvStorage.setItem(CACHE_PREFIX_MSGS + roomId, JSON.stringify(mergedList.slice(0, 50)));
         }
 
         return {
@@ -911,7 +908,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     if (type === 'TEXT') {
       if (isPrivateChat) {
-        // 1-1 Signal E2EE
         const receiverId = room?.members?.find(m => m.userId !== user.userId)?.userId;
         if (receiverId) {
           const encResult = await e2eeService.encrypt(receiverId, user.userId, content);
@@ -924,12 +920,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           finalPayload.selfInitializationVector = encResult.selfInitializationVector;
         }
       } else {
-        // Group Chat (>2) - Room Key AES
         try {
-          // Nội dung tin nhắn gửi đi là Ciphertext mã hóa bởi RoomKey
           const encryptedContent = await e2eeService.encryptGroupMessage(roomId, content);
           finalPayload.content = encryptedContent;
-          // Các trường Signal E2EE để null
         } catch (e) {
           console.error("Group Encrypt Failed", e);
           return;
