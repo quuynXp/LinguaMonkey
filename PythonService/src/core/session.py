@@ -1,4 +1,3 @@
-# src/core/session.py
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 import os
@@ -6,7 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Build DATABASE_URL from environment variables
 DB_USER = os.getenv("APP_DB_USER", "linguauser")
 DB_PASS = os.getenv("APP_DB_PASS", "linguapass")
 DB_HOST = os.getenv("APP_DB_HOST", "app-database")

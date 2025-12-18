@@ -20,7 +20,8 @@ import { useNavigation } from '@react-navigation/native';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useUserStore } from '../../stores/UserStore';
-import { useRooms } from '../../hooks/useRoom';
+// FIX: Import trực tiếp useCreateRoom thay vì useRoom
+import { useCreateRoom } from '../../hooks/useRoom';
 import { useUsers } from '../../hooks/useUsers';
 import { RoomPurpose, RoomType } from '../../types/enums';
 import { RoomRequest, UserProfileResponse } from '../../types/dto';
@@ -31,10 +32,9 @@ const CreateRoomScreen = () => {
   const navigation = useNavigation<any>();
   const { user } = useUserStore();
 
-  const { useCreateRoom } = useRooms();
-  const { useSearchPublicUsers } = useUsers();
-
+  // FIX: Gọi hook trực tiếp
   const { mutate: createRoom, isPending: isCreating } = useCreateRoom();
+  const { useSearchPublicUsers } = useUsers();
 
   const [roomName, setRoomName] = useState('');
   const [description, setDescription] = useState('');

@@ -29,5 +29,7 @@ public interface LeaderboardEntryService {
 
     LeaderboardEntryResponse getCurrentUserEntryWithRank(UUID leaderboardId, UUID userId);
     
+    void updateScore(UUID leaderboardId, UUID userId, double score);
+    
     Integer getRankForUserByTab(String tab, String type, UUID userId);
 }

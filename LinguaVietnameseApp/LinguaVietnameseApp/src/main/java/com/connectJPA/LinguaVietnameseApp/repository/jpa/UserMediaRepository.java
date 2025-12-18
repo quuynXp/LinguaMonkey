@@ -10,4 +10,5 @@ import java.util.UUID;
 public interface UserMediaRepository extends JpaRepository<UserMedia, UUID> {
     List<UserMedia> findByUserIdAndMediaType(UUID userId, MediaType mediaType);
     List<UserMedia> findByUserId(UUID userId);
+    boolean existsByFilePath(String filePath);
 }

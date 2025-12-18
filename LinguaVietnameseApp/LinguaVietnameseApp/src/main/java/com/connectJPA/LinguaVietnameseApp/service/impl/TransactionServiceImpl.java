@@ -53,8 +53,8 @@ public class TransactionServiceImpl implements TransactionService {
     private final CourseVersionRepository courseVersionRepository;
     private final CourseVersionEnrollmentRepository enrollmentRepository;
     private final NotificationService notificationService;
-    private final PayoutService payoutService; // Inject PayoutService
-    private final ObjectMapper objectMapper; // Inject Jackson for JSON handling
+    private final PayoutService payoutService;
+    private final ObjectMapper objectMapper;
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
@@ -104,8 +104,6 @@ public class TransactionServiceImpl implements TransactionService {
             throw new AppException(ErrorCode.INSUFFICIENT_FUNDS);
         }
 
-        // Serialize bank info into description so Admin can see it easily
-        // Or Auto-payout service can parse it later
         String bankDetailsJson;
         try {
             Map<String, String> bankInfo = new HashMap<>();
@@ -125,14 +123,13 @@ public class TransactionServiceImpl implements TransactionService {
                 .currency("USD")
                 .type(TransactionType.WITHDRAW)
                 .status(TransactionStatus.PENDING)
-                .provider(TransactionProvider.INTERNAL) // Can be switched to STRIPE/BANK later
+                .provider(TransactionProvider.INTERNAL) 
                 .description(bankDetailsJson)
                 .createdAt(OffsetDateTime.now())
                 .build();
         
         transaction = transactionRepository.save(transaction);
         
-        // Deduct balance immediately (Hold funds)
         walletService.debit(user.getUserId(), request.getAmount());
 
         return transactionMapper.toResponse(transaction);
@@ -156,12 +153,7 @@ public class TransactionServiceImpl implements TransactionService {
         }
 
         try {
-            // AUTO-PAYOUT LOGIC
-            // Trigger the payout to external provider
-            String externalRefId = payoutService.executePayout(transaction);
-            
-            // If successful, update description with ref ID
-            // transaction.setDescription(transaction.getDescription() + " | Ref: " + externalRefId);
+            payoutService.executePayout(transaction);
             
             transaction.setStatus(TransactionStatus.SUCCESS);
             transactionRepository.save(transaction);
@@ -175,11 +167,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         } catch (Exception e) {
             log.error("Auto-payout failed for tx: {}", transactionId, e);
-            // Don't fail the transaction entity immediately, let Admin retry or handle manually
-            // Or revert funds:
-            // walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
-            // transaction.setStatus(TransactionStatus.FAILED);
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Re-throw to inform controller
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); 
         }
 
         return transactionMapper.toResponse(transaction);
@@ -195,7 +183,6 @@ public class TransactionServiceImpl implements TransactionService {
             throw new AppException(ErrorCode.INVALID_TRANSACTION_STATUS);
         }
 
-        // Refund the held amount
         walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
 
         transaction.setStatus(TransactionStatus.REJECTED);
@@ -211,10 +198,6 @@ public class TransactionServiceImpl implements TransactionService {
 
         return transactionMapper.toResponse(transaction);
     }
-
-    // ... (Keep the rest of the file unchanged: refund, createDepositUrl, VIP logic, webhook, etc.) ...
-    // Note: Due to file length limits, assuming standard methods (getPendingRefundRequests, approveRefund, etc.) remain as is.
-    // I am including the critical parts needed for the file to be valid.
 
     @Override
     @Transactional(readOnly = true)
@@ -314,8 +297,7 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
     
-    // Helper method for VIP logic reused
-    private BigDecimal validateAndProcessVipPurchase(User user, BigDecimal requestedAmount, Integer coinsToUse, String description) {
+    private BigDecimal validateAndProcessVipPurchase(User user, BigDecimal requestedAmount, Integer coinsToUse, String description, String currency) {
         BigDecimal basePrice;
         String descLower = description.toLowerCase();
         
@@ -350,9 +332,17 @@ public class TransactionServiceImpl implements TransactionService {
             expectedAmount = BigDecimal.ZERO;
         }
         
-        // Simple tolerance check
-        if (requestedAmount.subtract(expectedAmount).abs().compareTo(new BigDecimal("0.05")) > 0) {
-            log.error("Price Mismatch! Expected: {}, Received: {}", expectedAmount, requestedAmount);
+        BigDecimal tolerance;
+        if (currency != null && "VND".equalsIgnoreCase(currency)) {
+            BigDecimal rate = currencyService.getUsdToVndRate();
+            expectedAmount = expectedAmount.multiply(rate);
+            tolerance = new BigDecimal("2000"); 
+        } else {
+            tolerance = new BigDecimal("0.05");
+        }
+        
+        if (requestedAmount.subtract(expectedAmount).abs().compareTo(tolerance) > 0) {
+            log.error("Price Mismatch! Expected: {} {}, Received: {}", expectedAmount, currency, requestedAmount);
             throw new AppException(ErrorCode.INVALID_AMOUNT);
         }
 
@@ -373,7 +363,8 @@ public class TransactionServiceImpl implements TransactionService {
             user, 
             request.getAmount(), 
             request.getCoins(), 
-            request.getDescription()
+            request.getDescription(),
+            request.getCurrency()
         );
 
         if (finalAmount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -421,7 +412,7 @@ public class TransactionServiceImpl implements TransactionService {
                         .setQuantity(1L)
                         .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
                                 .setCurrency(stripeCurrency)
-                                .setUnitAmount(amount.multiply(BigDecimal.valueOf(100)).longValue())
+                                .setUnitAmount(amount.multiply(BigDecimal.valueOf(100)).longValue()) // Stripe expects cents/smallest unit
                                 .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
                                         .setName(description != null ? description : "LinguaVietnamese Transaction")
                                         .build())
@@ -655,7 +646,7 @@ public class TransactionServiceImpl implements TransactionService {
                 String descLower = transaction.getDescription() != null ? transaction.getDescription().toLowerCase() : "";
                 
                 if (isVip || descLower.contains("vip") || descLower.contains("trial")) {
-                     activateVipForUser(userId, descLower);
+                      activateVipForUser(userId, descLower);
                 }
             }
         }
@@ -742,7 +733,8 @@ public class TransactionServiceImpl implements TransactionService {
             user, 
             request.getAmount(), 
             request.getCoins(), 
-            request.getDescription()
+            request.getDescription(),
+            request.getCurrency()
         );
 
         Wallet wallet = getWallet(user.getUserId());
@@ -841,8 +833,7 @@ public class TransactionServiceImpl implements TransactionService {
             .user(requester)
             .wallet(original.getWallet())
             .sender(original.getReceiver())
-            .receiver(original.getReceiver()) // Fix: Sender is Receiver of original
-            .receiver(original.getSender())   // Fix: Receiver is Sender of original
+            .receiver(original.getSender())
             .amount(original.getAmount())
             .currency(original.getCurrency())
             .type(TransactionType.REFUND)

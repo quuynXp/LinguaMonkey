@@ -6,31 +6,34 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import java.util.UUID;
-
 @Entity
 @Table(name = "leaderboard_entries")
 @Data
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class LeaderboardEntry extends BaseEntity {
 
     @EmbeddedId
     private LeaderboardEntryId leaderboardEntryId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("userId")  // map vào field userId trong LeaderboardEntryId
+    @MapsId("userId") 
     @JoinColumn(name = "user_id")
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("leaderboardId")  // map vào field leaderboardId trong LeaderboardEntryId
+    @MapsId("leaderboardId") 
     @JoinColumn(name = "leaderboard_id")
     private Leaderboard leaderboard;
 
-    @Column(nullable = false)
+    @Column(name = "score", nullable = false)
     private int score;
+
+    @Column(name = "level")
+    private int level;
+
+    @Column(name = "exp")
+    private int exp;
 }
-
-

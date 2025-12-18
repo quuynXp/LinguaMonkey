@@ -27,6 +27,8 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             @Param("leaderboardId") UUID leaderboardId,
             Pageable pageable);
 
+        List<LeaderboardEntry> findAllByUser_UserId(UUID userId);
+
     @Query(value = "SELECT le FROM LeaderboardEntry le JOIN FETCH le.user u " +
             "WHERE le.id.leaderboardId = :leaderboardId " +
             "AND le.isDeleted = false AND u.isDeleted = false " +

@@ -1,4 +1,3 @@
-# file: PythonService/src/core/http_producer.py
 import logging
 import httpx
 import json
@@ -9,7 +8,6 @@ logger = logging.getLogger(__name__)
 JAVA_SERVICE_URL = os.getenv("JAVA_SERVICE_URL", "http://linguavietnameseapp:8080")
 PERSISTENCE_ENDPOINT = f"{JAVA_SERVICE_URL}/api/internal/persistence/chat"
 
-# Sử dụng httpx client để quản lý kết nối
 http_client = httpx.AsyncClient(timeout=10.0) 
 
 async def send_chat_to_java_persistence(payload: dict):
@@ -31,6 +29,5 @@ async def send_chat_to_java_persistence(payload: dict):
     except Exception as e:
         logger.error(f"General error during chat persistence: {e}")
 
-# Không cần hàm start/stop như Kafka nữa
 async def stop_http_client():
     await http_client.close()

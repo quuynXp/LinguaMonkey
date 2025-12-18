@@ -230,46 +230,68 @@ const ProgressScreen = () => {
         )
     }
 
-    const renderStatsTab = () => (
-        <View style={styles.statsContainer}>
-            {renderAiSuggestion()}
+    const renderStatsTab = () => {
+        if (isLoading) {
+            return (
+                <View style={styles.statsContainer}>
+                    <View style={[styles.aiCard, { backgroundColor: '#E5E7EB' }]}>
+                        <View style={{ height: 100 }} />
+                    </View>
 
-            <View style={styles.statsGrid}>
-                {renderStatCard(
-                    t("history.stats.studyTime"),
-                    formatStudyTime(stats.totalTimeSeconds),
-                    "schedule",
-                    "#4F46E5",
-                    stats.timeGrowthPercent
-                )}
-                {renderStatCard(
-                    t("history.stats.accuracy"),
-                    `${Math.round(stats.averageAccuracy)}%`,
-                    "check-circle",
-                    "#10B981",
-                    stats.accuracyGrowthPercent
-                )}
-                {renderStatCard(
-                    t("history.stats.coins"),
-                    stats.totalCoins.toLocaleString(),
-                    "monetization-on",
-                    "#F59E0B",
-                    stats.coinsGrowthPercent
-                )}
-                {renderStatCard(
-                    t("history.stats.lessons"),
-                    stats.lessonsCompleted,
-                    "menu-book",
-                    "#EC4899",
-                    undefined,
-                    "Completed"
-                )}
+                    <View style={styles.statsGrid}>
+                        {[1, 2, 3, 4].map(i => (
+                            <View key={i} style={[styles.statCard, { backgroundColor: '#F3F4F6' }]}>
+                                <View style={{ height: 80 }} />
+                            </View>
+                        ))}
+                    </View>
+
+                    <View style={[styles.chartContainer, { backgroundColor: '#F3F4F6', height: 200 }]} />
+                    <View style={[styles.chartContainer, { backgroundColor: '#F3F4F6', height: 200 }]} />
+                </View>
+            );
+        }
+        return (
+            <View style={styles.statsContainer}>
+                {renderAiSuggestion()}
+
+                <View style={styles.statsGrid}>
+                    {renderStatCard(
+                        t("history.stats.studyTime"),
+                        formatStudyTime(stats.totalTimeSeconds),
+                        "schedule",
+                        "#4F46E5",
+                        stats.timeGrowthPercent
+                    )}
+                    {renderStatCard(
+                        t("history.stats.accuracy"),
+                        `${Math.round(stats.averageAccuracy)}%`,
+                        "check-circle",
+                        "#10B981",
+                        stats.accuracyGrowthPercent
+                    )}
+                    {renderStatCard(
+                        t("history.stats.coins"),
+                        stats.totalCoins.toLocaleString(),
+                        "monetization-on",
+                        "#F59E0B",
+                        stats.coinsGrowthPercent
+                    )}
+                    {renderStatCard(
+                        t("history.stats.lessons"),
+                        stats.lessonsCompleted,
+                        "menu-book",
+                        "#EC4899",
+                        undefined,
+                        "Completed"
+                    )}
+                </View>
+
+                {renderTimeChart()}
+                {renderAccuracyChart()}
             </View>
-
-            {renderTimeChart()}
-            {renderAccuracyChart()}
-        </View>
-    )
+        );
+    };
 
     const getTypeIcon = (type: string) => "book"
     const getTypeColor = (type: string) => "#6B7280"

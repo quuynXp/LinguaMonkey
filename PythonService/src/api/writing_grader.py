@@ -18,7 +18,6 @@ def transform_google_drive_url(url: str) -> str:
     """
     try:
         if "drive.google.com" in url and "/d/" in url:
-            # Extract File ID
             file_id_match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
             if file_id_match:
                 file_id = file_id_match.group(1)
@@ -30,16 +29,13 @@ def transform_google_drive_url(url: str) -> str:
 async def download_media(url: str):
     """Hàm helper để download file từ URL"""
     try:
-        # 1. Xử lý link Google Drive để lấy direct link
         direct_url = transform_google_drive_url(url)
         
         logging.info(f"Downloading media from: {direct_url}")
 
-        # 2. Download với httpx
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(direct_url)
             if resp.status_code == 200:
-                # Trả về bytes và content-type thực tế từ header
                 return resp.content, resp.headers.get("content-type")
             else:
                 logging.error(f"Download failed with status: {resp.status_code}")
@@ -59,21 +55,15 @@ async def grade_writing_logic(
     if not user_text:
         return "Bạn chưa nhập nội dung bài viết.", 0.0, "EMPTY_INPUT"
 
-    # Tính word_count để dùng cho logic hậu kiểm
     word_count = len(user_text.split())
 
-    # --- LOGIC MỚI: XỬ LÝ URL ---
-    # Nếu không có bytes nhưng có URL, tải về
     if not media_bytes and media_url:
         downloaded_bytes, downloaded_mime = await download_media(media_url)
         if downloaded_bytes:
             media_bytes = downloaded_bytes
-            # Nếu Java gửi mime_type chung chung hoặc không gửi, lấy mime thật từ header response
             if not mime_type or "octet-stream" in mime_type or "unknown" in mime_type:
                 mime_type = downloaded_mime
-    # -----------------------------
 
-    # Determine context string based on mime_type (or Java hint)
     media_context_str = ""
     if mime_type:
         if "audio" in mime_type or "mpeg" in mime_type:
@@ -81,7 +71,6 @@ async def grade_writing_logic(
         elif "video" in mime_type or "mp4" in mime_type:
             media_context_str = "- Context: Based on the provided VIDEO."
         else:
-            # Default fallback to IMAGE logic
             media_context_str = "- Context: Based on the provided IMAGE."
 
     system_prompt = f"""
@@ -104,10 +93,8 @@ async def grade_writing_logic(
     
     if media_bytes:
         try:
-            # Gemini cần mime_type chuẩn. Nếu vẫn unknown, fallback sang image/jpeg
             final_mime = mime_type if mime_type and "/" in mime_type else "image/jpeg"
             
-            # Validation nhẹ trước khi gửi
             if "html" in final_mime:
                  logging.error("Detected HTML content instead of media. Skipping media attachment.")
             else:
@@ -116,18 +103,15 @@ async def grade_writing_logic(
             logging.error(f"Media attach error: {e}")
 
     try:
-        # Gọi Gemini
         response = await model.generate_content_async(inputs)
         text_resp = response.text
         
-        # Parse JSON
         clean_json = text_resp.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_json)
         
         score = float(data.get("score", 0))
         feedback = data.get("feedback", "Đã chấm điểm.")
         
-        # Logic hậu kiểm (Post-check)
         if score < 30 and word_count < 5:
              feedback = "Bài làm quá sơ sài so với nội dung media. " + feedback
 
@@ -137,7 +121,6 @@ async def grade_writing_logic(
         return feedback, score, ""
 
     except json.JSONDecodeError:
-        # Fallback regex nếu JSON lỗi
         import re
         score_match = re.search(r'\b(\d{1,3})', text_resp)
         score = float(score_match.group(1)) if score_match else 0.0

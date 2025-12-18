@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -19,13 +19,12 @@ import { DepositRequest } from '../../types/dto';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 
-// Define Transaction Provider Enum locally to match DTO if not exported clearly
 enum TransactionProvider {
     VNPAY = 'VNPAY',
     STRIPE = 'STRIPE',
 }
 
-const QUICK_AMOUNTS = [50000, 100000, 200000, 500000];
+const QUICK_AMOUNTS = [10, 20, 50, 100];
 
 const DepositScreen = ({ navigation, route }: any) => {
     const { t } = useTranslation();
@@ -33,55 +32,36 @@ const DepositScreen = ({ navigation, route }: any) => {
     const { minAmount } = route.params || {};
 
     const [amount, setAmount] = useState<string>(minAmount ? minAmount.toString() : '');
-    const [provider, setProvider] = useState<TransactionProvider>(TransactionProvider.VNPAY);
+    const [provider, setProvider] = useState<TransactionProvider>(TransactionProvider.STRIPE);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Hook ví để nạp tiền và refresh số dư
     const { useDeposit, useWalletBalance } = useWallet();
     const depositMutation = useDeposit();
     const { refetch: refetchWallet } = useWalletBalance(user?.userId);
 
-    // Xử lý Deep Link khi quay lại từ VNPAY/Stripe
     useEffect(() => {
         const handleDeepLink = async (event: Linking.EventType) => {
             const { url } = event;
 
-            // Kiểm tra xem URL có phải là kết quả trả về của trang nạp tiền không
-            // Ví dụ: linguamonkey://deposit-result?status=success
-            if (url && url.includes('deposit-result')) {
-                // Đóng trình duyệt web (quan trọng cho iOS)
+            if (url && (url.includes('deposit-result') || url.includes('payment-success'))) {
                 WebBrowser.dismissBrowser();
-
-                // Parse query params để check status (tùy backend trả về query gì)
                 const queryParams = Linking.parse(url).queryParams;
                 const status = queryParams?.status || queryParams?.vnp_ResponseCode;
 
                 setIsProcessing(true);
-
-                // Refresh lại ví ngay lập tức để check tiền về chưa
                 await refetchWallet();
-
                 setIsProcessing(false);
 
-                // Logic hiển thị thông báo dựa trên status (Logic này phụ thuộc backend trả về gì)
-                // Giả sử backend trả về status=success hoặc vnp_ResponseCode=00
-                if (status === 'success' || status === '00') {
-                    Alert.alert(t('common.success'), t('deposit.successMessage', 'Nạp tiền thành công!'));
+                if (status === 'success' || status === '00' || url.includes('success')) {
+                    Alert.alert(t('common.success'), t('deposit.successMessage'));
                     navigation.goBack();
-                } else if (status === 'failed' || (status && status !== '00')) {
-                    Alert.alert(t('common.error'), t('deposit.failedMessage', 'Giao dịch thất bại hoặc bị hủy.'));
                 } else {
-                    // Trường hợp fallback nếu không parse được status rõ ràng
-                    Alert.alert(t('common.info'), t('deposit.processing', 'Đang xử lý giao dịch. Vui lòng kiểm tra ví sau giây lát.'));
-                    navigation.goBack();
+                    Alert.alert(t('common.error'), t('deposit.failedMessage'));
                 }
             }
         };
 
-        // Đăng ký lắng nghe sự kiện URL
         const subscription = Linking.addEventListener('url', handleDeepLink);
-
-        // Check trường hợp App được mở lại từ trạng thái quit (Cold start)
         Linking.getInitialURL().then((url) => {
             if (url) handleDeepLink({ url } as Linking.EventType);
         });
@@ -92,37 +72,31 @@ const DepositScreen = ({ navigation, route }: any) => {
     }, [refetchWallet, navigation, t]);
 
     const handleDeposit = () => {
-        const numericAmount = parseInt(amount.replace(/[^0-9]/g, ''), 10);
+        const numericAmount = parseFloat(amount);
 
-        if (!numericAmount || numericAmount < 10000) {
-            Alert.alert(t('common.error'), t('deposit.minAmountError', { min: '10,000' }));
+        if (!numericAmount || numericAmount < 1) {
+            Alert.alert(t('common.error'), t('deposit.minAmountError', { min: '1 USD' }));
             return;
         }
 
         if (!user?.userId) return;
 
-        // Tạo returnUrl động dựa trên môi trường (Expo Go hoặc Build Production)
-        // Sẽ tạo ra dạng: exp://192.168.x.x:8081/--/deposit-result hoặc linguamonkey://deposit-result
         const returnUrl = Linking.createURL('deposit-result');
-
-        console.log('Sending returnUrl to Backend:', returnUrl);
 
         const payload: DepositRequest = {
             userId: user.userId,
             amount: numericAmount,
-            currency: 'VND',
+            currency: 'USD',
             provider: provider,
-            returnUrl: returnUrl, // Quan trọng: URL này backend sẽ dùng để redirect người dùng về
+            returnUrl: returnUrl,
         };
 
         depositMutation.mutate(payload, {
             onSuccess: async (url) => {
                 if (url) {
-                    // Mở trình duyệt in-app
                     await WebBrowser.openBrowserAsync(url);
-                    // Không alert success ở đây, đợi Deep Link quay về xử lý ở useEffect trên
                 } else {
-                    Alert.alert(t('common.error'), 'Không nhận được link thanh toán từ hệ thống.');
+                    Alert.alert(t('common.error'), 'Failed to get payment link');
                 }
             },
             onError: (error: any) => {
@@ -137,55 +111,41 @@ const DepositScreen = ({ navigation, route }: any) => {
                 <TouchableOpacity onPress={() => navigation.goBack()}>
                     <Icon name="arrow-back" size={24} color="#1F2937" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>{t('deposit.title', 'Nạp Tiền Vào Ví')}</Text>
+                <Text style={styles.headerTitle}>{t('deposit.title')}</Text>
                 <View style={{ width: 24 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-                {/* Input Amount Section */}
                 <View style={styles.card}>
                     <Text style={styles.label}>{t('deposit.enterAmount')}</Text>
                     <View style={styles.inputContainer}>
                         <TextInput
                             style={styles.input}
                             value={amount}
-                            onChangeText={(text) => setAmount(text.replace(/[^0-9]/g, ''))}
-                            keyboardType="numeric"
-                            placeholder="0"
+                            onChangeText={(text) => setAmount(text.replace(/[^0-9.]/g, ''))}
+                            keyboardType="decimal-pad"
+                            placeholder="0.00"
                             placeholderTextColor="#9CA3AF"
                         />
-                        <Text style={styles.currency}>VND</Text>
+                        <Text style={styles.currency}>USD</Text>
                     </View>
 
                     <View style={styles.quickAmountContainer}>
                         {QUICK_AMOUNTS.map((val) => (
                             <TouchableOpacity
                                 key={val}
-                                style={[styles.chip, parseInt(amount) === val && styles.activeChip]}
+                                style={[styles.chip, parseFloat(amount) === val && styles.activeChip]}
                                 onPress={() => setAmount(val.toString())}
                             >
-                                <Text style={[styles.chipText, parseInt(amount) === val && styles.activeChipText]}>
-                                    {val.toLocaleString()}
+                                <Text style={[styles.chipText, parseFloat(amount) === val && styles.activeChipText]}>
+                                    ${val}
                                 </Text>
                             </TouchableOpacity>
                         ))}
                     </View>
                 </View>
 
-                {/* Payment Method Section */}
                 <Text style={styles.sectionTitle}>{t('payment.selectMethod')}</Text>
-
-                <TouchableOpacity
-                    style={[styles.methodCard, provider === TransactionProvider.VNPAY && styles.selectedMethod]}
-                    onPress={() => setProvider(TransactionProvider.VNPAY)}
-                >
-                    <Icon name="qr-code" size={24} color="#005BAA" />
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.methodTitle}>VNPAY-QR / ATM Nội địa</Text>
-                        <Text style={styles.methodSubtitle}>Quét mã QR hoặc dùng thẻ ATM/Visa Việt Nam</Text>
-                    </View>
-                    {provider === TransactionProvider.VNPAY && <Icon name="check-circle" size={20} color="#4F46E5" />}
-                </TouchableOpacity>
 
                 <TouchableOpacity
                     style={[styles.methodCard, provider === TransactionProvider.STRIPE && styles.selectedMethod]}
@@ -193,15 +153,25 @@ const DepositScreen = ({ navigation, route }: any) => {
                 >
                     <Icon name="credit-card" size={24} color="#635BFF" />
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.methodTitle}>Visa / MasterCard (Quốc tế)</Text>
-                        <Text style={styles.methodSubtitle}>Thanh toán qua cổng Stripe</Text>
+                        <Text style={styles.methodTitle}>Stripe (International Cards)</Text>
+                        <Text style={styles.methodSubtitle}>Pay with Visa/Mastercard in USD</Text>
                     </View>
                     {provider === TransactionProvider.STRIPE && <Icon name="check-circle" size={20} color="#4F46E5" />}
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                    style={[styles.methodCard, provider === TransactionProvider.VNPAY && styles.selectedMethod]}
+                    onPress={() => setProvider(TransactionProvider.VNPAY)}
+                >
+                    <Icon name="qr-code" size={24} color="#005BAA" />
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.methodTitle}>VNPAY</Text>
+                        <Text style={styles.methodSubtitle}>Pay with Vietnam local bank accounts</Text>
+                    </View>
+                    {provider === TransactionProvider.VNPAY && <Icon name="check-circle" size={20} color="#4F46E5" />}
+                </TouchableOpacity>
             </ScrollView>
 
-            {/* Footer Button */}
             <View style={styles.footer}>
                 <TouchableOpacity
                     style={[styles.confirmButton, (depositMutation.isPending || isProcessing) && styles.disabledButton]}
@@ -211,14 +181,9 @@ const DepositScreen = ({ navigation, route }: any) => {
                     {depositMutation.isPending || isProcessing ? (
                         <ActivityIndicator color="#FFF" />
                     ) : (
-                        <Text style={styles.confirmButtonText}>
-                            {t('deposit.confirm', 'Xác nhận nạp')}
-                        </Text>
+                        <Text style={styles.confirmButtonText}>{t('deposit.confirm')}</Text>
                     )}
                 </TouchableOpacity>
-                <Text style={styles.noteText}>
-                    {t('deposit.redirectNote', 'Bạn sẽ được chuyển hướng đến cổng thanh toán an toàn.')}
-                </Text>
             </View>
         </ScreenLayout>
     );
@@ -268,7 +233,7 @@ const styles = createScaledSheet({
     chip: {
         backgroundColor: '#F3F4F6',
         paddingVertical: 8,
-        paddingHorizontal: 12,
+        paddingHorizontal: 16,
         borderRadius: 20,
         borderWidth: 1,
         borderColor: 'transparent',
@@ -308,12 +273,6 @@ const styles = createScaledSheet({
     },
     disabledButton: { backgroundColor: '#9CA3AF' },
     confirmButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-    noteText: {
-        textAlign: 'center',
-        marginTop: 10,
-        fontSize: 12,
-        color: '#9CA3AF'
-    }
 });
 
 export default DepositScreen;

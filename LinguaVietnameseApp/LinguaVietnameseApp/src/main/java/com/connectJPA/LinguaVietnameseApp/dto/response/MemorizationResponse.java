@@ -19,6 +19,13 @@ public class MemorizationResponse {
     private ContentType contentType;
     private UUID contentId;
     private String noteText;
+    
+    private String definition;
+    private String example;
+    private String imageUrl;
+    private String audioUrl;
+    private UUID linkedFlashcardId;
+
     private boolean isFavorite;
     
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
@@ -27,9 +34,8 @@ public class MemorizationResponse {
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime updatedAt;
 
-    // --- THÊM TRƯỜNG TRẢ VỀ REMINDER ---
     private boolean isReminderEnabled;
-    private String reminderTime; // Trả về "HH:mm" cho FE dễ hiển thị
+    private String reminderTime;
     private RepeatType repeatType;
     private String reminderTitle;
 }

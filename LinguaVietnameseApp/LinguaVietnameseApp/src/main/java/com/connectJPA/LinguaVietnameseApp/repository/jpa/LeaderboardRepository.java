@@ -32,8 +32,9 @@ public interface LeaderboardRepository extends JpaRepository<Leaderboard, UUID> 
 
     Optional<Leaderboard> findTopByTabAndIsDeletedFalseOrderBySnapshotDateDescCreatedAtDesc(String tab);
 
-    // Get latest single leaderboard by tab
     @Query("SELECT l FROM Leaderboard l WHERE l.tab = :tab AND l.isDeleted = false " +
             "ORDER BY l.snapshotDate DESC, l.createdAt DESC LIMIT 1")
     Optional<Leaderboard> findMostRecentByTab(@Param("tab") String tab);
+
+    List<Leaderboard> findAllByIsDeletedFalse();
 }

@@ -47,55 +47,56 @@ public class DailyChallengeScheduler {
     @Scheduled(cron = "0 0 17 * * SUN", zone = TIME_ZONE)
     @Transactional
     public void assignWeeklyChallengesJob() {
-        log.info("Starting WEEKLY challenge assignment job (VN Time Sync)...");
         assignChallenges(ChallengePeriod.WEEKLY, 2);
-        log.info("Weekly challenges assigned.");
     }
 
     @Scheduled(cron = "0 0 17 * * ?", zone = TIME_ZONE)
     @Transactional
     public void assignDailyChallengesJob() {
-        log.info("Starting DAILY challenge assignment job (VN Time Sync)...");
         assignChallenges(ChallengePeriod.DAILY, 3);
-        log.info("Daily challenges assigned successfully.");
     }
 
     private void assignChallenges(ChallengePeriod period, int limit) {
         List<User> activeUsers = userRepository.findAllByIsDeletedFalse();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         
-        // Xác định phạm vi thời gian để kiểm tra tồn tại
         OffsetDateTime start, end;
         if (period == ChallengePeriod.DAILY) {
             start = now.truncatedTo(ChronoUnit.DAYS);
             end = start.plusDays(1).minusNanos(1);
-        } else { // WEEKLY
+        } else {
             start = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).truncatedTo(ChronoUnit.DAYS);
             end = start.plusDays(7).minusNanos(1);
         }
 
         for (User user : activeUsers) {
-            // FIX: Kiểm tra xem user đã được gán challenge cho period này chưa
             boolean alreadyAssigned = userDailyChallengeRepository.existsByUserIdAndPeriodAndDateRange(
                     user.getUserId(), period, start, end);
 
             if (alreadyAssigned) {
-                log.debug("User {} already has {} challenges for today/this week. Skipping.", user.getUserId(), period);
                 continue; 
             }
 
             String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
             
-            // Logic cũ: tìm và gán mới
             List<DailyChallenge> challenges = dailyChallengeRepository
                     .findRandomChallengesByLanguageCodeAndPeriod(langCode, period.name(), limit);
+
+            if (challenges.isEmpty() && !langCode.equals("en")) {
+                challenges = dailyChallengeRepository
+                    .findRandomChallengesByLanguageCodeAndPeriod("en", period.name(), limit);
+            }
+
+            if (challenges.isEmpty()) {
+                continue;
+            }
 
             for (DailyChallenge challenge : challenges) {
                 UserDailyChallengeId id = UserDailyChallengeId.builder()
                         .userId(user.getUserId())
                         .challengeId(challenge.getId())
-                        .assignedDate(now.truncatedTo(ChronoUnit.DAYS)) // Chuẩn hóa assignedDate
-                        .stack(1) // Giá trị stack mặc định nếu có
+                        .assignedDate(now.truncatedTo(ChronoUnit.DAYS))
+                        .stack(1)
                         .build();
 
                 UserDailyChallenge userChallenge = UserDailyChallenge.builder()
@@ -103,7 +104,7 @@ public class DailyChallengeScheduler {
                         .user(user)
                         .challenge(challenge)
                         .progress(0)
-                        .targetAmount(challenge.getTargetAmount()) // Đảm bảo lấy target từ challenge gốc
+                        .targetAmount(challenge.getTargetAmount())
                         .status(ChallengeStatus.IN_PROGRESS)
                         .expReward(challenge.getBaseExp())
                         .rewardCoins(challenge.getRewardCoins())
@@ -118,8 +119,6 @@ public class DailyChallengeScheduler {
     @Scheduled(cron = "0 0/30 * * * ?", zone = TIME_ZONE)
     @Transactional
     public void suggestDailyChallenges() {
-        log.info("[DailyChallengeScheduler] Checking candidates for suggestions...");
-
         List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
         if (userIdsWithToken.isEmpty()) return;
         
@@ -133,7 +132,6 @@ public class DailyChallengeScheduler {
 
             try {
                 Map<String, Object> stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());
-                // Cần đảm bảo key "canAssignMore" tồn tại trong map trả về từ service, hoặc bỏ qua logic này
                 if (stats.containsKey("canAssignMore") && Boolean.TRUE.equals(stats.get("canAssignMore"))) {
                     String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
                     String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE_SUGGESTION", langCode);
@@ -157,8 +155,6 @@ public class DailyChallengeScheduler {
     @Scheduled(cron = "0 0 14 * * ?", zone = TIME_ZONE)
     @Transactional
     public void remindIncompleteChallenge() {
-        log.info("Incomplete Challenge Reminder Scheduler started (VN Evening)");
-
         List<User> users = userRepository.findAllByIsDeletedFalse();
 
         for (User user : users) {
@@ -190,6 +186,5 @@ public class DailyChallengeScheduler {
                 log.error("Error sending reminder to user {}: {}", user.getUserId(), e.getMessage());
             }
         }
-        log.info("Incomplete Challenge Reminder Scheduler completed");
     }
 }

@@ -14,7 +14,6 @@ interface UseCurrencyConverterResult {
     lastUpdated: string | null;
 }
 
-// ĐỔI API SANG USD BASE
 const API_URL = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
 
 export const useCurrencyConverter = (): UseCurrencyConverterResult => {

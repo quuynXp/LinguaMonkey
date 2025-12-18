@@ -39,6 +39,9 @@ public class RoomResponse {
     private String partnerLastActiveText;
     
     private String lastMessage;
+    
+    private boolean isRead; 
+
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime lastMessageTime;
 

@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCourses } from "../../hooks/useCourses";
 import { useLessons } from "../../hooks/useLessons";
-import { useRooms } from "../../hooks/useRoom";
+import { useCourseRoom } from "../../hooks/useRoom";
 import { useUserStore } from "../../stores/UserStore";
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter";
 import { useTransactionsApi } from "../../hooks/useTransaction";
@@ -87,13 +87,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { useLessonProgresses } = useLessons();
   const { useCreateTransaction } = useTransactionsApi();
   const { mutate: requestRefund, isPending: isRequestingRefund } = useCreateTransaction();
-  const { useCourseRoom } = useRooms();
+  const { data: roomData, isLoading: roomLoading } = useCourseRoom(courseId);
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
 
-  // Use optional chaining carefully here. roomData depends on user enrollment/membership.
-  const { data: roomData, isLoading: roomLoading } = useCourseRoom(courseId);
 
   const { data: versionHistory } = useCourseVersions(courseId);
   const { data: userProgressData, refetch: refetchUserProgress } = useLessonProgresses({ userId: user?.userId, size: 1000 });
@@ -118,8 +116,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }, [user?.userId, refetchEnrollments, refetchUserProgress])
   );
 
-  // FIX: Logic to set initial viewing version
-  // Priority: Public Version -> Draft (if creator)
   useEffect(() => {
     if (course && !viewingVersionId) {
       if (course.latestPublicVersion?.versionId) {
@@ -130,10 +126,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }
   }, [course, isCreator, viewingVersionId]);
 
-  // Fetch meta data if viewing a specific history version
   const { data: selectedVersionData, isLoading: versionMetaLoading } = useGetVersion(viewingVersionId || "");
 
-  // FIX: Determine Active Version
   const activeVersion = selectedVersionData
     || course?.latestPublicVersion
     || (isCreator ? course?.latestDraftVersion : null);
@@ -196,7 +190,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
   const priceAfterDiscount = discountPercent > 0 ? displayPriceRaw * (1 - discountPercent / 100) : displayPriceRaw;
 
-  // LOGIC: Free Course = Price after discount is ZERO or less.
   const isFreeCourse = priceAfterDiscount <= 0;
   const isPaidCourse = !isFreeCourse;
 
@@ -214,7 +207,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     return activeEnrollment.progress || 0;
   }, [activeEnrollment]);
 
-  // hasAccess = Creator OR (Paid Course AND Enrolled) OR Free Course
   const hasAccess = isCreator || isEnrolled || isFreeCourse;
   const reviews = (reviewsData?.data as any[]) || [];
 
@@ -255,19 +247,15 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }
 
     try {
-      // Attempt enrollment
       await enrollAsync({
         userId: user.userId,
         courseVersionId: activeVersionId,
         status: CourseVersionEnrollmentStatus.ACTIVE
       });
     } catch (error: any) {
-      // FIX: If enrollment fails (e.g. 500 Duplicate Key or 409), we assume user is already enrolled and proceed.
-      // This prevents the flow from stopping due to backend constraint violations on existing records.
       console.log("Enrollment check: Proceeding despite error (likely already enrolled)", error);
     }
 
-    // Always proceed to refresh and navigate
     try {
       await refetchEnrollments();
       navigateToLesson(lesson, isLessonCompleted);
@@ -286,16 +274,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       return;
     }
 
-    // FIX: Check if it's a Free Course and the user is NOT enrolled yet.
     if (isFreeCourse && !isEnrolled && !isCreator) {
-      // The enrollment mutation on the backend should check existence, but
-      // we still need to create it if it doesn't exist.
-      // After this call, 'isEnrolled' will be true on the next render thanks to refetchEnrollments().
       await handleFreeEnrollAndNavigate(lesson, isLessonCompleted);
       return;
     }
 
-    // Default flow: If access is granted (paid & enrolled, or creator, or free & enrolled/creator)
     navigateToLesson(lesson, isLessonCompleted);
   };
 
@@ -337,7 +320,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     const targetRoomName = roomData?.roomName || course?.title;
 
     if (targetRoomId) {
-      // FIX: Pass returnTo params so GroupChatScreen knows where to go back
       gotoTab("Chat", "GroupChatScreen", {
         roomId: targetRoomId,
         roomName: targetRoomName,
@@ -497,12 +479,12 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
             <View style={[styles.headerBuyBtn, { backgroundColor: '#F3F4F6' }]}>
               <Text style={[styles.headerBuyText, { color: '#4F46E5' }]}>Creator View</Text>
             </View>
-          ) : hasAccess ? ( // Nếu Free HOẶC Paid/Enrolled
+          ) : hasAccess ? (
             <TouchableOpacity style={styles.headerBuyBtn} onPress={handleJoinRoom}>
               <Text style={styles.headerBuyText}>{t('chat.join_room', 'Join Room')}</Text>
               <Icon name="chat" size={16} color="#FFF" />
             </TouchableOpacity>
-          ) : isPaidCourse ? ( // Nếu Paid và CHƯA Enrolled
+          ) : isPaidCourse ? (
             <TouchableOpacity style={styles.headerBuyBtn} onPress={() => setPurchaseModalVisible(true)}>
               <Text style={styles.headerBuyText}>{t('common.buy')}</Text>
               <Icon name="shopping-cart" size={16} color="#FFF" />

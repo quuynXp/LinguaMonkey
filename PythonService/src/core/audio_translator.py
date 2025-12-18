@@ -14,7 +14,6 @@ class AudioTranslator:
         if not text or not text.strip():
             return "", source_lang_hint
         
-        # Audio translation relies on the core text translation logic (LPM + Gemini)
         translated_text, detected_lang = await self.text_translator.translate(
             text, 
             source_lang_hint, 

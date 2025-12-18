@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserLearningActivityRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
+import com.connectJPA.LinguaVietnameseApp.entity.id.LeaderboardEntryId;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
@@ -48,6 +49,8 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
     private final GrpcClientService grpcClientService;
     private final CourseRepository courseRepository;
     private final NotificationService notificationService;
+    private final LeaderboardEntryRepository leaderboardEntryRepository;
+    private final LeaderboardRepository leaderboardRepository;
 
     private static final String HISTORY_CACHE_KEY = "user:history:";
     private static final String ONLINE_TIME_KEY = "user:online_minutes:";
@@ -101,23 +104,15 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             user.setCoins(user.getCoins() + expReward);
             user.setLastActiveAt(OffsetDateTime.now());
 
-            // --- FIX START: Logic tính tổng thời gian học trong ngày ---
             LocalDate today = LocalDate.now(VN_ZONE);
-            
-            // Lấy thời điểm đầu ngày và cuối ngày theo múi giờ VN để query DB chính xác
             OffsetDateTime startOfDay = today.atStartOfDay(VN_ZONE).toOffsetDateTime();
             OffsetDateTime endOfDay = today.plusDays(1).atStartOfDay(VN_ZONE).toOffsetDateTime();
 
-            // Sử dụng hàm sumDurationByUserIdAndDateRange đã có trong Repo
             Long totalDurationSecondsToday = userLearningActivityRepository.sumDurationByUserIdAndDateRange(user.getUserId(), startOfDay, endOfDay);
             if (totalDurationSecondsToday == null) totalDurationSecondsToday = 0L;
-            
-            // Làm tròn lên phút (ví dụ 40s -> 1 phút)
             long totalDurationMinutes = (long) Math.ceil(totalDurationSecondsToday / 60.0);
-            // --- FIX END ---
 
             Long minGoal = user.getMinLearningDurationMinutes() != 0 ? (long) user.getMinLearningDurationMinutes() : 15L;
-            
             String redisKey = ONLINE_TIME_KEY + user.getUserId() + ":" + today.toString();
             Object redisVal = redisTemplate.opsForValue().get(redisKey);
             long onlineMinutes = redisVal != null ? Long.parseLong(redisVal.toString()) : 0L;
@@ -132,6 +127,8 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 }
             }
             userRepository.save(user);
+
+            syncLeaderboardData(user, expReward);
         }
         
         redisTemplate.delete(HISTORY_CACHE_KEY + request.getUserId() + ":week");
@@ -142,7 +139,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         UUID userId = request.getUserId();
 
         if (request.getDurationInSeconds() > 0) {
-            // Fix: Tính cả thời gian lẻ (làm tròn lên) cho Challenge
             int minutesToAdd = (int) Math.ceil(request.getDurationInSeconds() / 60.0);
             dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LEARNING_TIME, minutesToAdd);
         }
@@ -163,6 +159,49 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 .build();
     }
 
+    private void syncLeaderboardData(User user, int expEarned) {
+        try {
+            List<Leaderboard> allLeaderboards = leaderboardRepository.findAllByIsDeletedFalse();
+            
+            for (Leaderboard lb : allLeaderboards) {
+                LeaderboardEntry entry = leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(lb.getLeaderboardId(), user.getUserId())
+                    .orElseGet(() -> {
+                        LeaderboardEntry newEntry = new LeaderboardEntry();
+                        newEntry.setLeaderboardEntryId(new LeaderboardEntryId(lb.getLeaderboardId(), user.getUserId()));
+                        newEntry.setLeaderboard(lb);
+                        newEntry.setUser(user);
+                        newEntry.setScore(0);
+                        newEntry.setDeleted(false);
+                        return newEntry;
+                    });
+
+                boolean isUpdated = false;
+
+                if ("global".equalsIgnoreCase(lb.getTab())) {
+                    entry.setExp(user.getExp());
+                    entry.setLevel(user.getLevel());
+                    entry.setScore(entry.getScore() + expEarned); 
+                    isUpdated = true;
+                }
+                else if ("coins".equalsIgnoreCase(lb.getTab())) {
+                    entry.setScore(user.getCoins()); 
+                    isUpdated = true;
+                }
+                else if ("country".equalsIgnoreCase(lb.getTab())) {
+                      entry.setExp(user.getExp());
+                      entry.setScore(entry.getScore() + expEarned);
+                      isUpdated = true;
+                }
+
+                if (isUpdated) {
+                    leaderboardEntryRepository.save(entry);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to sync leaderboard for user {}: {}", user.getUserId(), e.getMessage());
+        }
+    }
+
     @Override
     @Transactional
     public UserLearningActivityResponse logUserActivity(UUID userId, ActivityType activityType, UUID relatedEntityId, Integer durationInSeconds, int expReward, String details, SkillType skillTypes) {
@@ -178,8 +217,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         activity.setDurationInSeconds(durationInSeconds != null ? durationInSeconds : 0); 
         activity.setDetails(details); 
         activity.setCreatedAt(OffsetDateTime.now());
-        
-        // --- FIX: Cast về float thay vì long ---
         activity.setScore((float) expReward); 
         activity.setMaxScore((float) expReward);
         
@@ -225,6 +262,8 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         LocalDate endDate = LocalDate.now();
         LocalDate startDate;
         LocalDate prevStartDate;
+        
+        boolean groupByMonth = "year".equalsIgnoreCase(period);
 
         switch (period.toLowerCase()) {
             case "week" -> {
@@ -232,8 +271,8 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 prevStartDate = startDate.minusDays(7);
             }
             case "year" -> {
-                startDate = endDate.minusMonths(11);
-                prevStartDate = startDate.minusMonths(12);
+                startDate = endDate.minusMonths(11).withDayOfMonth(1); 
+                prevStartDate = startDate.minusYears(1);
             }
             case "month" -> {
                 startDate = endDate.minusDays(29);
@@ -272,44 +311,70 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         List<ChartDataPoint> accuracyChart = new ArrayList<>();
         Map<String, Integer> dailyHeatmap = new HashMap<>(); 
         
-        Map<LocalDate, Long> dbDailyTime = new HashMap<>();
-        Map<LocalDate, List<Double>> dailyAccuracyMap = new HashMap<>();
+        // Maps for aggregation
+        Map<String, Long> timeAggMap = new HashMap<>();
+        Map<String, List<Double>> accAggMap = new HashMap<>();
 
+        // Fill Aggregation Maps
         for (UserLearningActivity a : activities) {
             LocalDate d = a.getCreatedAt().atZoneSameInstant(VN_ZONE).toLocalDate(); 
-            dbDailyTime.merge(d, a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L, Long::sum);
+            String key = groupByMonth 
+                ? String.format("%d-%02d", d.getYear(), d.getMonthValue()) 
+                : d.toString();
+            
+            // Populate dailyHeatmap independently for calendar view (always daily)
+            String dailyKey = d.toString();
+            long duration = a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L;
+            dailyHeatmap.merge(dailyKey, (int) Math.ceil(duration / 60.0), Integer::sum);
+            
+            // Populate chart data maps
+            timeAggMap.merge(key, duration, Long::sum);
             
             if (a.getMaxScore() != null && a.getMaxScore() > 0) {
                 double sessionAcc = ((double) a.getScore() / a.getMaxScore()) * 100.0;
                 sessionAcc = Math.min(100.0, Math.max(0.0, sessionAcc));
-                dailyAccuracyMap.computeIfAbsent(d, k -> new ArrayList<>()).add(sessionAcc);
+                accAggMap.computeIfAbsent(key, k -> new ArrayList<>()).add(sessionAcc);
             }
         }
 
+        // Generate Chart Data Loop
         LocalDate temp = startDate;
-        DateTimeFormatter labelFormatter = period.equals("year") ? DateTimeFormatter.ofPattern("MM/yy") : DateTimeFormatter.ofPattern("dd/MM");
+        DateTimeFormatter labelFormatter = groupByMonth ? DateTimeFormatter.ofPattern("MMM") : DateTimeFormatter.ofPattern("dd/MM");
         
         while (!temp.isAfter(endDate)) {
-            String dateStr = temp.toString();
-            String redisKey = ONLINE_TIME_KEY + userId + ":" + dateStr;
-            
-            Object redisValObj = redisTemplate.opsForValue().get(redisKey);
-            long redisMinutes = redisValObj != null ? Long.parseLong(redisValObj.toString()) : 0L;
-            
-            long dbSeconds = dbDailyTime.getOrDefault(temp, 0L);
-            long dbMinutes = (long) Math.ceil(dbSeconds / 60.0);
-
-            long finalMinutes = Math.max(redisMinutes, dbMinutes);
-            dailyHeatmap.put(dateStr, (int) finalMinutes);
-
+            String key = groupByMonth 
+                ? String.format("%d-%02d", temp.getYear(), temp.getMonthValue()) 
+                : temp.toString();
+                
             String label = temp.format(labelFormatter);
-            List<Double> accList = dailyAccuracyMap.getOrDefault(temp, Collections.emptyList());
+            
+            // Time logic
+            long dbSeconds = timeAggMap.getOrDefault(key, 0L);
+            long dbMinutes = (long) Math.ceil(dbSeconds / 60.0);
+            
+            // Merge with Redis only for Daily views (Redis keys are daily)
+            long finalMinutes = dbMinutes;
+            if (!groupByMonth) {
+                String redisKey = ONLINE_TIME_KEY + userId + ":" + temp.toString();
+                Object redisValObj = redisTemplate.opsForValue().get(redisKey);
+                long redisMinutes = redisValObj != null ? Long.parseLong(redisValObj.toString()) : 0L;
+                finalMinutes = Math.max(redisMinutes, dbMinutes);
+                dailyHeatmap.put(key, (int)finalMinutes);
+            }
+
+            // Accuracy logic
+            List<Double> accList = accAggMap.getOrDefault(key, Collections.emptyList());
             double accVal = accList.isEmpty() ? 0.0 : accList.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
 
-            timeChart.add(new ChartDataPoint(label, (double)finalMinutes, temp.toString()));
-            accuracyChart.add(new ChartDataPoint(label, accVal, temp.toString()));
+            timeChart.add(new ChartDataPoint(label, (double)finalMinutes, key));
+            accuracyChart.add(new ChartDataPoint(label, accVal, key));
             
-            temp = temp.plusDays(1);
+            // Increment loop
+            if (groupByMonth) {
+                temp = temp.plusMonths(1);
+            } else {
+                temp = temp.plusDays(1);
+            }
         }
 
         StatsResponse stats = StatsResponse.builder()

@@ -1,116 +1,169 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet } from "react-native";
-import Icon from "react-native-vector-icons/MaterialIcons";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+    View,
+    Text,
+    TouchableOpacity,
+    TextInput,
+    ActivityIndicator,
+    StyleSheet,
+    ViewStyle,
+    TextStyle
+} from "react-native";
 import { LessonQuestionResponse } from "../../types/dto";
 import { QuestionType } from "../../types/enums";
 
 interface LessonInputAreaProps {
     question: LessonQuestionResponse;
     isAnswered: boolean;
-    selectedAnswer: string | null;
+    selectedAnswer: any;
     isLoading: boolean;
     onAnswer: (answer: any) => void;
     onSkip: () => void;
+    reviewMode?: boolean;
     isRecording?: boolean;
     isStreaming?: boolean;
     onStartRecording?: () => void;
     onStopRecording?: () => void;
-    reviewMode?: boolean;
 }
 
 export const LessonInputArea = ({
-    question, isAnswered, selectedAnswer, isLoading,
-    onAnswer, onSkip, isRecording, isStreaming,
-    onStartRecording, onStopRecording, reviewMode = false
+    question,
+    isAnswered,
+    selectedAnswer,
+    isLoading,
+    onAnswer,
+    onSkip,
+    reviewMode = false
 }: LessonInputAreaProps) => {
+
     const [textInput, setTextInput] = useState("");
     const [orderedList, setOrderedList] = useState<string[]>([]);
     const [matches, setMatches] = useState<Record<string, string>>({});
     const [selectedLeft, setSelectedLeft] = useState<string | null>(null);
 
-    const fragments = React.useMemo(() => {
-        if (question.questionType !== QuestionType.ORDERING) return [];
-        try { return JSON.parse(question.optionsJson || "[]"); } catch { return []; }
-    }, [question.optionsJson, question.questionType]);
-
-    const pairs = React.useMemo(() => {
-        if (question.questionType !== QuestionType.MATCHING) return [];
-        try { return JSON.parse(question.optionsJson || "[]"); } catch { return []; }
-    }, [question.optionsJson, question.questionType]);
-
-    const leftSide = pairs.map((p: any) => p.key);
-    const rightSide = pairs.map((p: any) => p.value);
+    const parsedOptions = useMemo(() => {
+        if (!question.optionsJson) return [];
+        try {
+            return JSON.parse(question.optionsJson);
+        } catch {
+            return [];
+        }
+    }, [question.optionsJson]);
 
     useEffect(() => {
         if (reviewMode && selectedAnswer) {
-            if (question.questionType === QuestionType.FILL_IN_THE_BLANK || question.questionType === QuestionType.WRITING) {
+            if (question.questionType === QuestionType.FILL_IN_THE_BLANK ||
+                question.questionType === QuestionType.WRITING ||
+                question.questionType === QuestionType.ESSAY) {
                 setTextInput(String(selectedAnswer));
             } else if (question.questionType === QuestionType.ORDERING) {
+                setTextInput("");
                 setOrderedList(String(selectedAnswer).split(" "));
             } else if (question.questionType === QuestionType.MATCHING) {
-                try { setMatches(typeof selectedAnswer === 'string' ? JSON.parse(selectedAnswer) : selectedAnswer); } catch { }
+                try {
+                    const parsed = typeof selectedAnswer === 'string' ? JSON.parse(selectedAnswer) : selectedAnswer;
+                    setMatches(parsed);
+                } catch { }
             }
-        } else if (!reviewMode) {
+        } else {
             setTextInput("");
             setOrderedList([]);
             setMatches({});
             setSelectedLeft(null);
         }
-    }, [question.lessonQuestionId, reviewMode]);
+    }, [question.lessonQuestionId, reviewMode, selectedAnswer]);
+
+
+    const renderSubmitButton = (callback: () => void, disabled: boolean, label: string = "Check") => (
+        <TouchableOpacity
+            style={[styles.submitBtn, disabled && styles.disabledBtn]}
+            onPress={callback}
+            disabled={disabled || reviewMode}
+        >
+            {isLoading ? (
+                <ActivityIndicator color="#FFF" />
+            ) : (
+                <Text style={styles.btnText}>{label}</Text>
+            )}
+        </TouchableOpacity>
+    );
 
     const renderSkipButton = () => (
-        <TouchableOpacity style={styles.skipBtn} onPress={onSkip} disabled={isAnswered || isLoading || reviewMode}>
+        <TouchableOpacity
+            style={styles.skipBtn}
+            onPress={onSkip}
+            disabled={isAnswered || isLoading || reviewMode}
+        >
             <Text style={styles.skipBtnText}>Skip</Text>
         </TouchableOpacity>
     );
 
-    const renderSubmitButton = (onSubmit: () => void, disabled: boolean, label: string = "Check") => (
-        <TouchableOpacity style={[styles.submitBtn, disabled && styles.disabledBtn]} onPress={onSubmit} disabled={disabled || reviewMode}>
-            {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.btnText}>{label}</Text>}
-        </TouchableOpacity>
-    );
+    if (question.questionType === QuestionType.MULTIPLE_CHOICE ||
+        question.questionType === QuestionType.TRUE_FALSE ||
+        question.questionType === QuestionType.SPEAKING) {
 
-    if (question.questionType === QuestionType.MULTIPLE_CHOICE || question.questionType === QuestionType.TRUE_FALSE) {
         const options = question.questionType === QuestionType.TRUE_FALSE
             ? [{ key: 'TRUE', value: 'True' }, { key: 'FALSE', value: 'False' }]
             : [
-                { key: 'A', value: question.optionA }, { key: 'B', value: question.optionB },
-                { key: 'C', value: question.optionC }, { key: 'D', value: question.optionD },
-            ].filter(opt => opt.value);
+                { key: 'A', value: question.optionA },
+                { key: 'B', value: question.optionB },
+                { key: 'C', value: question.optionC },
+                { key: 'D', value: question.optionD },
+            ].filter(o => o.value);
 
         return (
             <View style={styles.container}>
                 <View style={styles.optionsContainer}>
                     {options.map((opt) => {
-                        const isSelected = selectedAnswer && (selectedAnswer === opt.key || selectedAnswer === `option${opt.key}`);
-                        let btnStyle = styles.optionBtn;
-                        let textStyle = styles.optionText;
+                        const isSelected = selectedAnswer === `option${opt.key}` || selectedAnswer === opt.key;
+
+                        const containerStyles: ViewStyle[] = [styles.optionBtn];
+                        const textStyles: TextStyle[] = [styles.optionText];
+                        const badgeStyles: ViewStyle[] = [styles.optionKeyBadge];
+                        const badgeTextStyles: TextStyle[] = [styles.optionKeyText];
 
                         if (isAnswered) {
                             const correctKey = question.correctOption?.replace(/^option/i, '');
-                            if (opt.key === correctKey) {
-                                btnStyle = styles.optionBtnCorrect as any;
-                                textStyle = styles.optionTextCorrect as any;
+                            const isCorrectOption = opt.key === correctKey;
+
+                            if (isCorrectOption) {
+                                containerStyles.push(styles.optionBtnCorrect);
+                                textStyles.push(styles.optionTextCorrect);
+                                badgeStyles.push(styles.optionKeyBadgeCorrect);
+                                badgeTextStyles.push(styles.optionKeyTextCorrect);
                             } else if (isSelected) {
-                                btnStyle = styles.optionBtnWrong as any;
-                                textStyle = styles.optionTextWrong as any;
+                                containerStyles.push(styles.optionBtnWrong);
+                                textStyles.push(styles.optionTextWrong);
+                                badgeStyles.push(styles.optionKeyBadgeWrong);
+                                badgeTextStyles.push(styles.optionKeyTextWrong);
                             }
                         } else if (isSelected) {
-                            btnStyle = styles.optionBtnSelected as any;
-                            textStyle = styles.optionTextSelected as any;
+                            containerStyles.push(styles.optionBtnSelected);
+                            textStyles.push(styles.optionTextSelected);
+                            badgeStyles.push(styles.optionKeyBadgeSelected);
+                            badgeTextStyles.push(styles.optionKeyTextSelected);
                         }
 
                         return (
-                            <TouchableOpacity key={opt.key} style={btnStyle} onPress={() => onAnswer(`option${opt.key}`)} disabled={isAnswered || isLoading || reviewMode}>
-                                <View style={[styles.optionKeyBadge, isAnswered && opt.key === question.correctOption?.replace(/^option/i, '') && { backgroundColor: '#10B981' }]}>
-                                    <Text style={[styles.optionKeyText, isAnswered && opt.key === question.correctOption?.replace(/^option/i, '') && { color: '#FFF' }]}>{opt.key}</Text>
+                            <TouchableOpacity
+                                key={opt.key}
+                                style={containerStyles}
+                                onPress={() => onAnswer(`option${opt.key}`)}
+                                disabled={isAnswered || isLoading || reviewMode}
+                            >
+                                <View style={badgeStyles}>
+                                    <Text style={badgeTextStyles}>{opt.key}</Text>
                                 </View>
-                                <Text style={textStyle}>{opt.value}</Text>
+                                <Text style={textStyles}>{opt.value}</Text>
                             </TouchableOpacity>
                         );
                     })}
                 </View>
-                {!isAnswered && !reviewMode && renderSkipButton()}
+                {!isAnswered && !reviewMode && (
+                    <View style={styles.actionRowRight}>
+                        {renderSkipButton()}
+                    </View>
+                )}
             </View>
         );
     }
@@ -118,26 +171,28 @@ export const LessonInputArea = ({
     if (question.questionType === QuestionType.FILL_IN_THE_BLANK) {
         return (
             <View style={styles.container}>
-                <View style={styles.writingContainer}>
-                    <Text style={styles.label}>Fill in the blank:</Text>
-                    <TextInput
-                        style={[styles.singleLineInput, reviewMode && styles.readOnlyInput]}
-                        placeholder="Type your answer here..."
-                        value={textInput}
-                        onChangeText={setTextInput}
-                        editable={!isAnswered && !reviewMode}
-                    />
+                <Text style={styles.label}>Type your answer:</Text>
+                <TextInput
+                    style={[styles.inputSingle, reviewMode && styles.inputReadOnly]}
+                    placeholder="Enter text..."
+                    value={textInput}
+                    onChangeText={setTextInput}
+                    editable={!isAnswered && !reviewMode}
+                />
+
+                {!isAnswered && !reviewMode && (
                     <View style={styles.actionRow}>
-                        {!isAnswered && !reviewMode && renderSkipButton()}
-                        {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading)}
+                        {renderSkipButton()}
+                        {renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading)}
                     </View>
-                </View>
+                )}
+
                 {isAnswered && !reviewMode && (
                     <View style={styles.resultBox}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                            <Text style={styles.textLabel}>Correct Answer: </Text>
-                            <Text style={styles.textCorrect}>{question.correctOption}</Text>
-                        </View>
+                        <Text style={styles.resultLabel}>Correct Answer:</Text>
+                        <Text style={styles.resultText}>
+                            {question.correctAnswer ? question.correctAnswer.split('||').join(' or ') : 'N/A'}
+                        </Text>
                     </View>
                 )}
             </View>
@@ -145,49 +200,83 @@ export const LessonInputArea = ({
     }
 
     if (question.questionType === QuestionType.ORDERING) {
-        const handleSelectFragment = (val: string) => {
-            if (!orderedList.includes(val)) setOrderedList(prev => [...prev, val]);
+        const fragments = parsedOptions;
+        const currentList = reviewMode ? (String(selectedAnswer || "").split(" ")) : orderedList;
+
+        const handleRemove = (word: string) => {
+            if (!isAnswered && !reviewMode) {
+                setOrderedList(prev => prev.filter(w => w !== word));
+            }
         };
 
-        const handleRemoveFragment = (val: string) => {
-            if (!isAnswered && !reviewMode) {
-                setOrderedList(prev => prev.filter(k => k !== val));
+        const handleAdd = (word: string) => {
+            if (!orderedList.includes(word) && !isAnswered && !reviewMode) {
+                setOrderedList(prev => [...prev, word]);
             }
         };
 
         return (
             <View style={styles.container}>
-                <Text style={styles.label}>Order the sentence:</Text>
-                <View style={styles.orderDisplayArea}>
-                    {(reviewMode ? String(selectedAnswer || "").split(" ") : orderedList).map((val, index) => (
-                        <TouchableOpacity key={index} style={styles.chipSelected} onPress={() => handleRemoveFragment(val)} disabled={isAnswered || reviewMode}>
-                            <Text style={styles.chipTextSelected}>{val}</Text>
+                <Text style={styles.label}>Arrange the sentence:</Text>
+
+                <View style={styles.orderBox}>
+                    {currentList.map((word, idx) => (
+                        <TouchableOpacity
+                            key={`${word}-${idx}`}
+                            style={styles.chipSelected}
+                            onPress={() => handleRemove(word)}
+                            disabled={isAnswered || reviewMode}
+                        >
+                            <Text style={styles.chipTextSelected}>{word}</Text>
                         </TouchableOpacity>
                     ))}
-                    {orderedList.length === 0 && <Text style={{ color: '#9CA3AF' }}>Tap words below to arrange</Text>}
+                    {currentList.length === 0 && (
+                        <Text style={styles.placeholderText}>Tap words below to arrange</Text>
+                    )}
                 </View>
+
                 {!reviewMode && (
                     <View style={styles.chipContainer}>
-                        {fragments.map((val: string, idx: number) => {
-                            const isSelected = orderedList.includes(val);
-                            if (isSelected) return <View key={idx} style={styles.chipPlaceholder} />;
+                        {fragments.map((word: string, idx: number) => {
+                            const isUsed = orderedList.includes(word);
+                            if (isUsed) return <View key={idx} style={styles.chipPlaceholder} />;
+
                             return (
-                                <TouchableOpacity key={idx} style={styles.chip} onPress={() => handleSelectFragment(val)} disabled={isAnswered}>
-                                    <Text style={styles.chipText}>{val}</Text>
+                                <TouchableOpacity
+                                    key={idx}
+                                    style={styles.chip}
+                                    onPress={() => handleAdd(word)}
+                                    disabled={isAnswered}
+                                >
+                                    <Text style={styles.chipText}>{word}</Text>
                                 </TouchableOpacity>
                             );
                         })}
                     </View>
                 )}
-                <View style={styles.actionRow}>
-                    {!isAnswered && !reviewMode && renderSkipButton()}
-                    {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(orderedList.join(" ")), orderedList.length === 0 || isLoading)}
-                </View>
+
+                {!isAnswered && !reviewMode && (
+                    <View style={styles.actionRow}>
+                        {renderSkipButton()}
+                        {renderSubmitButton(() => onAnswer(orderedList.join(" ")), orderedList.length === 0 || isLoading)}
+                    </View>
+                )}
+
+                {isAnswered && !reviewMode && (
+                    <View style={styles.resultBox}>
+                        <Text style={styles.resultLabel}>Correct Order:</Text>
+                        <Text style={styles.resultText}>{question.correctAnswer}</Text>
+                    </View>
+                )}
             </View>
         );
     }
 
     if (question.questionType === QuestionType.MATCHING) {
+        const pairs = parsedOptions;
+        const leftCol = pairs.map((p: any) => p.key);
+        const rightCol = pairs.map((p: any) => p.value);
+
         const handleMatch = (rightVal: string) => {
             if (selectedLeft) {
                 setMatches(prev => ({ ...prev, [selectedLeft]: rightVal }));
@@ -197,68 +286,67 @@ export const LessonInputArea = ({
 
         return (
             <View style={styles.container}>
-                <Text style={styles.label}>Match pairs:</Text>
-                <View style={styles.matchingRow}>
-                    <View style={styles.matchingCol}>
-                        {leftSide.map((leftKey: string) => {
-                            const isMatched = !!matches[leftKey];
+                <Text style={styles.label}>Match the pairs:</Text>
+                <View style={styles.matchContainer}>
+                    <View style={styles.matchCol}>
+                        {leftCol.map((lKey: string) => {
+                            const isMatched = !!matches[lKey];
+                            const isSelected = selectedLeft === lKey;
                             return (
-                                <TouchableOpacity key={leftKey}
-                                    style={[styles.matchItem, selectedLeft === leftKey && styles.matchItemSelected, isMatched && styles.matchItemMatched]}
-                                    onPress={() => !isMatched && !isAnswered && setSelectedLeft(leftKey)}
+                                <TouchableOpacity
+                                    key={lKey}
+                                    style={[
+                                        styles.matchItem,
+                                        isSelected && styles.matchItemSelected,
+                                        isMatched && styles.matchItemMatched
+                                    ]}
+                                    onPress={() => !isMatched && !isAnswered && setSelectedLeft(lKey)}
                                     disabled={isMatched || isAnswered || reviewMode}
                                 >
-                                    <Text style={[styles.matchItemText, isMatched && { color: '#FFF' }]}>{leftKey}</Text>
+                                    <Text style={[styles.matchText, isMatched && { color: '#FFF' }]}>{lKey}</Text>
                                 </TouchableOpacity>
                             );
                         })}
                     </View>
-                    <View style={styles.matchingCol}>
-                        {rightSide.map((rightVal: string) => {
-                            const isMatchedTo = Object.values(matches).includes(rightVal);
+
+                    <View style={styles.matchCol}>
+                        {rightCol.map((rVal: string) => {
+                            const isMatchedTo = Object.values(matches).includes(rVal);
                             return (
-                                <TouchableOpacity key={rightVal}
-                                    style={[styles.matchItem, isMatchedTo && styles.matchItemMatchedTarget]}
-                                    onPress={() => !isAnswered && handleMatch(rightVal)}
+                                <TouchableOpacity
+                                    key={rVal}
+                                    style={[
+                                        styles.matchItem,
+                                        isMatchedTo && styles.matchItemMatchedTarget
+                                    ]}
+                                    onPress={() => handleMatch(rVal)}
                                     disabled={isMatchedTo || !selectedLeft || isAnswered || reviewMode}
                                 >
-                                    <Text style={styles.matchItemText}>{rightVal}</Text>
+                                    <Text style={styles.matchText}>{rVal}</Text>
                                 </TouchableOpacity>
                             );
                         })}
                     </View>
                 </View>
-                <View style={styles.actionRow}>
-                    {!isAnswered && !reviewMode && renderSkipButton()}
-                    {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(JSON.stringify(matches)), Object.keys(matches).length !== leftSide.length || isLoading)}
-                </View>
-            </View>
-        );
-    }
 
-    if (question.questionType === QuestionType.SPEAKING) {
-        return (
-            <View style={styles.container}>
-                <View style={styles.speakingContainer}>
-                    {isStreaming ? (
-                        <View style={styles.processingContainer}>
-                            <ActivityIndicator color="#4F46E5" size="large" />
-                            <Text style={styles.processingText}>AI Judging...</Text>
-                        </View>
-                    ) : (
-                        <View style={{ alignItems: 'center' }}>
-                            <TouchableOpacity style={[styles.recordBtn, isRecording && styles.recordingBtn, (isAnswered || reviewMode) && styles.disabledRecordBtn]}
-                                onPressIn={!isAnswered && !reviewMode ? onStartRecording : undefined}
-                                onPressOut={!isAnswered && !reviewMode ? onStopRecording : undefined}
-                                disabled={isAnswered || reviewMode}
-                            >
-                                <Icon name={isRecording ? "graphic-eq" : "mic"} size={40} color="#FFF" />
-                            </TouchableOpacity>
-                            <Text style={styles.hintText}>{reviewMode ? "Review Mode" : isAnswered ? "Answered" : isRecording ? "Release to send" : "Hold to speak"}</Text>
-                        </View>
-                    )}
-                </View>
-                {!isAnswered && !isRecording && !isStreaming && !reviewMode && renderSkipButton()}
+                {!isAnswered && !reviewMode && (
+                    <View style={styles.actionRow}>
+                        {renderSkipButton()}
+                        {renderSubmitButton(
+                            () => onAnswer(JSON.stringify(matches)),
+                            Object.keys(matches).length !== leftCol.length || isLoading
+                        )}
+                    </View>
+                )}
+
+                {isAnswered && !reviewMode && (
+                    <View style={styles.resultBox}>
+                        <Text style={styles.resultLabel}>Correct Pairs:</Text>
+                        {parsedOptions.map((p: any, i: number) => (
+                            <Text key={i} style={styles.resultText}>{p.key} - {p.value}</Text>
+                        ))}
+                    </View>
+                )}
             </View>
         );
     }
@@ -266,72 +354,96 @@ export const LessonInputArea = ({
     if (question.questionType === QuestionType.WRITING || question.questionType === QuestionType.ESSAY) {
         return (
             <View style={styles.container}>
-                <View style={styles.writingContainer}>
-                    <TextInput
-                        style={[styles.textInput, reviewMode && styles.readOnlyInput]}
-                        multiline placeholder="Type your answer..."
-                        value={textInput}
-                        onChangeText={setTextInput}
-                        editable={!isAnswered && !reviewMode}
-                    />
+                <Text style={styles.label}>Write your answer:</Text>
+                <TextInput
+                    style={[styles.inputMulti, reviewMode && styles.inputReadOnly]}
+                    multiline
+                    placeholder="Type here..."
+                    value={textInput}
+                    onChangeText={setTextInput}
+                    editable={!isAnswered && !reviewMode}
+                />
+
+                {!isAnswered && !reviewMode && (
                     <View style={styles.actionRow}>
-                        {!isAnswered && !reviewMode && renderSkipButton()}
-                        {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading, "Submit")}
+                        {renderSkipButton()}
+                        {renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading, "Submit")}
                     </View>
-                </View>
+                )}
+
+                {isAnswered && !reviewMode && question.correctAnswer && (
+                    <View style={styles.resultBox}>
+                        <Text style={styles.resultLabel}>Suggested Answer:</Text>
+                        <Text style={styles.resultText}>{question.correctAnswer}</Text>
+                    </View>
+                )}
             </View>
         );
     }
 
-    return <Text>Unsupported Type</Text>;
+    return (
+        <View style={styles.center}>
+            <Text style={{ color: 'red' }}>Unsupported Question Type: {question.questionType}</Text>
+        </View>
+    );
 };
 
 const styles = StyleSheet.create({
-    container: { marginTop: 20 },
+    container: { marginTop: 10, width: '100%' },
+    center: { alignItems: 'center', padding: 20 },
+    label: { fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 10 },
+
+    actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
+    actionRowRight: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 },
+    submitBtn: { flex: 1, backgroundColor: '#4F46E5', padding: 14, borderRadius: 12, alignItems: 'center', marginLeft: 10 },
+    disabledBtn: { backgroundColor: '#A5B4FC' },
+    btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+    skipBtn: { padding: 12 },
+    skipBtnText: { color: '#6B7280', fontSize: 16, textDecorationLine: 'underline' },
+
     optionsContainer: { gap: 12 },
-    optionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
+    optionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
     optionBtnSelected: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
     optionBtnCorrect: { borderColor: '#10B981', backgroundColor: '#ECFDF5', borderWidth: 2 },
     optionBtnWrong: { borderColor: '#EF4444', backgroundColor: '#FEF2F2', borderWidth: 2 },
+
     optionKeyBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-    optionKeyText: { fontSize: 14, fontWeight: '700', color: '#6B7280' },
+    optionKeyBadgeSelected: { backgroundColor: '#C7D2FE' },
+    optionKeyBadgeCorrect: { backgroundColor: '#34D399' },
+    optionKeyBadgeWrong: { backgroundColor: '#FCA5A5' },
+
+    optionKeyText: { fontSize: 14, fontWeight: 'bold', color: '#6B7280' },
+    optionKeyTextSelected: { color: '#4F46E5' },
+    optionKeyTextCorrect: { color: '#FFF' },
+    optionKeyTextWrong: { color: '#FFF' },
+
     optionText: { fontSize: 16, color: '#1F2937', fontWeight: '500', flex: 1 },
     optionTextSelected: { color: '#4F46E5', fontWeight: '700' },
     optionTextCorrect: { color: '#065F46', fontWeight: '700' },
     optionTextWrong: { color: '#991B1B', fontWeight: '700' },
-    speakingContainer: { alignItems: 'center', marginTop: 12 },
-    recordBtn: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', elevation: 6 },
-    recordingBtn: { backgroundColor: '#EF4444', transform: [{ scale: 1.1 }] },
-    disabledRecordBtn: { backgroundColor: '#9CA3AF' },
-    hintText: { marginTop: 12, color: '#6B7280', fontSize: 14 },
-    processingContainer: { alignItems: 'center', padding: 20 },
-    processingText: { marginTop: 8, color: '#4F46E5', fontWeight: '600' },
-    writingContainer: { marginTop: 12 },
-    textInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, padding: 16, minHeight: 120, textAlignVertical: 'top', fontSize: 16 },
-    readOnlyInput: { backgroundColor: '#F9FAFB', color: '#374151' },
-    singleLineInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, padding: 12, fontSize: 16, marginTop: 8 },
-    label: { fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 8 },
-    resultBox: { marginTop: 16, padding: 16, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },
-    textLabel: { fontWeight: '600', color: '#6B7280' },
-    textCorrect: { color: '#10B981', fontWeight: 'bold' },
-    orderDisplayArea: { minHeight: 60, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16, alignItems: 'center' },
+
+    inputSingle: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, padding: 14, fontSize: 16 },
+    inputMulti: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, padding: 14, fontSize: 16, minHeight: 120, textAlignVertical: 'top' },
+    inputReadOnly: { backgroundColor: '#F9FAFB', color: '#6B7280' },
+
+    orderBox: { minHeight: 60, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16, alignItems: 'center' },
+    placeholderText: { color: '#9CA3AF' },
     chipContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
     chip: { backgroundColor: '#EEF2FF', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: '#C7D2FE' },
     chipSelected: { backgroundColor: '#4F46E5', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 },
     chipPlaceholder: { width: 40, height: 36, backgroundColor: '#F3F4F6', borderRadius: 20 },
     chipText: { color: '#4F46E5', fontWeight: '600' },
     chipTextSelected: { color: '#FFF', fontWeight: '600' },
-    matchingRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
-    matchingCol: { flex: 1, gap: 12 },
-    matchItem: { padding: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, alignItems: 'center', minHeight: 48, justifyContent: 'center' },
+
+    matchContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
+    matchCol: { flex: 1, gap: 10 },
+    matchItem: { padding: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, alignItems: 'center', justifyContent: 'center', minHeight: 48 },
     matchItemSelected: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF', borderWidth: 2 },
     matchItemMatched: { borderColor: '#10B981', backgroundColor: '#10B981' },
     matchItemMatchedTarget: { borderColor: '#10B981', backgroundColor: '#D1FAE5' },
-    matchItemText: { color: '#1F2937', fontWeight: '500' },
-    actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
-    submitBtn: { backgroundColor: '#4F46E5', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, alignItems: 'center', flex: 1, marginLeft: 10 },
-    disabledBtn: { backgroundColor: '#A5B4FC' },
-    btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-    skipBtn: { padding: 12 },
-    skipBtnText: { color: '#6B7280', fontSize: 16, fontWeight: '600', textDecorationLine: 'underline' }
+    matchText: { color: '#1F2937', fontWeight: '500', textAlign: 'center' },
+
+    resultBox: { marginTop: 16, padding: 16, backgroundColor: '#ECFDF5', borderRadius: 12, borderWidth: 1, borderColor: '#10B981' },
+    resultLabel: { fontSize: 14, fontWeight: '700', color: '#065F46', marginBottom: 4 },
+    resultText: { fontSize: 16, color: '#065F46' }
 });

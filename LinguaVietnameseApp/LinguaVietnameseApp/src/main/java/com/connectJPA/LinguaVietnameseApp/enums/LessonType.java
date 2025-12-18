@@ -10,6 +10,7 @@ public enum LessonType {
     VIDEO,
     DOCUMENT,
     AUDIO,
-    GRAMMAR_PRACTICE, ESSAY
+    GRAMMAR_PRACTICE,
+    ESSAY,
+    REGULAR
 }
-

@@ -12,10 +12,7 @@ async def analyze_course_quality(course_id: str, lesson_ids: list[str]) -> tuple
     """
     logging.info(f"Analyzing quality for course {course_id} with {len(lesson_ids)} lessons.")
     
-    # In a real scenario, lesson metadata would be fetched from a database or a storage service.
-    # For a full file, we'll use a placeholder structure and prompt the AI.
     
-    # Simulate fetching simple metadata
     lesson_metadata_sample = [
         {"id": f"L{i}", "title": f"Lesson {i} Title", "duration_minutes": 5 + (i % 10)} 
         for i in range(1, 4)
@@ -121,7 +118,6 @@ async def decide_refund(transaction_id: str, user_id: str, course_id: str, reaso
         explanation = data.get("explanation", "No explanation provided")
         confidence = float(data.get("confidence", 0.0))
 
-        # Boost confidence for standard codes if AI agrees
         if is_standard and confidence > 0.7:
             confidence = min(0.99, confidence + 0.1)
 

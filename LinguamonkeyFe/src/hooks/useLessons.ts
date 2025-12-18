@@ -19,7 +19,6 @@ import { courseKeys } from "./useCourses";
 import { SkillType } from "../types/enums";
 import { RoomResponse } from "../types/api";
 
-// --- Keys Factory ---
 export const lessonKeys = {
   all: ["lessons"] as const,
   lists: () => [...lessonKeys.all, "list"] as const,

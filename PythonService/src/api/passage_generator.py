@@ -10,11 +10,9 @@ genai.api_key = os.getenv("GOOGLE_API_KEY")
 
 def clean_ai_output(text: str) -> str:
     """Removes code blocks, metadata, or accidental ID inclusions."""
-    # Remove markdown code blocks
     text = re.sub(r"```(json|markdown)?", "", text).strip()
     text = text.replace("```", "")
     
-    # Remove obvious metadata lines if Gemini hallucinates them
     lines = text.split('\n')
     cleaned_lines = [line for line in lines if not line.lower().startswith("user id:")]
     return "\n".join(cleaned_lines).strip()
@@ -27,7 +25,6 @@ def generate_passage(user_id: str, language: str, topic: str, user_profile: dict
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        # Xây dựng context nhưng KHÔNG đưa user_id vào prompt cho Model nhìn thấy dưới dạng text cần lặp lại
         level = user_profile.get("proficiency", "beginner") if user_profile else "beginner"
         
         system_instruction = (

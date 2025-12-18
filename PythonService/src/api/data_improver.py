@@ -45,7 +45,6 @@ async def improve_quiz_data(raw_question: str, raw_options: list[str], topic: st
         response = await model.generate_content_async(system_prompt)
         text_resp = response.text
         
-        # Clean potential markdown
         clean_json = text_resp.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_json)
         

@@ -13,7 +13,6 @@ import {
 
 import { AgeRange, Country } from "../types/enums";
 
-// Define basic interfaces for reference data if not already in dto
 export interface Interest {
   interestId: string;
   interestName: string;

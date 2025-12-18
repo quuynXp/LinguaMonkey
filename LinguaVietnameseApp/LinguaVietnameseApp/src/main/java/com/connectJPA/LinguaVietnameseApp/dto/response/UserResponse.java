@@ -46,6 +46,7 @@ public class UserResponse {
     private List<String> certificationIds;
     private List<UUID> interestIds; 	 	
     private List<String> goalIds;
+    private int coins;
 
     private int level;
     private int exp;

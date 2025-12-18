@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.OffsetDateTime;
@@ -35,9 +35,7 @@ public class StorageServiceImpl implements StorageService {
     @Value("${google.drive.folderId}")
     private String folderId;
 
-    private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
-    
-    // Fallback template
+    private static final long MAX_FILE_SIZE = 500 * 1024 * 1024;
     private static final String THUMBNAIL_URL_TEMPLATE = "https://drive.google.com/thumbnail?id=%s&sz=w1920";
     private static final String BINARY_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
 
@@ -45,18 +43,19 @@ public class StorageServiceImpl implements StorageService {
     @Override
     public String uploadTemp(MultipartFile file) {
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new RuntimeException("File too large. Max size is 100MB.");
+            throw new RuntimeException("File too large. Max size is 500MB.");
         }
+
         try {
             return uploadStream(file.getInputStream(), file.getOriginalFilename(), file.getContentType());
         } catch (IOException e) {
-            log.error("Google Drive upload failed", e);
-            throw new RuntimeException("Failed to upload file to Google Drive", e);
+            log.error("Upload failed", e);
+            throw new RuntimeException("Failed to upload file", e);
         }
     }
 
     public String uploadBytes(byte[] data, String fileName, String contentType) {
-        return uploadStream(new ByteArrayInputStream(data), fileName, contentType);
+        return uploadStream(new java.io.ByteArrayInputStream(data), fileName, contentType);
     }
 
     @Override
@@ -66,10 +65,11 @@ public class StorageServiceImpl implements StorageService {
             fileMetadata.setName(fileName);
             fileMetadata.setParents(Collections.singletonList(folderId));
 
-            InputStreamContent mediaContent = new InputStreamContent(contentType, inputStream);
+            BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
+            InputStreamContent mediaContent = new InputStreamContent(contentType, bufferedInputStream);
 
             File uploadedFile = driveService.files().create(fileMetadata, mediaContent)
-                    .setFields("id, thumbnailLink, webContentLink") 
+                    .setFields("id, thumbnailLink, webContentLink, webViewLink")
                     .execute();
 
             String fileId = uploadedFile.getId();
@@ -81,16 +81,14 @@ public class StorageServiceImpl implements StorageService {
                 log.warn("Could not set public permission for file {}", fileId);
             }
 
-            log.info("Uploaded {} to Drive. ID: {}", fileName, fileId);
-            
             if (contentType != null && contentType.startsWith("image/") && uploadedFile.getThumbnailLink() != null) {
                 return uploadedFile.getThumbnailLink().replace("=s220", "=s1920");
             }
 
-            return uploadedFile.getWebContentLink() != null 
-                    ? uploadedFile.getWebContentLink() 
+            return uploadedFile.getWebContentLink() != null
+                    ? uploadedFile.getWebContentLink()
                     : String.format(BINARY_URL_TEMPLATE, fileId);
-            
+
         } catch (IOException e) {
             log.error("Google Drive stream upload failed", e);
             throw new RuntimeException("Failed to upload stream to Google Drive", e);
@@ -101,34 +99,32 @@ public class StorageServiceImpl implements StorageService {
     @Override
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {
         try {
-            String fileId = extractFileId(tempPath); 
-            log.info("Committing file with Extracted ID: {}", fileId);
-
+            String fileId = extractFileId(tempPath);
             File driveFile = driveService.files().get(fileId)
                     .setFields("id, name, thumbnailLink, webContentLink")
                     .execute();
-            
+
             String fileName = driveFile.getName();
 
             UserMedia media = UserMedia.builder()
-                    .filePath(fileId) // Chỉ lưu File ID vào filePath
+                    .filePath(fileId)
                     .fileName(fileName)
                     .userId(userId)
                     .mediaType(mediaType)
                     .createdAt(OffsetDateTime.now())
                     .build();
-            
+
             String optimizedUrl;
             if (mediaType == MediaType.IMAGE && driveFile.getThumbnailLink() != null) {
                 optimizedUrl = driveFile.getThumbnailLink().replace("=s220", "=s1920");
             } else {
-                optimizedUrl = driveFile.getWebContentLink() != null 
-                        ? driveFile.getWebContentLink() 
+                optimizedUrl = driveFile.getWebContentLink() != null
+                        ? driveFile.getWebContentLink()
                         : String.format(BINARY_URL_TEMPLATE, fileId);
             }
-            
-            media.setFileUrl(optimizedUrl); 
-            
+
+            media.setFileUrl(optimizedUrl);
+
             return mediaRepo.save(media);
         } catch (IOException e) {
             log.error("Commit Drive file failed. TempPath: {}", tempPath, e);
@@ -138,24 +134,20 @@ public class StorageServiceImpl implements StorageService {
 
     private String extractFileId(String url) {
         if (url == null) return "";
-        
-        Pattern pattern = Pattern.compile("([a-zA-Z0-9_-]{25,})");
+        Pattern pattern = Pattern.compile("id=([a-zA-Z0-9_-]+)|/d/([a-zA-Z0-9_-]+)");
         Matcher matcher = pattern.matcher(url);
 
         if (url.contains("/file/d/") || url.contains("/d/") || url.contains("id=")) {
-             while (matcher.find()) {
-                 String candidate = matcher.group(1);
-                 if (!candidate.contains("http") && !candidate.contains("google")) {
-                     return candidate;
-                 }
-             }
+            while (matcher.find()) {
+                String candidate = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+                if (candidate != null && !candidate.contains("http") && !candidate.contains("google")) {
+                    return candidate;
+                }
+            }
         }
-
         if (url.matches("^[a-zA-Z0-9_-]+$")) {
             return url;
         }
-        
-        log.warn("Could not extract clean Drive ID from: {}", url);
         return url;
     }
 
@@ -163,12 +155,8 @@ public class StorageServiceImpl implements StorageService {
     public void deleteFile(String objectPath) {
         try {
             String fileId = extractFileId(objectPath);
-            if (fileId.contains("http")) {
-                 log.warn("Aborting delete. Invalid ID extraction from path: {}", objectPath);
-                 return; 
-            }
+            if (fileId.contains("http")) return;
             driveService.files().delete(fileId).execute();
-            log.info("Deleted file from Drive: {}", fileId);
         } catch (IOException e) {
             log.error("Delete failed for File path: {}", objectPath, e);
             throw new RuntimeException("Delete file failed", e);
@@ -179,7 +167,7 @@ public class StorageServiceImpl implements StorageService {
     public String getFileUrl(String fileId) {
         return String.format(THUMBNAIL_URL_TEMPLATE, fileId);
     }
-    
+
     public String getFileUrl(String fileId, MediaType type) {
         if (type == MediaType.IMAGE) {
             return String.format(THUMBNAIL_URL_TEMPLATE, fileId);

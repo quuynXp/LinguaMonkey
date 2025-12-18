@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.listener;
 
 import com.connectJPA.LinguaVietnameseApp.controller.ChatController;
+import com.connectJPA.LinguaVietnameseApp.dto.request.UserStatusRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -24,7 +25,6 @@ public class WebSocketEventListener {
     private final RedisTemplate<String, String> redisTemplate;
 
     private static final String ONLINE_USER_KEY_PREFIX = "user:online:";
-    // Set TTL (Time To Live) to handle crashes slightly longer than heartbeat
     private static final long TIMEOUT_MINUTES = 5; 
 
     @EventListener
@@ -36,13 +36,10 @@ public class WebSocketEventListener {
             String userId = principal.getName();
             log.info("User Connected: {}", userId);
 
-            // 1. Save to Redis: user:online:{uuid} -> "ONLINE"
             String redisKey = ONLINE_USER_KEY_PREFIX + userId;
             redisTemplate.opsForValue().set(redisKey, "ONLINE", TIMEOUT_MINUTES, TimeUnit.MINUTES);
 
-            // 2. Broadcast to global topic (or friends topic) that this user is ONLINE
-            // Anyone subscribed to /topic/user/{userId}/status will get this update
-            ChatController.UserStatusRequest statusUpdate = ChatController.UserStatusRequest.builder()
+            UserStatusRequest statusUpdate = UserStatusRequest.builder()
                     .userId(UUID.fromString(userId))
                     .status("ONLINE")
                     .build();
@@ -60,12 +57,10 @@ public class WebSocketEventListener {
             String userId = principal.getName();
             log.info("User Disconnected: {}", userId);
 
-            // 1. Remove from Redis
             String redisKey = ONLINE_USER_KEY_PREFIX + userId;
             redisTemplate.delete(redisKey);
 
-            // 2. Broadcast OFFLINE
-            ChatController.UserStatusRequest statusUpdate = ChatController.UserStatusRequest.builder()
+            UserStatusRequest statusUpdate = UserStatusRequest.builder()
                     .userId(UUID.fromString(userId))
                     .status("OFFLINE")
                     .build();

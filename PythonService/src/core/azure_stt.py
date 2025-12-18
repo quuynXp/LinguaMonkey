@@ -15,8 +15,6 @@ class AzureTranscriber:
             logger.error("❌ MISSING AZURE CREDENTIALS in .env")
             raise ValueError("Azure Key/Region missing")
 
-        # FIX: Azure LIMIT is 4 languages max for AutoDetectSourceLanguageConfig
-        # Removed 'ko-KR' to keep list size at 4.
         self.candidate_languages = candidate_languages or ["vi-VN", "en-US", "zh-CN", "ja-JP"]
         
         if len(self.candidate_languages) > 4:
@@ -34,7 +32,6 @@ class AzureTranscriber:
         self.speech_config.set_profanity(speechsdk.ProfanityOption.Raw)
         self.speech_config.set_property(speechsdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, "1500") 
         
-        # Configure Auto Detection
         self.auto_detect_config = speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
             languages=self.candidate_languages
         )
@@ -94,7 +91,6 @@ class AzureTranscriber:
 
     def on_canceled(self, evt):
         cancellation_details = evt.result.cancellation_details
-        # Filter out normal "EndOfStream" or manual stops to reduce log noise
         if cancellation_details.reason == speechsdk.CancellationReason.Error:
             logger.error(f"⚠️ Azure Canceled. Reason: {cancellation_details.reason}")
             logger.error(f"❌ Azure Error Details: {cancellation_details.error_details}")

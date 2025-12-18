@@ -1,4 +1,3 @@
-# src/api/quiz_generator.py
 import logging
 import json
 from src.api.chat_ai import chat_with_ai
@@ -15,7 +14,6 @@ async def generate_quiz(
     Generates a language quiz using Gemini, formatted as JSON.
     """
 
-    # 1. Define the JSON schema we want Gemini to return
     json_schema = """
     [
       {
@@ -31,7 +29,6 @@ async def generate_quiz(
     ]
     """
 
-    # 2. Create a detailed prompt
     prompt = f"Generate a language quiz with exactly {num_questions} questions."
     if topic:
         prompt += f" The quiz topic should be: {topic}."
@@ -49,8 +46,6 @@ async def generate_quiz(
     prompt += f"\n\nIMPORTANT: Respond *ONLY* with a valid JSON array matching this exact schema. Do not include any other text, markdown, or explanations outside of the JSON structure. \nSchema Example: {json_schema}"
 
     try:
-        # 3. Call Gemini (using chat_with_ai with an empty history)
-        # We pass the user_profile to chat_with_ai, which adds it to system_instruction
         response_text, error = await chat_with_ai(
             message=prompt, history=[], language="en", user_profile=user_profile
         )
@@ -58,8 +53,6 @@ async def generate_quiz(
         if error:
             return [], error
 
-        # 4. Parse the JSON response
-        # Clean up potential markdown formatting (```json ... ```)
         if response_text.strip().startswith("```json"):
             response_text = response_text.strip()[7:-3].strip()
 

@@ -46,7 +46,6 @@ public class SkillLessonController {
     private final UserLearningActivityService userLearningActivityService;
     private final ObjectMapper objectMapper;
 
-    // --- Streaming Endpoint for Pronunciation ---
     @PostMapping(value = "/speaking/stream", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public void streamSpeaking(
             @RequestHeader("Authorization") String authorization,

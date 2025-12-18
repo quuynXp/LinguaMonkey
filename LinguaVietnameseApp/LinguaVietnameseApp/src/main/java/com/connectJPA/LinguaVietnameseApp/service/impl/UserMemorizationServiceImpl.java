@@ -1,19 +1,24 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.CreateFlashcardRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.MemorizationRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.response.FlashcardResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.MemorizationResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
 import com.connectJPA.LinguaVietnameseApp.entity.UserMemorization;
 import com.connectJPA.LinguaVietnameseApp.entity.UserReminder;
-import com.connectJPA.LinguaVietnameseApp.enums.ContentType;
-import com.connectJPA.LinguaVietnameseApp.enums.TargetType;
+import com.connectJPA.LinguaVietnameseApp.enums.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
+import com.connectJPA.LinguaVietnameseApp.service.FlashcardService;
 import com.connectJPA.LinguaVietnameseApp.service.UserMemorizationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,14 +34,18 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserMemorizationServiceImpl implements UserMemorizationService {
     private final UserMemorizationRepository memorizationRepository;
     private final UserRepository userRepository;
     private final EventRepository eventRepository;
     private final LessonRepository lessonRepository;
     private final VideoRepository videoRepository;
-    // INJECT THÊM REPO REMINDER
     private final UserReminderRepository reminderRepository;
+    
+    private final FlashcardService flashcardService;
+
+    private static final String PERSONAL_LESSON_NAME = "My Personal Notebook";
 
     @Override
     public Page<MemorizationResponse> searchMemorizations(String keyword, int page, int size, Map<String, Object> filters) {
@@ -69,7 +78,6 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
             throw new AppException(ErrorCode.INVALID_INPUT);
         }
 
-        // Validate contentId logic (giữ nguyên switch case cũ của bạn)
         if (request.getContentId() != null) {
             switch (request.getContentType()) {
                 case EVENT:
@@ -85,12 +93,15 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
             }
         }
 
-        // 1. Lưu Memorization trước
         UserMemorization memorization = UserMemorization.builder()
                 .userId(request.getUserId())
                 .contentType(request.getContentType())
                 .contentId(request.getContentId())
                 .noteText(request.getNoteText())
+                .definition(request.getDefinition())
+                .example(request.getExample())
+                .imageUrl(request.getImageUrl())
+                .audioUrl(request.getAudioUrl())
                 .isFavorite(request.isFavorite())
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
@@ -99,7 +110,10 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
 
         memorization = memorizationRepository.save(memorization);
 
-        // 2. Xử lý Reminder ngay sau khi lưu Note
+        if (request.getContentType() == ContentType.VOCABULARY) {
+            syncToFlashcardSystem(memorization, request);
+        }
+
         handleReminderLogic(memorization, request);
 
         return mapToResponse(memorization);
@@ -118,12 +132,19 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
         memorization.setContentType(request.getContentType());
         memorization.setContentId(request.getContentId());
         memorization.setNoteText(request.getNoteText());
+        memorization.setDefinition(request.getDefinition());
+        memorization.setExample(request.getExample());
+        memorization.setImageUrl(request.getImageUrl());
+        memorization.setAudioUrl(request.getAudioUrl());
         memorization.setFavorite(request.isFavorite());
         memorization.setUpdatedAt(OffsetDateTime.now());
 
         memorization = memorizationRepository.save(memorization);
 
-        // Xử lý cập nhật/xóa Reminder
+        if (memorization.getLinkedFlashcardId() != null) {
+            updateLinkedFlashcard(memorization, request);
+        }
+
         handleReminderLogic(memorization, request);
 
         return mapToResponse(memorization);
@@ -139,12 +160,18 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
 
-        // Soft delete Note
+        if (memorization.getLinkedFlashcardId() != null) {
+            try {
+                flashcardService.deleteFlashcard(memorization.getLinkedFlashcardId(), authenticatedUserId);
+            } catch (Exception e) {
+                log.warn("Failed to delete linked flashcard: {}", e.getMessage());
+            }
+        }
+
         memorization.setDeleted(true);
         memorization.setDeletedAt(OffsetDateTime.now());
         memorizationRepository.save(memorization);
         
-        // Disable luôn Reminder liên quan (nếu có)
         Optional<UserReminder> reminderOpt = reminderRepository.findByTargetIdAndTargetType(memorizationId, TargetType.NOTE);
         if (reminderOpt.isPresent()) {
             UserReminder reminder = reminderOpt.get();
@@ -156,37 +183,36 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     @Override
     public Page<MemorizationResponse> getMemorizationsByUser(UUID userId, String contentType, Pageable pageable) {
         Page<UserMemorization> memorizations;
+        Pageable sortedPageable = PageRequest.of(
+            pageable.getPageNumber(), 
+            pageable.getPageSize(), 
+            Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+
         if (contentType != null && !contentType.isEmpty() && !contentType.equals("all")) {
             try {
                 ContentType type = ContentType.valueOf(contentType);
-                memorizations = memorizationRepository.findByUserIdAndContentTypeAndIsDeletedFalse(userId, type, pageable);
+                memorizations = memorizationRepository.findByUserIdAndContentTypeAndIsDeletedFalse(userId, type, sortedPageable);
             } catch (IllegalArgumentException e) {
                 throw new AppException(ErrorCode.INVALID_INPUT);
             }
         } else {
-            memorizations = memorizationRepository.findByUserIdAndIsDeletedFalse(userId, pageable);
+            memorizations = memorizationRepository.findByUserIdAndIsDeletedFalse(userId, sortedPageable);
         }
-        // Map sang response (sẽ query reminder trong hàm map)
         return memorizations.map(this::mapToResponse);
     }
 
-    // --- HELPER METHODS ---
-
     private void handleReminderLogic(UserMemorization note, MemorizationRequest request) {
-        // Tìm xem đã có reminder cho note này chưa (giả sử Repository có hàm findByTargetIdAndTargetType)
-        // Bạn cần thêm method này vào UserReminderRepository nếu chưa có: Optional<UserReminder> findByTargetIdAndTargetType(UUID targetId, TargetType targetType);
         Optional<UserReminder> existingReminderOpt = reminderRepository.findByTargetIdAndTargetType(note.getMemorizationId(), TargetType.NOTE);
 
         if (request.isReminderEnabled()) {
-            // Parse time string "HH:mm" thành OffsetDateTime (Dùng ngày hiện tại + giờ user chọn)
             OffsetDateTime reminderTimeObj = OffsetDateTime.now();
             if (request.getReminderTime() != null && !request.getReminderTime().isEmpty()) {
                 try {
                     LocalTime time = LocalTime.parse(request.getReminderTime(), DateTimeFormatter.ofPattern("HH:mm"));
-                    // Kết hợp ngày mai hoặc hôm nay tùy logic, ở đây lấy ngày hiện tại + giờ đó
                     reminderTimeObj = OffsetDateTime.of(LocalDate.now(), time, ZoneOffset.UTC); 
                 } catch (Exception e) {
-                    // Log error or ignore
+                    log.error("Invalid time format", e);
                 }
             }
 
@@ -204,20 +230,74 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
             
             reminderRepository.save(reminder);
         } else {
-            // Nếu user tắt reminder mà database đang có -> Xóa hoặc Disable
             if (existingReminderOpt.isPresent()) {
-                reminderRepository.delete(existingReminderOpt.get()); // Hoặc setEnabled(false) tùy logic soft delete
+                reminderRepository.delete(existingReminderOpt.get()); 
             }
         }
     }
 
+    private void syncToFlashcardSystem(UserMemorization note, MemorizationRequest req) {
+        try {
+            Lesson personalLesson = lessonRepository.findFirstByCreatorIdAndLessonName(note.getUserId(), PERSONAL_LESSON_NAME)
+                    .orElseGet(() -> createPersonalLesson(note.getUserId()));
+
+            CreateFlashcardRequest flashcardReq = CreateFlashcardRequest.builder()
+                    .lessonId(personalLesson.getLessonId())
+                    .front(req.getNoteText())
+                    .back(req.getDefinition() != null ? req.getDefinition() : "No definition")
+                    .exampleSentence(req.getExample())
+                    .imageUrl(req.getImageUrl())
+                    .audioUrl(req.getAudioUrl())
+                    .tags("personal_note")
+                    .isPublic(false)
+                    .build();
+
+            FlashcardResponse flashcard = flashcardService.createFlashcard(flashcardReq, note.getUserId());
+            
+            note.setLinkedFlashcardId(flashcard.getFlashcardId());
+            memorizationRepository.save(note);
+            
+        } catch (Exception e) {
+            log.error("Failed to sync note to flashcard: {}", e.getMessage());
+        }
+    }
+
+    private void updateLinkedFlashcard(UserMemorization note, MemorizationRequest req) {
+        try {
+            CreateFlashcardRequest flashcardReq = CreateFlashcardRequest.builder()
+                    .front(req.getNoteText())
+                    .back(req.getDefinition())
+                    .exampleSentence(req.getExample())
+                    .imageUrl(req.getImageUrl())
+                    .audioUrl(req.getAudioUrl())
+                    .isPublic(false)
+                    .build();
+            
+            flashcardService.updateFlashcard(note.getLinkedFlashcardId(), flashcardReq, note.getUserId());
+        } catch (Exception e) {
+            log.error("Failed to update linked flashcard: {}", e.getMessage());
+        }
+    }
+
+    private Lesson createPersonalLesson(UUID userId) {
+        Lesson lesson = Lesson.builder()
+                .creatorId(userId)
+                .lessonName(PERSONAL_LESSON_NAME)
+                .title("My Personal Vocabulary")
+                .languageCode("vi") 
+                .lessonType(LessonType.REGULAR)
+                .skillTypes(SkillType.VOCABULARY)
+                .isFree(true)
+                .difficultyLevel(DifficultyLevel.EASY)
+                .build();
+        return lessonRepository.save(lesson);
+    }
+
     private MemorizationResponse mapToResponse(UserMemorization memorization) {
-        // Query ngược lại bảng Reminder để lấy thông tin trả về
         Optional<UserReminder> reminderOpt = reminderRepository.findByTargetIdAndTargetType(memorization.getMemorizationId(), TargetType.NOTE);
         
         String timeStr = null;
         if (reminderOpt.isPresent()) {
-            // Convert OffsetDateTime về "HH:mm"
             timeStr = reminderOpt.get().getReminderTime().format(DateTimeFormatter.ofPattern("HH:mm"));
         }
 
@@ -227,10 +307,14 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
                 .contentType(memorization.getContentType())
                 .contentId(memorization.getContentId())
                 .noteText(memorization.getNoteText())
+                .definition(memorization.getDefinition())
+                .example(memorization.getExample())
+                .imageUrl(memorization.getImageUrl())
+                .audioUrl(memorization.getAudioUrl())
+                .linkedFlashcardId(memorization.getLinkedFlashcardId())
                 .isFavorite(memorization.isFavorite())
                 .createdAt(memorization.getCreatedAt())
                 .updatedAt(memorization.getUpdatedAt())
-                // Mapping Reminder fields
                 .isReminderEnabled(reminderOpt.isPresent() && Boolean.TRUE.equals(reminderOpt.get().getEnabled()))
                 .reminderTime(timeStr)
                 .repeatType(reminderOpt.map(UserReminder::getRepeatType).orElse(null))

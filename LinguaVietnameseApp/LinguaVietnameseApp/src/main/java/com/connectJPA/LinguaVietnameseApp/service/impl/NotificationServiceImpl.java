@@ -25,6 +25,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
@@ -146,14 +147,20 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW) // Cách ly transaction để không làm rollback luồng chính (Chat, Payment) nếu DB log lỗi
     public void createPushNotification(NotificationRequest request) {
-        // Lưu vào DB trước
-        Notification notification = notificationMapper.toEntity(request);
-        notification.setCreatedAt(OffsetDateTime.now());
-        notification.setRead(false);
-        notificationRepository.save(notification);
+        // 1. Cố gắng lưu vào DB
+        try {
+            Notification notification = notificationMapper.toEntity(request);
+            notification.setCreatedAt(OffsetDateTime.now());
+            notification.setRead(false);
+            notificationRepository.save(notification);
+        } catch (Exception e) {
+            // Log lỗi DB nhưng KHÔNG throw exception để FCM vẫn có thể gửi được
+            log.error("Failed to save notification to DB due to: {}. Proceeding to send FCM...", e.getMessage());
+        }
         
-        // Gửi FCM
+        // 2. Gửi FCM (Ưu tiên cao nhất)
         sendFcmToUser(request);
     }
 
@@ -201,6 +208,25 @@ public class NotificationServiceImpl implements NotificationService {
                             .build())
                     .build();
 
+            // Prepare Data Payload once
+            Map<String, String> dataPayload = new HashMap<>();
+            dataPayload.put("type", request.getType() != null ? request.getType() : "DEFAULT");
+            dataPayload.put("notificationId", request.getId() != null ? request.getId().toString() : "");
+            
+            if (request.getPayload() != null && !request.getPayload().isEmpty()) {
+                try {
+                    Map<String, Object> rawMap = gson.fromJson(request.getPayload(), Map.class);
+                    for (Map.Entry<String, Object> entry : rawMap.entrySet()) {
+                        if (entry.getValue() != null) {
+                            dataPayload.put(entry.getKey(), entry.getValue().toString());
+                        }
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to parse JSON payload for push, sending as raw string");
+                    dataPayload.put("rawPayload", request.getPayload());
+                }
+            }
+
             for (UserFcmToken token : tokens) {
                 try {
                     Message.Builder messageBuilder = Message.builder()
@@ -210,28 +236,9 @@ public class NotificationServiceImpl implements NotificationService {
                                     .setBody(displayBody)
                                     .build())
                             .setAndroidConfig(androidConfig)
-                            .setApnsConfig(apnsConfig);
+                            .setApnsConfig(apnsConfig)
+                            .putAllData(dataPayload);
 
-                    Map<String, String> dataPayload = new HashMap<>();
-                    
-                    dataPayload.put("type", request.getType() != null ? request.getType() : "DEFAULT");
-                    dataPayload.put("notificationId", request.getId() != null ? request.getId().toString() : "");
-                    
-                    if (request.getPayload() != null && !request.getPayload().isEmpty()) {
-                        try {
-                            Map<String, Object> rawMap = gson.fromJson(request.getPayload(), Map.class);
-                            for (Map.Entry<String, Object> entry : rawMap.entrySet()) {
-                                if (entry.getValue() != null) {
-                                    dataPayload.put(entry.getKey(), entry.getValue().toString());
-                                }
-                            }
-                        } catch (Exception ex) {
-                            log.warn("Failed to parse JSON payload for push, sending as raw string");
-                            dataPayload.put("rawPayload", request.getPayload());
-                        }
-                    }
-
-                    messageBuilder.putAllData(dataPayload);
                     firebaseMessaging.send(messageBuilder.build());
                     log.info("Sent push notification to user {}", request.getUserId());
 

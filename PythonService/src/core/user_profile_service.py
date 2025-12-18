@@ -7,7 +7,7 @@ from redis import asyncio as aioredis
 
 from src.core.models import (
     ChatMessage,
-    Users,
+    User,
     UserLanguages,
     UserGoals,
     Interests,
@@ -31,7 +31,7 @@ CHAT_SUMMARY_PREFIX = "chat_summary"
 async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) -> dict:
     logging.info(f"Building comprehensive profile from DB for user: {user_id}")
     try:
-        user_query = select(Users).where(Users.user_id == user_id)
+        user_query = select(User).where(User.user_id == user_id)
 
         lang_query = (
             select(Languages.language_name, UserLanguages.proficiency_level)
@@ -85,7 +85,6 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
             .order_by(desc(CourseVersionEnrollment.enrolled_at))
         )
 
-        # We keep this for immediate context if summary is missing, but reduce limit
         chat_query = (
             select(ChatMessage.content)
             .where(ChatMessage.sender_id == user_id)
@@ -178,7 +177,6 @@ async def get_user_profile(
     cache_key = f"{CACHE_KEY_PREFIX}:{user_id}"
     summary_key = f"{CHAT_SUMMARY_PREFIX}:{user_id}"
 
-    # Fetch Base Profile
     cached_profile = await get_from_cache(redis_client, cache_key)
     if not cached_profile:
         cached_profile = await _build_user_profile_from_db(user_id, db_session)
@@ -187,7 +185,6 @@ async def get_user_profile(
                 redis_client, cache_key, cached_profile, ttl_seconds=CACHE_TTL_SECONDS
             )
 
-    # Always fetch the latest conversation summary dynamically (it changes faster than profile)
     conversation_summary = await get_from_cache(redis_client, summary_key)
     if conversation_summary:
         cached_profile["conversation_summary"] = conversation_summary

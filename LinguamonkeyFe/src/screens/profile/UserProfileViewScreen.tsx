@@ -20,7 +20,7 @@ import { useFriendships } from "../../hooks/useFriendships";
 import { useCouples } from "../../hooks/useCouples";
 import { useGetStudyHistory } from "../../hooks/useUserActivity";
 import { useCourses } from "../../hooks/useCourses";
-import { useRooms } from "../../hooks/useRoom";
+import { useFindOrCreatePrivateRoom } from "../../hooks/useRoom";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useToast } from "../../utils/useToast";
@@ -33,7 +33,6 @@ import { useChatStore } from "../../stores/ChatStore";
 
 const { width } = Dimensions.get("window");
 
-// Map language codes to country codes for flags
 const LANGUAGE_TO_COUNTRY: Record<string, string> = {
   en: 'US', vi: 'VN', ja: 'JP', jp: 'JP', zh: 'CN', ko: 'KR',
   fr: 'FR', de: 'DE', es: 'ES', it: 'IT', ru: 'RU', in: 'IN'
@@ -57,7 +56,6 @@ type RootStackParamList = {
   };
 };
 
-// --- COMPONENT: Couple Badge ---
 const CoupleBadge = ({ coupleInfo, currentUserName, currentUserAvatar }: { coupleInfo: any, currentUserName: string, currentUserAvatar: any }) => {
   if (!coupleInfo) return null;
 
@@ -95,7 +93,6 @@ const CoupleBadge = ({ coupleInfo, currentUserName, currentUserAvatar }: { coupl
   );
 };
 
-// --- COMPONENT: Info Row ---
 const InfoRow = ({ icon, label, value, isBoolean }: { icon: string; label: string; value?: string | number | null | boolean; isBoolean?: boolean }) => {
   if (value === undefined || value === null) return null;
   let displayValue = value;
@@ -118,7 +115,6 @@ const InfoRow = ({ icon, label, value, isBoolean }: { icon: string; label: strin
   );
 };
 
-// --- COMPONENT: Activity Heatmap ---
 const ActivityHeatmap = ({ historyData }: { historyData: any }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -212,7 +208,6 @@ const ActivityHeatmap = ({ historyData }: { historyData: any }) => {
   );
 };
 
-// --- MAIN SCREEN ---
 const UserProfileViewScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, "UserProfileViewScreen">>();
   const navigation = useNavigation<any>();
@@ -225,14 +220,12 @@ const UserProfileViewScreen = () => {
   const { useCreateFriendship, useUpdateFriendship, useDeleteFriendship } = useFriendships();
   const { useCreateCouple, useUpdateCouple, useDeleteCouple } = useCouples();
   const { useCreatorCourses } = useCourses();
-  const { useFindOrCreatePrivateRoom } = useRooms();
+  const findOrCreateRoomMutation = useFindOrCreatePrivateRoom();
 
-  // Queries
   const { data: userProfile, isLoading, refetch } = useUserProfile(userId);
   const { data: historyData, isLoading: isHistoryLoading } = useGetStudyHistory(userId, "year");
   const { data: creatorCoursesPage } = useCreatorCourses(userId, 0, 20);
 
-  // Mutations
   const createFriendshipMutation = useCreateFriendship();
   const updateFriendshipMutation = useUpdateFriendship();
   const deleteFriendshipMutation = useDeleteFriendship();
@@ -240,7 +233,6 @@ const UserProfileViewScreen = () => {
   const updateCoupleMutation = useUpdateCouple();
   const deleteCoupleMutation = useDeleteCouple();
   const admireMutation = useAdmireUser();
-  const findOrCreateRoomMutation = useFindOrCreatePrivateRoom();
 
   const publicCourses = creatorCoursesPage?.data || [];
   const isSelf = currentUser?.userId === userId;
@@ -248,7 +240,6 @@ const UserProfileViewScreen = () => {
 
   const profileData = useMemo<UserProfileResponse | null>(() => userProfile || null, [userProfile]);
 
-  // Handlers
   const handleMessage = async () => {
     if (!currentUser || !profileData) return;
 
@@ -301,8 +292,6 @@ const UserProfileViewScreen = () => {
     ]);
   };
 
-  // --- COUPLE LOGIC ---
-
   const handleSendCoupleRequest = () => {
     if (!currentUser || !profileData) return;
     Alert.alert("Start Dating?", "Send a couple request to " + (profileData.nickname || profileData.fullname) + "?", [
@@ -313,7 +302,7 @@ const UserProfileViewScreen = () => {
           createCoupleMutation.mutate({
             user1Id: currentUser.userId,
             user2Id: profileData.userId,
-            status: CoupleStatus.PENDING, // FIX: Use Enum
+            status: CoupleStatus.PENDING,
             startDate: new Date().toISOString()
           }, { onSuccess: () => { showToast({ type: 'success', message: 'Request sent!' }); refetch(); } });
         }
@@ -332,12 +321,12 @@ const UserProfileViewScreen = () => {
   const handleAcceptCoupleRequest = () => {
     if (!currentUser || !profileData) return;
     updateCoupleMutation.mutate({
-      user1Id: profileData.userId, // They sent it
+      user1Id: profileData.userId,
       user2Id: currentUser.userId,
       req: {
         user1Id: profileData.userId,
         user2Id: currentUser.userId,
-        status: CoupleStatus.IN_LOVE, // FIX: Use Enum
+        status: CoupleStatus.IN_LOVE,
         startDate: new Date().toISOString()
       }
     }, { onSuccess: () => { showToast({ type: 'success', message: "You are now a couple!" }); refetch(); } });
@@ -373,24 +362,18 @@ const UserProfileViewScreen = () => {
   const hasReceivedFriend = friendRequestStatus?.hasReceivedRequest;
   const canChat = isFriend || profileData.allowStrangerChat;
 
-  // -- Determine Couple Status --
-
-  // 1. Check Active Relationship
   const isCoupleActive = coupleInfo && [CoupleStatus.IN_LOVE, CoupleStatus.EXPLORING].includes(coupleInfo.status as CoupleStatus);
 
-  // 2. Check Pending Status (Using datingInviteSummary from DTO)
   const datingInvite = profileData.datingInviteSummary;
   const isCouplePending = datingInvite && datingInvite.status === 'PENDING';
 
   const didISendCoupleReq = isCouplePending && datingInvite.viewerIsSender;
   const didIReceiveCoupleReq = isCouplePending && !datingInvite.viewerIsSender;
 
-  // 3. Check if None/Available
   const isCoupleNone = !isCoupleActive && !isCouplePending && (!coupleInfo || [CoupleStatus.EXPIRED, CoupleStatus.BREAK_UP].includes(coupleInfo.status as CoupleStatus));
 
   return (
     <ScreenLayout style={styles.screenBackground}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
           <Icon name="arrow-back" size={24} color="#333" />
@@ -403,7 +386,6 @@ const UserProfileViewScreen = () => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* SECTION 1: COUPLE BANNER (Only if Active) */}
         {isCoupleActive && (
           <CoupleBadge
             coupleInfo={coupleInfo}
@@ -412,7 +394,6 @@ const UserProfileViewScreen = () => {
           />
         )}
 
-        {/* SECTION 2: MAIN PROFILE CARD */}
         <View style={styles.profileMainCard}>
           <View style={styles.avatarContainer}>
             <Image source={getAvatarSource(profileData.avatarUrl, profileData.gender)} style={styles.mainAvatar} />
@@ -462,7 +443,6 @@ const UserProfileViewScreen = () => {
             </View>
           </View>
 
-          {/* Action Buttons */}
           {!isSelf && (
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -476,7 +456,6 @@ const UserProfileViewScreen = () => {
 
               {isFriend ? (
                 <>
-                  {/* --- COUPLE ACTIONS FOR FRIENDS --- */}
                   {isCoupleNone && (
                     <TouchableOpacity style={[styles.actionBtn, styles.dateBtn]} onPress={handleSendCoupleRequest}>
                       <Icon name="favorite" size={20} color="#FFF" />
@@ -502,7 +481,6 @@ const UserProfileViewScreen = () => {
                     </View>
                   )}
 
-                  {/* Unfriend */}
                   <TouchableOpacity style={[styles.iconActionBtn, styles.unfriendBtn]} onPress={handleUnfriend}>
                     <Icon name="person-remove" size={22} color="#EF4444" />
                   </TouchableOpacity>
@@ -535,14 +513,12 @@ const UserProfileViewScreen = () => {
           )}
         </View>
 
-        {/* SECTION 3: ACTIVITY HEATMAP */}
         {isHistoryLoading ? (
           <ActivityIndicator size="small" color="#2196F3" style={{ marginVertical: 20 }} />
         ) : (
           <ActivityHeatmap historyData={historyData} />
         )}
 
-        {/* SECTION 4: DETAILS */}
         <View style={styles.cardContainer}>
           <Text style={styles.cardTitle}>{t("profile.details")}</Text>
           <View style={styles.infoList}>
@@ -564,7 +540,6 @@ const UserProfileViewScreen = () => {
           </View>
         </View>
 
-        {/* SECTION 5: LANGUAGES (FLAGS) */}
         {languages && languages.length > 0 && (
           <View style={styles.cardContainer}>
             <Text style={styles.cardTitle}>{t("profile.languages")}</Text>
@@ -578,7 +553,6 @@ const UserProfileViewScreen = () => {
           </View>
         )}
 
-        {/* SECTION 6: BADGES */}
         {badges && badges.length > 0 && (
           <View style={styles.cardContainer}>
             <View style={styles.cardHeaderRow}>
@@ -596,7 +570,6 @@ const UserProfileViewScreen = () => {
           </View>
         )}
 
-        {/* SECTION 7: COURSES */}
         {(publicCourses.length > 0 || (profileData.isTeacher && teacherCourses?.length > 0)) && (
           <View style={styles.cardContainer}>
             <Text style={styles.cardTitle}>{t("profile.publicCourses")}</Text>
@@ -625,7 +598,6 @@ const UserProfileViewScreen = () => {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Modal Options */}
       <Modal transparent visible={modalVisible} animationType="fade" onRequestClose={() => setModalVisible(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
           <View style={styles.optionSheet}>
@@ -693,7 +665,6 @@ const styles = createScaledSheet({
   addBtn: { backgroundColor: '#3B82F6' },
   acceptBtn: { backgroundColor: '#10B981' },
   cancelBtn: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB' },
-  // New Date Button
   dateBtn: { backgroundColor: '#E11D48' },
   disabledBtn: { backgroundColor: '#9CA3AF' },
   btnText: { color: '#FFF', fontWeight: '600', fontSize: 14 },

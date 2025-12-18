@@ -555,14 +555,20 @@ export interface LessonSubCategoryRequest {
 export interface MemorizationRequest {
     userId: string;
     contentType: Enums.ContentType;
-    contentId?: string | null;
+    contentId?: string;
     noteText: string;
-    favorite: boolean;
+
+    definition?: string;
+    example?: string;
+    imageUrl?: string;
+    audioUrl?: string;
+
+    favorite?: boolean;
 
     reminderEnabled?: boolean;
-    reminderTime?: string | null; // Format "HH:mm"
-    repeatType?: Enums.RepeatType | null;
-    reminderTitle?: string | null;
+    reminderTime?: string;
+    repeatType?: Enums.RepeatType;
+    reminderTitle?: string;
 }
 
 export interface MessageReactionRequest {
@@ -1458,6 +1464,7 @@ export interface LessonQuestionResponse {
     isDeleted: boolean;
     createdAt: string;
     updatedAt: string;
+    correctAnswer?: string;
 }
 
 export interface LessonResponse {
@@ -1576,6 +1583,12 @@ export interface MemorizationResponse {
     favorite: boolean;
     createdAt: string;
     updatedAt: string;
+
+    definition: string | null;
+    example: string | null;
+    imageUrl: string | null;
+    audioUrl: string | null;
+    linkedFlashcardId: string | null;
 
     reminderEnabled: boolean;
     reminderTime: string | null;
@@ -1881,11 +1894,12 @@ export interface RoomResponse {
     creatorId: string;
     creatorName: string;
     roomCode: string;
-    password: string;
+    password?: string;
     content: string;
     description: string;
     avatarUrl: string;
     memberCount: number;
+    read: boolean;
     maxMembers: number;
     lastMessageSenderId: string;
     lastMessageSenderEphemeralKey: string;

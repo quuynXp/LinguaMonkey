@@ -40,7 +40,6 @@ public class BadgeServiceImpl implements BadgeService {
     private final UserBadgeRepository userBadgeRepository;
     private final UserRepository userRepository;
     private final UserLearningActivityRepository userLearningActivityRepository;
-    // Repositories needed for criteria checks
     private final VideoCallRepository videoCallRepository;
     private final AdmirationRepository admirationRepository;
     private final FriendshipRepository friendshipRepository;

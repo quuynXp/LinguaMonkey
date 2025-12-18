@@ -38,19 +38,8 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // --- DATA FETCHING ---
-  // Lấy lịch sử Video Call từ Hook
   const { useVideoCallHistory } = useVideoCalls();
   const { data: callHistory = [], isLoading: isLoadingHistory } = useVideoCallHistory(user?.userId || null);
-
-  // Lấy thống kê chat
-  const { data: stats, isLoading: isLoadingStats } = useQuery<ExtendedChatStatsResponse>({
-    queryKey: ['chatStats', user?.userId],
-    queryFn: async () => {
-      const response = await instance.get<AppApiResponse<ExtendedChatStatsResponse>>(`/api/v1/chat/stats/${user?.userId}`);
-      return response.data.result;
-    },
-    enabled: !!user?.userId,
-  });
 
   // --- ANIMATION EFFECT ---
   useEffect(() => {
@@ -69,12 +58,9 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   }, [fadeAnim, slideAnim])
 
   // --- ACTIONS ---
-
-  // Hàm xử lý khi nhấn nút Join lại
   const handleJoinCall = (call: VideoCallResponse) => {
-    setShowHistoryModal(false); // Đóng modal nếu đang mở
+    setShowHistoryModal(false);
     if (call.roomId) {
-      // Điều hướng sang màn hình WebRTC với thông tin phòng cũ
       navigation.navigate('WebRTCCallScreen', {
         roomId: call.roomId,
         videoCallId: call.videoCallId,
@@ -86,10 +72,10 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   // --- HELPER FUNCTIONS ---
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'ONGOING': return '#22c55e'; // Xanh lá
-      case 'WAITING': return '#eab308'; // Vàng
-      case 'ENDED': return '#9ca3af';   // Xám
-      case 'INITIATED': return '#3b82f6'; // Xanh dương
+      case 'ONGOING': return '#22c55e';
+      case 'WAITING': return '#eab308';
+      case 'ENDED': return '#9ca3af';
+      case 'INITIATED': return '#3b82f6';
       default: return '#9ca3af';
     }
   };
@@ -112,12 +98,10 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   // --- RENDER HISTORY ITEM ---
   const renderHistoryItem = ({ item }: { item: VideoCallResponse }) => {
     const statusColor = getStatusColor(item.status);
-    // Kiểm tra nếu cuộc gọi đang diễn ra hoặc đang chờ -> Cho phép Join
     const isOngoing = item.status === 'ONGOING' || item.status === 'WAITING';
 
     return (
       <View key={item.videoCallId} style={styles.activityItem}>
-        {/* Left Side: Icon & Info */}
         <View style={styles.leftContainer}>
           <View style={[styles.activityIcon, { backgroundColor: `${statusColor}20` }]}>
             <Icon name={getStatusIcon(item.status)} size={20} color={statusColor} />
@@ -132,16 +116,13 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
           </View>
         </View>
 
-        {/* Right Side: Status Badge & Join Button */}
         <View style={styles.rightAction}>
-          {/* Badge hiển thị trạng thái */}
           <View style={[styles.statusBadge, { backgroundColor: `${statusColor}10`, borderColor: statusColor }]}>
             <Text style={[styles.statusText, { color: statusColor }]}>
               {item.status}
             </Text>
           </View>
 
-          {/* Nút Join: Chỉ hiện khi phòng còn hoạt động */}
           {isOngoing && (
             <TouchableOpacity
               style={styles.rejoinButton}
@@ -173,6 +154,7 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
       subtitle: t("chat.userChatDescription"),
       icon: "group",
       color: "#10B981",
+      // FIX: Trả lại logic cũ - Chuyển qua ChatRoomListScreen (Danh sách chat đã join)
       onPress: () => navigation.navigate("ChatRoomListScreen"),
     },
   ]
@@ -190,7 +172,8 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
       title: t("chat.joinRoom"),
       icon: "meeting-room",
       color: "#F59E0B",
-      onPress: () => navigation.navigate("ChatRoomListScreen"),
+      // FIX: Nút này mới chuyển qua PublicRoomListScreen để tìm phòng
+      onPress: () => navigation.navigate("PublicRoomListScreen"),
     },
     {
       id: "create-room",
@@ -247,25 +230,6 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
             <Text style={styles.welcomeTitle}>{t("chat.welcome")}</Text>
             <Text style={styles.welcomeText}>{t("chat.welcomeDescription")}</Text>
           </View>
-
-          {/* STATS SECTION
-          {isLoadingStats ? <ActivityIndicator /> : stats && (
-            <View style={styles.statsSection}>
-              <Text style={styles.sectionTitle}>{t("chat.yourStats")}</Text>
-              <View style={styles.statsGrid}>
-                <View style={styles.statCard}>
-                  <Icon name="chat" size={24} color="#4F46E5" />
-                  <Text style={styles.statValue}>{stats.totalMessages || 0}</Text>
-                  <Text style={styles.statLabel}>{t("chat.messages")}</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Icon name="videocam" size={24} color="#10B981" />
-                  <Text style={styles.statValue}>{callHistory.length || 0}</Text>
-                  <Text style={styles.statLabel}>{t("Calls")}</Text>
-                </View>
-              </View>
-            </View>
-          )} */}
 
           {/* CHAT TYPE SELECTION */}
           <View style={styles.section}>
@@ -383,38 +347,6 @@ const styles = createScaledSheet({
     textAlign: "center",
     lineHeight: 20,
   },
-  statsSection: {
-    marginBottom: 30,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    minWidth: '40%',
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginTop: 8,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 4,
-  },
   section: {
     marginBottom: 30,
   },
@@ -501,18 +433,16 @@ const styles = createScaledSheet({
     shadowRadius: 2,
     elevation: 2,
   },
-
-  // --- UPDATED ACTIVITY ITEM STYLES ---
   activityItem: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between", // Tách 2 bên
+    justifyContent: "space-between",
     paddingVertical: 12,
   },
   leftContainer: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1, // Chiếm không gian còn lại
+    flex: 1,
   },
   activityIcon: {
     width: 40,
@@ -536,8 +466,6 @@ const styles = createScaledSheet({
     color: "#9CA3AF",
     marginTop: 2,
   },
-
-  // Right Side Action Styles
   rightAction: {
     alignItems: 'flex-end',
     gap: 6,
@@ -553,11 +481,9 @@ const styles = createScaledSheet({
     fontWeight: 'bold',
     textTransform: 'uppercase'
   },
-
-  // Nút Join
   rejoinButton: {
     flexDirection: 'row',
-    backgroundColor: '#22c55e', // Green
+    backgroundColor: '#22c55e',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 20,
@@ -574,8 +500,6 @@ const styles = createScaledSheet({
     fontSize: 12,
     fontWeight: '600'
   },
-
-  // --- MODAL STYLES ---
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

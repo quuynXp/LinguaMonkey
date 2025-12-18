@@ -78,7 +78,6 @@ public class StatisticsController {
         @ApiResponse(responseCode = "404", description = "User not found")
     })
     @GetMapping("/user/{userId}/study-history")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #userId.toString() == authentication.name")
     public AppApiResponse<StudyHistoryResponse> getStudyHistory(
             @Parameter(description = "User ID") @PathVariable UUID userId,
             @Parameter(description = "Period: day, week, month, year") @RequestParam(defaultValue = "week") String period,
@@ -182,7 +181,6 @@ public class StatisticsController {
             @ApiResponse(responseCode = "400", description = "Invalid date range")
     })
     @GetMapping("/user/{userId}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #userId.toString() == authentication.name")
     public AppApiResponse<StatisticsResponse> getUserStatistics(
             @Parameter(description = "User ID") @PathVariable UUID userId,
             @RequestParam(required = false) String period,

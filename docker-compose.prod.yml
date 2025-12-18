@@ -6,7 +6,6 @@ services:
   # 1. PUBLIC JAVA SERVICE
   # ==============================================================================
   - name: public-java-service
-    # FIX: Port updated to 10000
     url: http://linguavietnameseapp:10000
     routes:
       - name: public-routes
@@ -63,7 +62,6 @@ services:
   # 2. PROTECTED JAVA SERVICE (API CHUNG)
   # ==============================================================================
   - name: java-service
-    # FIX: Port updated to 10000
     url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 60000
@@ -123,7 +121,6 @@ services:
   # 2.1. JAVA UPLOAD SERVICE (RIÊNG CHO UPLOAD FILE)
   # ==============================================================================
   - name: java-upload-service
-    # FIX: Port updated to 10000
     url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 300000
@@ -143,7 +140,6 @@ services:
   # 2.2. JAVA WEBSOCKET SERVICE
   # ==============================================================================
   - name: java-websocket-service
-    # FIX: Port updated to 10000
     url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 300000
@@ -160,10 +156,6 @@ services:
   # 3. PYTHON SERVICE
   # ==============================================================================
   - name: python-service
-    # Render dynamic ports might vary, but since you hardcoded 10000 in python main.py check, 
-    # make sure PythonService/main.py uses the PORT env var as suggested previously.
-    # If Python uses PORT=10000 (default), change this to 10000. 
-    # For now, assuming you set PORT: 10000 in render.yaml for Python or code handles it.
     url: http://pythonservice:10000
     connect_timeout: 60000
     write_timeout: 300000

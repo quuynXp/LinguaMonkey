@@ -10,7 +10,6 @@ from fastapi import BackgroundTasks
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-# --- CONFIGURATION ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 CHAT_SUMMARY_PREFIX = "chat_summary"
@@ -37,7 +36,6 @@ GEMINI_TIERS = [
 
 OPENAI_FALLBACK_MODEL = "gpt-3.5-turbo"
 
-# --- HELPER FUNCTIONS ---
 
 def _build_system_instruction(user_profile: dict | None) -> str:
     instruction = (
@@ -54,7 +52,6 @@ def _build_system_instruction(user_profile: dict | None) -> str:
             langs = ', '.join([f"{l['lang']} ({l['level']})" for l in user_profile['learning_languages']])
             profile_summary += f"Learning languages: {langs}. "
         
-        # Inject the cached conversation summary here
         if user_profile.get("conversation_summary"):
             instruction += (
                 "\n\n--Previous Conversation Context (Summary)--\n"
@@ -80,7 +77,6 @@ def _convert_history_to_openai(history: list[dict], system_instruction: str, cur
     openai_messages.append({"role": "user", "content": current_message})
     return openai_messages
 
-# --- SUMMARIZATION LOGIC ---
 
 async def update_summary_task(user_id: str, old_history_chunk: list[dict], current_summary: str, redis_client: Redis):
     """
@@ -120,25 +116,18 @@ def _manage_context_and_tasks(history: list[dict], user_profile: dict, backgroun
     """
     Slices history for the immediate AI call and schedules summarization if needed.
     """
-    # 1. Slice history for immediate generation (Last N messages)
     recent_history = history[-CONTEXT_WINDOW_SIZE:] if len(history) > CONTEXT_WINDOW_SIZE else history
     
-    # 2. Schedule summarization for older messages if threshold met
     if background_tasks and redis_client and len(history) > SUMMARIZATION_THRESHOLD:
         user_id = user_profile.get("user_id")
         existing_summary = user_profile.get("conversation_summary", "")
         
-        # Calculate the chunk to be summarized (everything BEFORE the recent window)
         msgs_to_summarize = history[:-CONTEXT_WINDOW_SIZE]
         
-        # We assume the FE sends full history. We process the backlog.
-        # Note: In a real prod env, we might want to check timestamps to ensure we don't re-summarize, 
-        # but this follows the "batch 5-10" logic requested.
         background_tasks.add_task(update_summary_task, user_id, msgs_to_summarize, existing_summary, redis_client)
 
     return recent_history
 
-# --- MAIN CHAT FUNCTIONS ---
 
 async def chat_with_ai(
         message: str,
@@ -149,7 +138,6 @@ async def chat_with_ai(
         redis_client: Redis | None = None
 ) -> tuple[str, str]:
     
-    # Optimize context
     active_history = _manage_context_and_tasks(history, user_profile, background_tasks, redis_client)
     system_instruction = _build_system_instruction(user_profile)
     
@@ -205,7 +193,6 @@ async def chat_with_ai_stream(
         background_tasks: BackgroundTasks | None = None,
         redis_client: Redis | None = None
 ):
-    # Optimize context
     active_history = _manage_context_and_tasks(history, user_profile, background_tasks, redis_client)
     system_instruction = _build_system_instruction(user_profile)
     MODEL_STREAM = "gemini-1.5-flash"

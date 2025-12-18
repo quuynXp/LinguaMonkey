@@ -14,7 +14,6 @@ import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
-import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
@@ -22,19 +21,16 @@ import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
-import com.connectJPA.LinguaVietnameseApp.utils.AESUtils;
 import com.google.gson.Gson;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -43,11 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -59,17 +51,14 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final RoomMemberRepository roomMemberRepository;
     private final ChatMessageMapper chatMessageMapper;
     private final UserRepository userRepository;
-    private final MessageTranslationRepository messageTranslationRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
     private final UserService userService;
+    
+    private final StringRedisTemplate stringRedisTemplate; 
     private final RedisTemplate<String, Object> redisTemplate;
-    private final GrpcClientService grpcClientService;
-    private final AESUtils aesUtils;
+    
     private final Gson gson = new Gson();
-
-    // Dedicated Executor for Translations to prevent main thread blocking
-    private final ExecutorService translationExecutor = Executors.newFixedThreadPool(10);
 
     @Lazy
     private final DailyChallengeService dailyChallengeService;
@@ -78,6 +67,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     private static final UUID AI_BOT_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
     private static final String USER_STATS_CACHE_PREFIX = "user_statistics::";
+    private static final String TRANSLATION_QUEUE_KEY = "chat_translation_queue";
 
     private ChatMessageResponse mapToResponse(ChatMessage entity, RoomPurpose purpose) {
         ChatMessageResponse response = chatMessageMapper.toResponse(entity);
@@ -106,7 +96,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse saveMessage(UUID roomId, ChatMessageRequest request) {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
@@ -121,7 +110,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         ChatMessage message = chatMessageMapper.toEntity(request);
-        
         message.setSenderEphemeralKey(request.getSenderEphemeralKey());
         message.setUsedPreKeyId(request.getUsedPreKeyId());
         message.setInitializationVector(request.getInitializationVector());
@@ -134,10 +122,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         if (message.getContent() == null || message.getContent().trim().isEmpty()) {
-            if (message.getMessageType() == MessageType.IMAGE) message.setContent("📷 [Hình ảnh]"); 
-            else if (message.getMessageType() == MessageType.VIDEO) message.setContent("🎥 [Video]");
-            else if (message.getMessageType() == MessageType.AUDIO) message.setContent("🎤 [Audio]");
-            else if (message.getMessageType() == MessageType.DOCUMENT) message.setContent("📄 [Tài liệu]");
+            if (message.getMessageType() == MessageType.IMAGE) message.setContent("📷 [IMAGE]"); 
+            else if (message.getMessageType() == MessageType.VIDEO) message.setContent("🎥 [VIDEO]");
+            else if (message.getMessageType() == MessageType.AUDIO) message.setContent("🎤 [AUDIO]");
+            else if (message.getMessageType() == MessageType.DOCUMENT) message.setContent("📄 [DOCUMENT]");
         }
         
         if (message.getId() == null) {
@@ -168,16 +156,15 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         try {
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
             
-            if (room.getPurpose() != RoomPurpose.PRIVATE_CHAT) {
-                triggerGroupAsyncTranslation(savedMessage, room);
+            if (room.getPurpose() != RoomPurpose.PRIVATE_CHAT && message.getMessageType() == MessageType.TEXT) {
+                dispatchToPythonQueue(savedMessage);
             }
             
             notifyMembers(savedMessage, room, response, request.getSenderId());
         } catch (Exception e) {
-            log.error("Broadcast failed", e);
+            log.error("Broadcast/Dispatch failed", e);
         }
 
-        // Manually invalidate stats cache for sender
         try {
             redisTemplate.delete(USER_STATS_CACHE_PREFIX + request.getSenderId());
         } catch (Exception e) {
@@ -187,92 +174,21 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         return response;
     }
 
-    private void triggerGroupAsyncTranslation(ChatMessage message, Room room) {
-        if (message.getMessageType() != MessageType.TEXT) return;
+    private void dispatchToPythonQueue(ChatMessage message) {
+        Map<String, Object> task = new HashMap<>();
+        task.put("messageId", message.getId().getChatMessageId().toString());
+        task.put("roomId", message.getRoomId().toString());
+        task.put("content", message.getContent()); 
+        task.put("senderId", message.getSenderId().toString());
         
-        String roomKey = room.getSecretKey();
-        if (roomKey == null || roomKey.isEmpty()) {
-            return;
+        String jsonTask = gson.toJson(task);
+        
+        try {
+            stringRedisTemplate.opsForList().leftPush(TRANSLATION_QUEUE_KEY, jsonTask);
+            log.info(">>> [Java] Pushed to Queue: MsgId={}", message.getId().getChatMessageId());
+        } catch (Exception e) {
+            log.error("Failed to push translation task to Redis", e);
         }
-
-        CompletableFuture.runAsync(() -> {
-            try {
-                String decryptedContent = aesUtils.decrypt(message.getContent(), roomKey);
-                
-                if (decryptedContent == null || decryptedContent.isEmpty()) {
-                    log.error("Async Translate: Decryption FAILED for message {}.", message.getId().getChatMessageId());
-                    return;
-                }
-                
-                // If the content is wrapped in JSON (shouldn't be with AESUtils, but defensive)
-                if (decryptedContent.trim().startsWith("{") && decryptedContent.contains("ciphertext")) {
-                      log.warn("Async Translate: Decrypted content looks like JSON wrapper. Aborting to avoid parsing errors.");
-                      return;
-                }
-
-                List<RoomMember> members = roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(room.getRoomId());
-                Set<String> targetLangs = members.stream()
-                    .map(m -> userRepository.findById(m.getId().getUserId()).orElse(null))
-                    .filter(Objects::nonNull)
-                    .map(User::getNativeLanguageCode)
-                    .filter(l -> l != null && !l.isEmpty()) 
-                    .collect(Collectors.toSet());
-
-                if (targetLangs.isEmpty()) return;
-
-                // Double check DB for existing translations to avoid redundant calls
-                chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(message.getId().getChatMessageId()).ifPresent(currentMsg -> {
-                      Map<String, String> existing = currentMsg.getTranslations();
-                      if(existing != null) {
-                          targetLangs.removeIf(existing::containsKey);
-                      }
-                });
-                
-                if (targetLangs.isEmpty()) return;
-
-                Map<String, String> newTranslations = new HashMap<>();
-                List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-                for (String lang : targetLangs) {
-                    futures.add(grpcClientService.callTranslateAsync("", decryptedContent, "auto", lang)
-                        .thenAccept(res -> {
-                            if (res != null && res.getError().isEmpty()) {
-                                synchronized (newTranslations) {
-                                    newTranslations.put(lang, res.getTranslatedText());
-                                }
-                            }
-                        }));
-                }
-
-                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-                if (!newTranslations.isEmpty()) {
-                    chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(message.getId().getChatMessageId()).ifPresent(msg -> {
-                        Map<String, String> current = msg.getTranslations();
-                        if (current == null) current = new HashMap<>();
-                        
-                        for (Map.Entry<String, String> entry : newTranslations.entrySet()) {
-                            // Encrypt translation with RoomKey
-                            String encryptedTrans = aesUtils.encrypt(entry.getValue(), roomKey);
-                            current.put(entry.getKey(), encryptedTrans);
-                        }
-                        
-                        msg.setTranslations(current);
-                        chatMessageRepository.save(msg);
-                        
-                        Map<String, Object> updateEvent = new HashMap<>();
-                        updateEvent.put("type", "TRANSLATION_UPDATE");
-                        updateEvent.put("id", message.getId().getChatMessageId().toString());
-                        updateEvent.put("roomId", msg.getRoomId().toString());
-                        updateEvent.put("translations", current);
-                        
-                        messagingTemplate.convertAndSend("/topic/room/" + msg.getRoomId(), updateEvent);
-                    });
-                }
-            } catch (Exception e) {
-                log.error("Async Translation Critical Error", e);
-            }
-        }, translationExecutor);
     }
 
     private void notifyMembers(ChatMessage savedMessage, Room room, ChatMessageResponse response, UUID senderId) {
@@ -299,27 +215,31 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
             try {
                 Map<String, String> dataPayload = new HashMap<>();
-                
                 dataPayload.put("screen", "ChatStack"); 
                 dataPayload.put("stackScreen", "GroupChatScreen"); 
-                
                 dataPayload.put("roomId", room.getRoomId().toString());
                 dataPayload.put("initialFocusMessageId", response.getChatMessageId().toString());
                 dataPayload.put("senderId", savedMessage.getSenderId().toString());
-                
                 dataPayload.put("isEncrypted", "true"); 
-                dataPayload.put("content", "🔒 Tin nhắn mới");
                 
-                if (savedMessage.getSenderEphemeralKey() != null) {
-                    dataPayload.put("senderEphemeralKey", savedMessage.getSenderEphemeralKey());
-                    dataPayload.put("initializationVector", savedMessage.getInitializationVector());
+                // CRITICAL FIX: Send the ciphertext (content) to client for decryption
+                dataPayload.put("ciphertext", savedMessage.getContent()); 
+
+                if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
+                    dataPayload.put("encryptionType", "PRIVATE"); // Signal Protocol
+                    if (savedMessage.getSenderEphemeralKey() != null) {
+                        dataPayload.put("senderEphemeralKey", savedMessage.getSenderEphemeralKey());
+                        dataPayload.put("initializationVector", savedMessage.getInitializationVector());
+                    }
+                } else {
+                    dataPayload.put("encryptionType", "GROUP"); // Room Key
                 }
                 
                 String payloadJson = gson.toJson(dataPayload);
                 NotificationRequest nreq = NotificationRequest.builder()
                     .userId(uId)
-                    .title("Tin nhắn mới")
-                    .content("Bạn có tin nhắn mới")
+                    .title("MonkeyLingua") 
+                    .content("Bạn có tin nhắn mới") // Fallback content if decrypt fails or background processing off
                     .type("CHAT_MESSAGE")
                     .payload(payloadJson)
                     .build();
@@ -329,7 +249,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     }
 
     @Override
-    @Cacheable(value = "room_messages", key = "{#roomId, #pageable.pageNumber, #pageable.pageSize}")
     public Page<ChatMessageResponse> getMessagesByRoom(UUID roomId, Pageable pageable) {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId).orElse(null);
         RoomPurpose purpose = room != null ? room.getPurpose() : RoomPurpose.GROUP_CHAT;
@@ -339,21 +258,19 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request) {
         return this.saveMessage(roomId, request);
     }
 
     @Override
     @Transactional
-    @CacheEvict(value = "room_messages", allEntries = true)
     public void deleteChatMessage(UUID id) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
+            
             String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
             
-            // Validate user ownership
             if (!message.getSenderId().toString().equals(currentUserId)) {
                 throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
             }
@@ -364,7 +281,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             chatMessageRepository.softDeleteByChatMessageId(id);
             messageReactionRepository.softDeleteByChatMessageId(id);
 
-            // Manual cache eviction for this specific user only (optimization over allEntries)
             redisTemplate.delete(USER_STATS_CACHE_PREFIX + message.getSenderId());
 
         } catch (AppException e) { throw e; }
@@ -373,12 +289,13 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse editChatMessage(UUID messageId, String newContent) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
+            
             String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
+            
             if (!message.getSenderId().toString().equals(currentUserId)) throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
             long minutesSinceSent = ChronoUnit.MINUTES.between(message.getId().getSentAt(), OffsetDateTime.now());
             if (minutesSinceSent > 5) throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
@@ -395,7 +312,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             response.setPurpose(room.getPurpose());
             
             if (room.getPurpose() != RoomPurpose.PRIVATE_CHAT) {
-                triggerGroupAsyncTranslation(message, room);
+                dispatchToPythonQueue(message);
             }
 
             return response;
@@ -405,7 +322,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse addReaction(UUID messageId, String reaction, UUID userId) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
@@ -424,7 +340,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse markAsRead(UUID messageId, UUID userId) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
@@ -443,7 +358,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "room_messages", allEntries = true)
     public ChatMessageResponse generateAIResponse(ChatMessageResponse userMessage) {
         try {
             ChatMessage aiMessage = ChatMessage.builder()

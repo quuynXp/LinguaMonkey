@@ -41,7 +41,6 @@ async def improve_quiz_data(raw_question: str, raw_options: list[str], topic: st
         clean_json = text_resp.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_json)
         
-        # Validation fallback
         if "image_prompt" not in data or not data["image_prompt"]:
             data["image_prompt"] = f"Illustration associated with {data.get('fixed_question', topic)}"
 

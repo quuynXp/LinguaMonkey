@@ -29,7 +29,6 @@ try:
 except Exception as e:
     logging.error(f"Failed to initialize Gemini model: {e}")
     MODEL = None
-# ---------------------------------------------------
 
 
 def build_review_prompt(content_type: str, rating: float, review_text: str) -> str:
@@ -96,7 +95,6 @@ async def analyze_review(
         logging.error(error_msg)
         return False, "NEUTRAL", ["general"], "FLAG_FOR_MODERATION", error_msg
 
-    # Tạo prompt
     prompt = build_review_prompt(content_type, rating, review_text)
 
     default_error_return = (False, "NEUTRAL", ["general"], "FLAG_FOR_MODERATION")
@@ -107,13 +105,11 @@ async def analyze_review(
         try:
             data = json.loads(response.text)
 
-            # Bóc tách dữ liệu một cách an toàn
             is_valid = data.get("is_valid", False)
             sentiment = data.get("sentiment", "NEUTRAL")
             topics = data.get("topics", ["general"])
             suggested_action = data.get("suggested_action", "FLAG_FOR_MODERATION")
 
-            # Đảm bảo kiểu dữ liệu
             if not isinstance(is_valid, bool):
                 is_valid = False
             if not isinstance(topics, list) or not topics:

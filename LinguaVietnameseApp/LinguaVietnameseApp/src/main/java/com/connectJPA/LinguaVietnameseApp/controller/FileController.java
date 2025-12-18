@@ -19,6 +19,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @RestController
@@ -40,12 +42,13 @@ public class FileController {
             return ResponseEntity.status(400).body("File bị phát hiện có chứa mã độc.");
         }
 
-        String fileId = storageService.uploadTemp(file);
-        String fileUrl = storageService.getFileUrl(fileId);
+        String uploadedUrl = storageService.uploadTemp(file);
+        
+        String extractedId = extractIdFromUrl(uploadedUrl);
 
         FileResponse response = FileResponse.builder()
-                .fileId(fileId)
-                .fileUrl(fileUrl)
+                .fileId(extractedId) 
+                .fileUrl(uploadedUrl) 
                 .fileName(file.getOriginalFilename())
                 .fileType(file.getContentType())
                 .size(file.getSize())
@@ -71,9 +74,19 @@ public class FileController {
         }
 
         mediaList.forEach(media ->
-                media.setFileUrl(storageService.getFileUrl(media.getFilePath()))
+                media.setFileUrl(storageService.getFileUrl(media.getFilePath(), media.getMediaType()))
         );
 
         return ResponseEntity.ok(mediaList);
+    }
+
+    private String extractIdFromUrl(String url) {
+        if (url == null) return UUID.randomUUID().toString();
+        Pattern pattern = Pattern.compile("id=([a-zA-Z0-9_-]+)|/d/([a-zA-Z0-9_-]+)");
+        Matcher matcher = pattern.matcher(url);
+        if (matcher.find()) {
+            return matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+        }
+        return String.valueOf(url.hashCode());
     }
 }

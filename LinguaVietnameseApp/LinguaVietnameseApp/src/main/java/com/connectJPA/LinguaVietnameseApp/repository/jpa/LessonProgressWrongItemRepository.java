@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.LessonProgressWrongItem;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressWrongItemsId;
+import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,6 +11,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,5 +31,16 @@ public interface LessonProgressWrongItemRepository extends JpaRepository<LessonP
             @Param("userId") UUID userId,
             @Param("lessonQuestionId") UUID lessonQuestionId);
 
-
+    @Query("SELECT q.skillType, COUNT(lpwi) as wrongCount " +
+           "FROM LessonProgressWrongItem lpwi " +
+           "JOIN LessonQuestion q ON lpwi.id.lessonQuestionId = q.lessonQuestionId " +
+           "WHERE lpwi.id.userId = :userId " +
+           "AND lpwi.createdAt BETWEEN :startDate AND :endDate " +
+           "AND lpwi.isDeleted = false " +
+           "GROUP BY q.skillType " +
+           "ORDER BY wrongCount DESC")
+    List<Object[]> findMostFrequentWrongSkills(
+            @Param("userId") UUID userId,
+            @Param("startDate") OffsetDateTime startDate,
+            @Param("endDate") OffsetDateTime endDate);
 }

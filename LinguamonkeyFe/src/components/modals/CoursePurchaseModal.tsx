@@ -7,6 +7,7 @@ import { useUserStore } from '../../stores/UserStore';
 import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
 import { useWallet } from '../../hooks/useWallet';
 import { useTransactionsApi } from '../../hooks/useTransaction';
+import { useNavigation } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Enums from '../../types/enums';
 import { TransactionRequest, PaymentRequest, CourseResponse } from '../../types/dto';
@@ -26,35 +27,30 @@ interface CoursePurchaseModalProps {
 const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onClose, course, activeDiscount, onSuccess }) => {
     const { t } = useTranslation();
     const { user } = useUserStore();
+    const navigation = useNavigation<any>();
 
-    // Hooks
     const { convert, isLoading: loadingRates } = useCurrencyConverter();
     const { data: walletData, isLoading: loadingBalance } = useWallet().useWalletBalance(user?.userId);
     const createTransaction = useTransactionsApi().useCreateTransaction();
     const createPaymentUrl = useTransactionsApi().useCreatePayment();
 
-    // State
     const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'gateway'>('wallet');
     const [gatewayProvider, setGatewayProvider] = useState<Enums.TransactionProvider>(Enums.TransactionProvider.STRIPE);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Coin State
     const [useCoins, setUseCoins] = useState(false);
     const [coinsToUse, setCoinsToUse] = useState(0);
 
-    // Constants
     const COINS_PER_USD = 1000;
     const userCurrency = user?.country === Enums.Country.VIETNAM ? 'VND' : 'USD';
     const availableCoins = user?.coins || 0;
 
-    // Price Calculation
     const originalPrice = course?.latestPublicVersion.price || 0;
     const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
     const priceAfterDiscount = discountPercent > 0
         ? originalPrice * (1 - discountPercent / 100)
         : originalPrice;
 
-    // Reset state when opening
     useEffect(() => {
         if (visible) {
             setUseCoins(false);
@@ -64,27 +60,19 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
     }, [visible]);
 
     const maxCoinsUsable = useMemo(() => {
-        // Limit coins to 50% of value or total available coins
         const priceInCoins = priceAfterDiscount * COINS_PER_USD;
         const maxAllowed = Math.floor(priceInCoins * 0.5);
         return Math.floor(Math.min(availableCoins, maxAllowed));
     }, [availableCoins, priceAfterDiscount]);
 
     useEffect(() => {
-        if (useCoins) {
-            setCoinsToUse(maxCoinsUsable);
-        } else {
-            setCoinsToUse(0);
-        }
+        setCoinsToUse(useCoins ? maxCoinsUsable : 0);
     }, [useCoins, maxCoinsUsable]);
 
     const discountUSD = coinsToUse / COINS_PER_USD;
     const finalPriceUSD = Math.max(0, priceAfterDiscount - discountUSD);
-
-    // Display Price Logic
     const displayPrice = convert(finalPriceUSD, userCurrency);
 
-    // Helper: Convert Balance to USD for display
     const getBalanceInUSD = () => {
         const balance = walletData?.balance || 0;
         if (userCurrency === 'USD') return '';
@@ -93,10 +81,6 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
         const balanceUSD = balance / rate;
         return `(≈ $${balanceUSD.toFixed(2)})`;
     };
-
-    const getDescription = () => {
-        return `Buy Course: ${course?.title || 'Unknown'}`;
-    }
 
     const handleConfirm = async () => {
         if (!user?.userId || !course) return;
@@ -109,7 +93,6 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
                 await handleGatewayPayment();
             }
         } catch (error) {
-            console.error(error);
             Alert.alert(t('common.error'), t('payment.failed'));
         } finally {
             setIsProcessing(false);
@@ -119,56 +102,56 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
     const handleWalletPayment = async () => {
         const balance = walletData?.balance || 0;
 
-        // Simple check (currency matching assumed or handled by backend/convert)
         if (balance < displayPrice) {
             Alert.alert(
                 t('payment.insufficientBalanceTitle'),
                 t('payment.insufficientBalanceMessage', { amount: (displayPrice - balance).toLocaleString() + ' ' + userCurrency }),
                 [
                     { text: t('common.cancel'), style: 'cancel' },
-                    { text: t('payment.depositNow'), onPress: () => { onClose(); /* Navigate to deposit */ } }
+                    {
+                        text: t('payment.depositNow'),
+                        onPress: () => {
+                            onClose();
+                            navigation.navigate('Deposit', { minAmount: finalPriceUSD });
+                        }
+                    }
                 ]
             );
             return;
         }
 
-        const cleanAmount = Number(displayPrice.toFixed(2));
         const payload: TransactionRequest = {
             userId: user!.userId,
-            amount: cleanAmount,
+            amount: Number(displayPrice.toFixed(2)),
             currency: userCurrency,
             provider: Enums.TransactionProvider.INTERNAL,
             type: Enums.TransactionType.PAYMENT,
             status: Enums.TransactionStatus.SUCCESS,
-            description: getDescription(),
+            description: `Buy Course: ${course.title}`,
             coins: useCoins ? coinsToUse : 0,
             receiverId: course.creatorId,
             courseVersionId: course.latestPublicVersion.versionId
         };
 
         createTransaction.mutate(payload, {
-            onSuccess: async () => {
+            onSuccess: () => {
                 Alert.alert("Success", "Course purchased successfully!");
                 if (onSuccess) onSuccess();
                 onClose();
             },
-            onError: (err: any) => {
-                Alert.alert(t('common.error'), t('payment.transactionFailed'));
-            }
+            onError: () => Alert.alert(t('common.error'), t('payment.transactionFailed'))
         });
     };
 
     const handleGatewayPayment = async () => {
-        const cleanAmount = Number(displayPrice.toFixed(2));
-
         const payload: PaymentRequest & { coins?: number; type?: string } = {
             userId: user!.userId,
-            amount: cleanAmount,
+            amount: Number(displayPrice.toFixed(2)),
             currency: userCurrency,
             provider: gatewayProvider,
             type: Enums.TransactionType.PAYMENT,
             returnUrl: "linguamonkey://course-success",
-            description: getDescription(),
+            description: `Buy Course: ${course?.title}`,
             coins: useCoins ? coinsToUse : 0
         };
 
@@ -179,29 +162,14 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
                     await WebBrowser.openBrowserAsync(url);
                 }
             },
-            onError: (err: any) => {
-                console.log("Gateway Error", err?.response?.data);
-                Alert.alert(t('common.error'), t('payment.gatewayError'));
-            }
+            onError: () => Alert.alert(t('common.error'), t('payment.gatewayError'))
         });
-    };
-
-    const increaseCoins = () => {
-        if (coinsToUse + 100 <= maxCoinsUsable) setCoinsToUse(prev => prev + 100);
-        else setCoinsToUse(maxCoinsUsable);
-    };
-
-    const decreaseCoins = () => {
-        if (coinsToUse - 100 >= 0) setCoinsToUse(prev => prev - 100);
-        else setCoinsToUse(0);
     };
 
     if (!course) return null;
 
     const authorAvatar = getAvatarSource(course.creatorAvatar, "MALE");
-    // Use real data from CourseResponse (Fixed property names)
     const rating = course.averageRating ? course.averageRating.toFixed(1) : '0.0';
-    const reviewCount = course.reviewCount || 0; // Use reviewCount from DTO, NOT totalReviews
 
     return (
         <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
@@ -211,129 +179,70 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
                         <Icon name="close" size={24} color="#6B7280" />
                     </TouchableOpacity>
 
-                    {/* Header with Course Info */}
                     <View style={styles.headerRow}>
                         <Image source={getCourseImage(course.latestPublicVersion.thumbnailUrl)} style={styles.courseThumb} />
                         <View style={{ flex: 1 }}>
                             <Text style={styles.title} numberOfLines={2}>{course.title}</Text>
                             <View style={styles.metaRow}>
                                 <Icon name="star" size={14} color="#F59E0B" />
-                                <Text style={styles.ratingText}>{rating} ({reviewCount})</Text>
+                                <Text style={styles.ratingText}>{rating} ({course.reviewCount})</Text>
                             </View>
-
-                            {/* Author Info */}
                             <View style={styles.authorRow}>
                                 <Image source={authorAvatar} style={styles.authorAvatar} />
-                                <Text style={styles.authorName} numberOfLines={1}>
-                                    {course.creatorName || course.creatorNickname}
-                                </Text>
+                                <Text style={styles.authorName} numberOfLines={1}>{course.creatorName}</Text>
                                 {course.creatorCountry && getCountryFlag(course.creatorCountry, 12)}
                             </View>
                         </View>
                     </View>
 
-                    {/* Coin Section */}
                     <View style={styles.coinSection}>
                         <View style={styles.coinHeader}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <Icon name="monetization-on" size={20} color="#F59E0B" />
                                 <Text style={styles.coinLabel}>{t('common.coins')} ({availableCoins})</Text>
                             </View>
-                            <Switch
-                                value={useCoins}
-                                onValueChange={setUseCoins}
-                                trackColor={{ false: "#D1D5DB", true: "#FBBF24" }}
-                                thumbColor={useCoins ? "#F59E0B" : "#F4F3F4"}
-                                disabled={maxCoinsUsable === 0}
-                            />
+                            <Switch value={useCoins} onValueChange={setUseCoins} trackColor={{ false: "#D1D5DB", true: "#FBBF24" }} />
                         </View>
                         {useCoins && (
                             <View style={styles.coinControls}>
-                                <TouchableOpacity onPress={decreaseCoins} style={styles.coinBtn}><Icon name="remove" size={16} color="#6B7280" /></TouchableOpacity>
-                                <Text style={styles.coinValue}>{coinsToUse}</Text>
-                                <TouchableOpacity onPress={increaseCoins} style={styles.coinBtn}><Icon name="add" size={16} color="#6B7280" /></TouchableOpacity>
-                                <Text style={styles.discountText}>- ${(coinsToUse / COINS_PER_USD).toFixed(2)}</Text>
+                                <Text style={styles.coinValue}>{coinsToUse} coins</Text>
+                                <Text style={styles.discountText}>- ${discountUSD.toFixed(2)}</Text>
                             </View>
                         )}
                     </View>
 
-                    {/* Total Price */}
                     <View style={styles.priceContainer}>
                         {loadingRates ? <ActivityIndicator color="#4F46E5" /> : (
                             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                                <Text style={styles.priceLabel}>{t('payment.total', 'Total:')}</Text>
-                                <Text style={styles.priceValue}>
-                                    {displayPrice.toLocaleString()} {userCurrency}
-                                </Text>
+                                <Text style={styles.priceLabel}>{t('payment.total')}</Text>
+                                <Text style={styles.priceValue}>{displayPrice.toLocaleString()} {userCurrency}</Text>
                             </View>
                         )}
                     </View>
 
-                    {/* Payment Methods */}
                     <View style={styles.methodsContainer}>
-                        <Text style={styles.sectionTitle}>{t('payment.selectMethod')}</Text>
-
-                        {/* Wallet */}
-                        <TouchableOpacity
-                            style={[styles.methodCard, paymentMethod === 'wallet' && styles.selectedMethod]}
-                            onPress={() => setPaymentMethod('wallet')}
-                        >
+                        <TouchableOpacity style={[styles.methodCard, paymentMethod === 'wallet' && styles.selectedMethod]} onPress={() => setPaymentMethod('wallet')}>
                             <View style={styles.methodHeader}>
-                                <Icon name="account-balance-wallet" size={24} color={paymentMethod === 'wallet' ? '#4F46E5' : '#6B7280'} />
+                                <Icon name="account-balance-wallet" size={24} color="#4F46E5" />
                                 <View style={{ flex: 1, marginLeft: 12 }}>
-                                    <Text style={[styles.methodTitle, paymentMethod === 'wallet' && styles.selectedMethodText]}>{t('payment.myWallet')}</Text>
-                                    <Text style={styles.balanceText}>
-                                        {t('payment.available')}: {loadingBalance ? '...' : walletData?.balance.toLocaleString()} {userCurrency} {getBalanceInUSD()}
-                                    </Text>
-                                    {paymentMethod === 'wallet' && (walletData?.balance || 0) < displayPrice && (
-                                        <Text style={styles.errorText}>{t('payment.insufficientWarning', 'Insufficient Balance')}</Text>
-                                    )}
+                                    <Text style={styles.methodTitle}>{t('payment.myWallet')}</Text>
+                                    <Text style={styles.balanceText}>{walletData?.balance.toLocaleString()} {userCurrency} {getBalanceInUSD()}</Text>
                                 </View>
                                 {paymentMethod === 'wallet' && <Icon name="check-circle" size={20} color="#4F46E5" />}
                             </View>
                         </TouchableOpacity>
 
-                        {/* Gateway */}
-                        <TouchableOpacity
-                            style={[styles.methodCard, paymentMethod === 'gateway' && styles.selectedMethod]}
-                            onPress={() => setPaymentMethod('gateway')}
-                        >
+                        <TouchableOpacity style={[styles.methodCard, paymentMethod === 'gateway' && styles.selectedMethod]} onPress={() => setPaymentMethod('gateway')}>
                             <View style={styles.methodHeader}>
-                                <Icon name="credit-card" size={24} color={paymentMethod === 'gateway' ? '#4F46E5' : '#6B7280'} />
-                                <View style={{ flex: 1, marginLeft: 12 }}>
-                                    <Text style={[styles.methodTitle, paymentMethod === 'gateway' && styles.selectedMethodText]}>{t('payment.externalGateway', 'Payment Gateway')}</Text>
-                                </View>
-                                {paymentMethod === 'gateway' && <Icon name="check-circle" size={20} color="#4F46E5" />}
+                                <Icon name="credit-card" size={24} color="#6B7280" />
+                                <Text style={[styles.methodTitle, { marginLeft: 12 }]}>{t('payment.externalGateway')}</Text>
                             </View>
-
-                            {paymentMethod === 'gateway' && (
-                                <View style={styles.gatewayOptions}>
-                                    <TouchableOpacity
-                                        style={[styles.chip, gatewayProvider === Enums.TransactionProvider.STRIPE && styles.selectedChip]}
-                                        onPress={() => setGatewayProvider(Enums.TransactionProvider.STRIPE)}
-                                    >
-                                        <Text style={[styles.chipText, gatewayProvider === Enums.TransactionProvider.STRIPE && styles.selectedChipText]}>Stripe (Visa/Master)</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.chip, gatewayProvider === Enums.TransactionProvider.VNPAY && styles.selectedChip]}
-                                        onPress={() => setGatewayProvider(Enums.TransactionProvider.VNPAY)}
-                                    >
-                                        <Text style={[styles.chipText, gatewayProvider === Enums.TransactionProvider.VNPAY && styles.selectedChipText]}>VNPAY</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )}
                         </TouchableOpacity>
                     </View>
 
-                    <TouchableOpacity
-                        style={[styles.confirmButton, isProcessing && styles.disabledButton]}
-                        onPress={handleConfirm}
-                        disabled={isProcessing}
-                    >
+                    <TouchableOpacity style={[styles.confirmButton, isProcessing && styles.disabledButton]} onPress={handleConfirm} disabled={isProcessing}>
                         {isProcessing ? <ActivityIndicator color="#FFF" /> : (
-                            <Text style={styles.confirmButtonText}>
-                                {paymentMethod === 'wallet' ? t('payment.payNow') : t('payment.continueToGateway')}
-                            </Text>
+                            <Text style={styles.confirmButtonText}>{paymentMethod === 'wallet' ? t('payment.payNow') : t('payment.continueToGateway')}</Text>
                         )}
                     </TouchableOpacity>
                 </View>
@@ -344,50 +253,32 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
 
 const styles = createScaledSheet({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 },
-    container: { width: '100%', backgroundColor: 'white', borderRadius: 24, padding: 20, elevation: 8 },
-    closeButton: { position: 'absolute', top: 16, right: 16, padding: 4, zIndex: 10 },
-
-    headerRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20, gap: 12, paddingRight: 24 },
-    courseThumb: { width: 80, height: 60, borderRadius: 8, backgroundColor: '#E5E7EB' },
-    title: { fontSize: 16, fontWeight: 'bold', color: '#1F2937', marginBottom: 4 },
-    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
-    ratingText: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
-
+    container: { width: '100%', backgroundColor: 'white', borderRadius: 24, padding: 20 },
+    closeButton: { position: 'absolute', top: 16, right: 16, zIndex: 10 },
+    headerRow: { flexDirection: 'row', marginBottom: 20, gap: 12 },
+    courseThumb: { width: 80, height: 60, borderRadius: 8 },
+    title: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    ratingText: { fontSize: 12, color: '#6B7280' },
     authorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    authorAvatar: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB' },
-    authorName: { fontSize: 12, color: '#4B5563', maxWidth: 100 },
-
-    coinSection: { width: '100%', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 10, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+    authorAvatar: { width: 20, height: 20, borderRadius: 10 },
+    authorName: { fontSize: 12, color: '#4B5563' },
+    coinSection: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 10, marginBottom: 16 },
     coinHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    coinLabel: { marginLeft: 8, fontSize: 13, fontWeight: '600', color: '#4B5563' },
-    coinControls: { flexDirection: 'row', alignItems: 'center', marginTop: 8, justifyContent: 'space-between' },
-    coinBtn: { padding: 4, backgroundColor: '#E5E7EB', borderRadius: 8 },
-    coinValue: { fontSize: 14, fontWeight: 'bold', color: '#1F2937', width: 50, textAlign: 'center' },
-    discountText: { fontSize: 13, fontWeight: '600', color: '#059669' },
-
-    priceContainer: { alignItems: 'center', marginBottom: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+    coinLabel: { marginLeft: 8, fontSize: 13, fontWeight: '600' },
+    coinControls: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+    coinValue: { fontSize: 14, fontWeight: 'bold' },
+    discountText: { fontSize: 13, color: '#059669', fontWeight: 'bold' },
+    priceContainer: { alignItems: 'center', marginBottom: 20 },
     priceLabel: { fontSize: 14, color: '#6B7280' },
     priceValue: { fontSize: 24, fontWeight: 'bold', color: '#4F46E5' },
-
-    methodsContainer: { width: '100%', marginBottom: 20 },
-    sectionTitle: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 },
-
-    methodCard: { backgroundColor: "#FFF", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 8 },
+    methodsContainer: { marginBottom: 20 },
+    methodCard: { padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 8 },
     selectedMethod: { borderColor: "#4F46E5", backgroundColor: "#F5F7FF" },
-    selectedMethodText: { color: "#4F46E5", fontWeight: '700' },
     methodHeader: { flexDirection: "row", alignItems: "center" },
-    methodTitle: { fontSize: 15, fontWeight: "500", color: "#1F2937" },
-
-    balanceText: { marginTop: 2, fontSize: 12, color: "#6B7280" },
-    errorText: { marginTop: 2, fontSize: 11, color: "#EF4444" },
-
-    gatewayOptions: { flexDirection: "row", gap: 8, marginTop: 12, paddingLeft: 36, flexWrap: 'wrap' },
-    chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: 'transparent' },
-    selectedChip: { backgroundColor: "#EEF2FF", borderColor: '#4F46E5' },
-    chipText: { fontSize: 11, color: "#4B5563" },
-    selectedChipText: { color: "#4F46E5", fontWeight: '600' },
-
-    confirmButton: { width: '100%', backgroundColor: '#4F46E5', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+    methodTitle: { fontSize: 15, fontWeight: "500" },
+    balanceText: { fontSize: 12, color: "#6B7280" },
+    confirmButton: { backgroundColor: '#4F46E5', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
     disabledButton: { backgroundColor: '#9CA3AF' },
     confirmButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' }
 });

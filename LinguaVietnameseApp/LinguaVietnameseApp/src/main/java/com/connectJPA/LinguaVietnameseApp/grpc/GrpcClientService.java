@@ -13,7 +13,6 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.ReviewQualityResponse;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import learning.*;
 import lombok.RequiredArgsConstructor;
@@ -22,11 +21,14 @@ import reactor.core.publisher.FluxSink;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -38,22 +40,46 @@ public class GrpcClientService {
     private String grpcTarget;
 
     private final ObjectMapper objectMapper;
+    private ManagedChannel channel;
+    private LearningServiceGrpc.LearningServiceFutureStub futureStub;
+    private LearningServiceGrpc.LearningServiceStub asyncStub;
 
-    private ManagedChannel createChannelWithToken(String token) {
-        log.debug("Creating gRPC channel to: {}", grpcTarget);
-        // Remove protocol prefix if present
+    // Timeout for unary calls (prevent hanging)
+    private static final long GRPC_TIMEOUT_SEC = 10; 
+
+    @PostConstruct
+    public void init() {
+        log.info("Initializing gRPC Channel to: {}", grpcTarget);
         String target = grpcTarget.replace("static://", "").replace("http://", "");
-        return ManagedChannelBuilder.forTarget(target)
+        this.channel = ManagedChannelBuilder.forTarget(target)
                 .usePlaintext()
-                .intercept(new GrpcAuthInterceptor(token))
+                .keepAliveTime(30, TimeUnit.SECONDS)
+                .keepAliveTimeout(10, TimeUnit.SECONDS)
                 .build();
+        this.futureStub = LearningServiceGrpc.newFutureStub(channel);
+        this.asyncStub = LearningServiceGrpc.newStub(channel);
     }
 
-    // --- TRANSLATE (Optimized for Chat) ---
-    public CompletableFuture<TranslateResponse> callTranslateAsync(String token, String text, String sourceLang, String targetLang) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+    @PreDestroy
+    public void shutdown() {
+        if (channel != null && !channel.isShutdown()) {
+            channel.shutdown();
+        }
+    }
 
+    private LearningServiceGrpc.LearningServiceFutureStub getStubWithAuth(String token) {
+        // Add Deadline to avoid infinite waiting
+        LearningServiceGrpc.LearningServiceFutureStub stub = futureStub.withDeadlineAfter(GRPC_TIMEOUT_SEC, TimeUnit.SECONDS);
+        if (token == null || token.isEmpty()) return stub;
+        return stub.withCallCredentials(new BearerTokenCredentials(token));
+    }
+
+    private LearningServiceGrpc.LearningServiceStub getAsyncStubWithAuth(String token) {
+        if (token == null || token.isEmpty()) return asyncStub;
+        return asyncStub.withCallCredentials(new BearerTokenCredentials(token));
+    }
+
+    public CompletableFuture<TranslateResponse> callTranslateAsync(String token, String text, String sourceLang, String targetLang) {
         TranslateRequest request = TranslateRequest.newBuilder()
                 .setText(text == null ? "" : text)
                 .setSourceLanguage(sourceLang == null ? "auto" : sourceLang)
@@ -61,45 +87,57 @@ public class GrpcClientService {
                 .build();
 
         return CompletableFuture.supplyAsync(() -> {
+            log.info(">>> [gRPC] Sending Translate request: '{}' ({}->{})", text, sourceLang, targetLang);
             try {
-                // Calls Python (which uses Redis + Gemini)
-                TranslateResponse response = stub.translate(request).get();
-                
-                if (response == null || !response.getError().isEmpty()) {
-                    log.warn("Translation partial error from Python: {}", response != null ? response.getError() : "null response");
-                }
+                TranslateResponse response = getStubWithAuth(token).translate(request).get();
+                log.info("<<< [gRPC] Translate success: {}", response.getTranslatedText());
                 return response;
             } catch (Exception e) {
-                log.error("gRPC Translate Failed: {}", e.getMessage());
-                // Fallback: return original text to avoid breaking chat flow
+                log.error("!!! [gRPC] Translate Failed for '{}'. Error: {}", text, e.getMessage(), e); // Added stack trace logging
+                // Return fallback instead of throwing to prevent blocking other async operations
                 return TranslateResponse.newBuilder()
                         .setTranslatedText(text) 
-                        .setSourceLanguageDetected(sourceLang != null ? sourceLang : "unknown")
-                        .setError("Service unavailable")
+                        .setSourceLanguageDetected("unknown")
+                        .setError("Service unavailable: " + e.getMessage())
                         .build();
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
-    // --- WRITING & MEDIA ASSESSMENT (Updated for Image/Video/Audio) ---
+    public CompletableFuture<String> callChatWithAIAsync(String token, String userId, String message, List<ChatMessageBody> history) {
+        ChatRequest request = ChatRequest.newBuilder()
+                .setUserId(userId)
+                .setMessage(message)
+                .addAllHistory(history.stream()
+                        .map(h -> ChatMessage.newBuilder().setRole(h.getRole()).setContent(h.getContent()).build())
+                        .collect(Collectors.toList()))
+                .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            log.info(">>> [gRPC] Sending ChatAI request for user: {}", userId);
+            try {
+                ChatResponse response = getStubWithAuth(token).chatWithAI(request).get();
+                if (response.getError() != null && !response.getError().isEmpty()) {
+                     log.error("<<< [gRPC] ChatAI returned application error: {}", response.getError());
+                }
+                return response.getResponse();
+            } catch (Exception e) {
+                log.error("!!! [gRPC] ChatAI Failed: {}", e.getMessage(), e);
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            }
+        });
+    }
 
     public CompletableFuture<WritingResponseBody> callCheckWritingAssessmentAsync(
             String token, String userText, String prompt, 
             byte[] mediaData, String mediaUrl, String mediaType) {
         
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
-        // Build request with new Proto message
         WritingAssessmentRequest.Builder requestBuilder = WritingAssessmentRequest.newBuilder()
                 .setUserText(userText)
                 .setPrompt(prompt)
                 .setMediaType(mediaType != null ? mediaType : "text/plain")
-                .setLanguage("en"); // Default or pass as arg
+                .setLanguage("en");
 
-        // Handle Media: Priority to Inline Data (User Upload), then URL (Existing Question Media)
         if (mediaData != null && mediaData.length > 0) {
             requestBuilder.setMedia(MediaRef.newBuilder().setInlineData(ByteString.copyFrom(mediaData)));
         } else if (mediaUrl != null && !mediaUrl.isEmpty()) {
@@ -108,9 +146,7 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                WritingAssessmentResponse response = stub.checkWritingAssessment(requestBuilder.build()).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-
+                WritingAssessmentResponse response = getStubWithAuth(token).checkWritingAssessment(requestBuilder.build()).get();
                 WritingResponseBody result = new WritingResponseBody();
                 result.setFeedback(response.getFeedback());
                 result.setScore(response.getScore());
@@ -118,23 +154,13 @@ public class GrpcClientService {
             } catch (Exception e) {
                 log.error("gRPC CheckWritingAssessment failed", e);
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
-    // --- OTHER METHODS ---
-
     public CompletableFuture<SeedDataResponse> callGenerateSeedDataAsync(
-            String token, 
-            String rawQuestion, 
-            List<String> rawOptions, 
-            String topic) {
+            String token, String rawQuestion, List<String> rawOptions, String topic) {
         
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         SeedDataRequest request = SeedDataRequest.newBuilder()
                 .setRawQuestion(rawQuestion == null ? "" : rawQuestion)
                 .addAllRawOptions(rawOptions)
@@ -143,25 +169,15 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                SeedDataResponse response = stub.generateSeedData(request).get();
-                if (!response.getError().isEmpty()) {
-                    log.error("Seed generation error from Python: {}", response.getError());
-                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                }
-                return response;
+                return getStubWithAuth(token).generateSeedData(request).get();
             } catch (Exception e) {
                 log.error("gRPC call generateSeedData failed", e);
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<GenerateImageResponse> callGenerateImageAsync(String token, String userId, String prompt, String language) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         GenerateImageRequest request = GenerateImageRequest.newBuilder()
                 .setUserId(userId)
                 .setPrompt(prompt)
@@ -170,26 +186,16 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                GenerateImageResponse response = stub.generateImage(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                return response;
+                return getStubWithAuth(token).generateImage(request).get();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<CourseEvaluationResponse> callEvaluateCourseVersionAsync(
-            String token, 
-            String courseTitle, 
-            String courseDescription, 
-            List<Lesson> lessons) {
+            String token, String courseTitle, String courseDescription, List<Lesson> lessons) {
         
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         List<LessonMetadata> lessonMetas = lessons.stream()
                 .map(l -> LessonMetadata.newBuilder()
                         .setLessonTitle(l.getTitle() != null ? l.getTitle() : "Untitled")
@@ -206,31 +212,20 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                EvaluateCourseVersionResponse response = stub.evaluateCourseVersion(request).get();
-                if (!response.getError().isEmpty()) {
-                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                }
+                EvaluateCourseVersionResponse response = getStubWithAuth(token).evaluateCourseVersion(request).get();
                 return CourseEvaluationResponse.builder()
                         .rating(response.getRating())
                         .reviewComment(response.getReviewComment())
                         .build();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<FindMatchResponse> callFindMatchAsync(
-            String token, 
-            String userId, 
-            CallPreferences userPrefs, 
-            List<MatchCandidate> candidates) {
+            String token, String userId, CallPreferences userPrefs, List<MatchCandidate> candidates) {
         
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         FindMatchRequest request = FindMatchRequest.newBuilder()
                 .setCurrentUserId(userId)
                 .setCurrentUserPrefs(userPrefs)
@@ -239,19 +234,14 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                return stub.findMatch(request).get();
+                return getStubWithAuth(token).findMatch(request).get();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<ReviewQualityResponse> callAnalyzeReviewQualityAsync(String token, String userId, String contentId, String content, float rating, String contentType) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         ReviewQualityRequest request = ReviewQualityRequest.newBuilder()
                 .setUserId(userId)
                 .setContentId(contentId)
@@ -262,11 +252,7 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                learning.ReviewQualityResponse response = stub.analyzeReviewQuality(request).get();
-                if (!response.getError().isEmpty()) {
-                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                }
-                
+                learning.ReviewQualityResponse response = getStubWithAuth(token).analyzeReviewQuality(request).get();
                 return ReviewQualityResponse.builder()
                         .isValid(response.getIsValid())
                         .isToxic(response.getIsToxic()) 
@@ -276,46 +262,28 @@ public class GrpcClientService {
                         .build();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<QuizGenerationResponse> generateLanguageQuiz(String token, String userId, int numQuestions, String mode, String topic) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         QuizGenerationRequest.Builder requestBuilder = QuizGenerationRequest.newBuilder()
                 .setNumQuestions(numQuestions)
                 .setMode(mode);
 
-        if (userId != null && !userId.isBlank()) {
-            requestBuilder.setUserId(userId);
-        }
-        if (topic != null && !topic.isBlank()) {
-            requestBuilder.setTopic(topic);
-        }
+        if (userId != null && !userId.isBlank()) requestBuilder.setUserId(userId);
+        if (topic != null && !topic.isBlank()) requestBuilder.setTopic(topic);
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                QuizGenerationResponse response = stub.generateLanguageQuiz(requestBuilder.build()).get();
-                if (response == null || !response.getError().isEmpty()) {
-                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                }
-                return response;
+                return getStubWithAuth(token).generateLanguageQuiz(requestBuilder.build()).get();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<String> callSpeechToTextAsync(String token, byte[] audioData, String language) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         SpeechRequest request = SpeechRequest.newBuilder()
                 .setAudio(MediaRef.newBuilder().setInlineData(ByteString.copyFrom(audioData)))
                 .setLanguage(language)
@@ -323,32 +291,23 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                SpeechResponse response = stub.speechToText(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                SpeechResponse response = getStubWithAuth(token).speechToText(request).get();
                 return response.getText();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<byte[]> callGenerateTtsAsync(String token, String text, String language) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         TtsRequest request = TtsRequest.newBuilder().setText(text).setLanguage(language).build();
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                TtsResponse response = stub.generateTts(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                TtsResponse response = getStubWithAuth(token).generateTts(request).get();
                 return response.getAudioData().toByteArray();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
@@ -356,9 +315,6 @@ public class GrpcClientService {
     public CompletableFuture<PronunciationResponseBody> callCheckPronunciationAsync(
             String token, byte[] audioData, String language, String referenceText) {
         
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         PronunciationRequest request = PronunciationRequest.newBuilder()
                 .setAudio(MediaRef.newBuilder().setInlineData(ByteString.copyFrom(audioData)))
                 .setLanguage(language)
@@ -367,28 +323,21 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                PronunciationResponse response = stub.checkPronunciation(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-
+                PronunciationResponse response = getStubWithAuth(token).checkPronunciation(request).get();
                 PronunciationResponseBody result = new PronunciationResponseBody();
                 result.setFeedback(response.getFeedback());
                 result.setScore(response.getScore());
                 return result;
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
-
+    
     public void streamPronunciationAsync(
             String token, byte[] audioData, String language, String referenceText,
             String userId, String lessonQuestionId, FluxSink<String> sink) {
-
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceStub asyncStub = LearningServiceGrpc.newStub(channel);
-
+        
         StreamObserver<PronunciationChunkResponse> responseObserver = new StreamObserver<>() {
             @Override
             public void onNext(PronunciationChunkResponse response) {
@@ -408,20 +357,18 @@ public class GrpcClientService {
             @Override
             public void onError(Throwable t) {
                 sink.error(t);
-                channel.shutdown();
             }
 
             @Override
             public void onCompleted() {
                 sink.complete();
-                channel.shutdown();
             }
         };
 
-        StreamObserver<PronunciationChunk> requestObserver = asyncStub.streamPronunciation(responseObserver);
-
-        new Thread(() -> {
-            try {
+        StreamObserver<PronunciationChunk> requestObserver = getAsyncStubWithAuth(token).streamPronunciation(responseObserver);
+        
+        CompletableFuture.runAsync(() -> {
+             try {
                 int chunkSize = 16 * 1024;
                 int length = audioData.length;
                 int offset = 0;
@@ -436,9 +383,7 @@ public class GrpcClientService {
                             .setSequence(seq++)
                             .setIsFinal(end == length);
                     
-                    if (seq == 1) {
-                        chunkBuilder.setReferenceText(referenceText);
-                    }
+                    if (seq == 1) chunkBuilder.setReferenceText(referenceText);
 
                     requestObserver.onNext(chunkBuilder.build());
                     offset = end;
@@ -448,56 +393,23 @@ public class GrpcClientService {
             } catch (Exception e) {
                 requestObserver.onError(e);
             }
-        }).start();
+        });
     }
 
     public CompletableFuture<List<String>> callCheckSpellingAsync(String token, String text, String language) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
         SpellingRequest request = SpellingRequest.newBuilder().setText(text).setLanguage(language).build();
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                SpellingResponse response = stub.checkSpelling(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                SpellingResponse response = getStubWithAuth(token).checkSpelling(request).get();
                 return response.getCorrectionsList();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
-            }
-        });
-    }
-
-    public CompletableFuture<String> callChatWithAIAsync(String token, String userId, String message, List<ChatMessageBody> history) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
-        ChatRequest request = ChatRequest.newBuilder()
-                .setUserId(userId)
-                .setMessage(message)
-                .addAllHistory(history.stream()
-                        .map(h -> ChatMessage.newBuilder().setRole(h.getRole()).setContent(h.getContent()).build())
-                        .collect(Collectors.toList()))
-                .build();
-
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                ChatResponse response = stub.chatWithAI(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                return response.getResponse();
-            } catch (Exception e) {
-                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<WritingResponseBody> callCheckTranslationAsync(String token, String referenceText, String translatedText, String targetLanguage) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         CheckTranslationRequest request = CheckTranslationRequest.newBuilder()
                 .setReferenceText(referenceText)
                 .setTranslatedText(translatedText)
@@ -506,24 +418,18 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                CheckTranslationResponse response = stub.checkTranslation(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-
+                CheckTranslationResponse response = getStubWithAuth(token).checkTranslation(request).get();
                 WritingResponseBody result = new WritingResponseBody();
                 result.setFeedback(response.getFeedback());
                 result.setScore(response.getScore());
                 return result;
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<String> callGenerateTextAsync(String token, String userId, String prompt, String language) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
         GenerateTextRequest request = GenerateTextRequest.newBuilder()
                 .setUserId(userId)
                 .setPrompt(prompt)
@@ -532,20 +438,15 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                GenerateTextResponse response = stub.generateText(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                GenerateTextResponse response = getStubWithAuth(token).generateText(request).get();
                 return response.getText();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<String> callGeneratePassageAsync(String token, String userId, String topic, String language) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
         GeneratePassageRequest request = GeneratePassageRequest.newBuilder()
                 .setUserId(userId)
                 .setTopic(topic)
@@ -554,21 +455,15 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                GeneratePassageResponse response = stub.generatePassage(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                GeneratePassageResponse response = getStubWithAuth(token).generatePassage(request).get();
                 return response.getPassage();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<RoadmapResponse> callCreateOrUpdateRoadmapAsync(String token, String userId, String roadmapId, String title, String description, String language) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         RoadmapRequest request = RoadmapRequest.newBuilder()
                 .setUserId(userId)
                 .setRoadmapId(roadmapId)
@@ -579,21 +474,14 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                RoadmapResponse response = stub.createOrUpdateRoadmap(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                return response;
+                return getStubWithAuth(token).createOrUpdateRoadmap(request).get();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<RoadmapDetailedResponse> callCreateOrUpdateRoadmapDetailedAsync(String token, String userId, String roadmapId, String language, String prompt, boolean asUserSpecific) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         RoadmapDetailedRequest request = RoadmapDetailedRequest.newBuilder()
                 .setUserId(userId)
                 .setRoadmapId(roadmapId)
@@ -604,25 +492,14 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                RoadmapDetailedResponse response = stub.createOrUpdateRoadmapDetailed(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                return response;
+                return getStubWithAuth(token).createOrUpdateRoadmapDetailed(request).get();
             } catch (Exception e) {
-                log.error("gRPC call to createOrUpdateRoadmapDetailed failed", e);
-                if (e.getCause() instanceof StatusRuntimeException sre) {
-                    throw new AppException(ErrorCode.GRPC_SERVICE_ERROR);
-                }
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<CourseQualityResponse> callAnalyzeCourseQualityAsync(String token, String courseId, List<String> lessonIds) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         CourseQualityRequest request = CourseQualityRequest.newBuilder()
                 .setCourseId(courseId)
                 .addAllLessonIds(lessonIds)
@@ -630,21 +507,14 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                CourseQualityResponse response = stub.analyzeCourseQuality(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                return response;
+                return getStubWithAuth(token).analyzeCourseQuality(request).get();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }
 
     public CompletableFuture<RefundDecisionResponse> callRefundDecisionAsync(String token, String transactionId, String userId, String courseId, String reasonText) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
         RefundDecisionRequest request = RefundDecisionRequest.newBuilder()
                 .setTransactionId(transactionId)
                 .setUserId(userId)
@@ -654,13 +524,9 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                RefundDecisionResponse response = stub.refundDecision(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                return response;
+                return getStubWithAuth(token).refundDecision(request).get();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
             }
         });
     }

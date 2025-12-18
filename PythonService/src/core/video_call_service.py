@@ -17,7 +17,6 @@ async def start_or_join_call(session: AsyncSession, room_id: str, user_id: str):
         room_uuid = uuid.UUID(str(room_id))
         user_uuid = uuid.UUID(str(user_id))
 
-        # 1. Tìm cuộc gọi đang active (Bao gồm cả WAITING và ONGOING)
         stmt = select(VideoCall).where(
             and_(
                 VideoCall.room_id == room_uuid,
@@ -33,7 +32,6 @@ async def start_or_join_call(session: AsyncSession, room_id: str, user_id: str):
         active_call = result.scalar_one_or_none()
 
         if not active_call:
-            # 2. Tạo mới nếu chưa có
             logger.info(f"Creating NEW call for room {room_id}")
             new_call = VideoCall(
                 video_call_id=uuid.uuid4(),
@@ -48,7 +46,6 @@ async def start_or_join_call(session: AsyncSession, room_id: str, user_id: str):
             await session.refresh(new_call) # Refresh để lấy data mới nhất
             return new_call
         else:
-            # 3. Nếu đã có, đảm bảo status là ONGOING
             logger.info(f"Joining EXISTING call {active_call.video_call_id}")
             if active_call.status != VideoCallStatus.ONGOING:
                 active_call.status = VideoCallStatus.ONGOING
@@ -72,7 +69,6 @@ async def end_call_if_empty(session: AsyncSession, room_id: str):
     try:
         room_uuid = uuid.UUID(str(room_id))
         
-        # Tìm các cuộc gọi chưa kết thúc trong phòng
         stmt = select(VideoCall).where(
             and_(
                 VideoCall.room_id == room_uuid,

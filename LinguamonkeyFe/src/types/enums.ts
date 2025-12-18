@@ -152,7 +152,8 @@ export enum DifficultyLevel {
     B2 = "B2",
     C1 = "C1",
     C2 = "C2",
-    BEGINNER = "BEGINNER"
+    BEGINNER = "BEGINNER",
+    EASY = "EASY"
 }
 
 export enum EventType {

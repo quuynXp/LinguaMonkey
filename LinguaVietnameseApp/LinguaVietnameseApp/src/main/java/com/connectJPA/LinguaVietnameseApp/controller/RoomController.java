@@ -19,6 +19,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Locale;
@@ -27,6 +28,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/rooms")
 @RequiredArgsConstructor
+@Slf4j
 public class RoomController {
     private final RoomService roomService;
     private final MessageSource messageSource;
@@ -52,6 +54,12 @@ public class RoomController {
             @RequestParam(required = false) RoomPurpose purpose,
             @RequestParam(required = false) RoomType roomType,
             Pageable pageable) {
+        if (roomName != null) {
+                log.info("=== DEBUG roomName ===");
+                log.info("Type: {}", roomName.getClass().getName());
+                log.info("Value: {}", roomName);
+                log.info("Bytes: {}", java.util.Arrays.toString(roomName.getBytes()));
+        }
         Page<RoomResponse> rooms = roomService.getAllRooms(roomName, creatorId, purpose, roomType, pageable);
         return AppApiResponse.<Page<RoomResponse>>builder()
                 .code(200)

@@ -8,6 +8,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.MemberResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.ChatMessage;
+import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
@@ -22,6 +23,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.RoomMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.ChatMessageRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
@@ -54,6 +56,7 @@ public class RoomServiceImpl implements RoomService {
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
+    private final CourseRepository courseRepository; 
     private final RoomMapper roomMapper;
     private final UserMapper userMapper;
     private final ChatMessageRepository chatMessageRepository;
@@ -126,7 +129,7 @@ public class RoomServiceImpl implements RoomService {
             response.setMemberCount((int) memberCount);
             response.setSecretKey(room.getSecretKey());
 
-            if (room.getRoomType() == RoomType.PRIVATE) {
+            if (room.getRoomType() == RoomType.PRIVATE && room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
                 List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId());
                 Optional<RoomMember> partnerOpt = members.stream()
                         .filter(m -> !m.getId().getUserId().equals(userId))
@@ -166,8 +169,7 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional(readOnly = true)
     public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
-        UUID currentUserId = getCurrentUserUUID();
-        Page<Room> rooms = roomRepository.findAllPublicRoomsWithPriority(roomName, creatorId, purpose, roomType, currentUserId, pageable);
+        Page<Room> rooms = roomRepository.findRoomsSimple(roomName, creatorId, purpose, roomType, pageable);
 
         return rooms.map(room -> {
             RoomResponse response = roomMapper.toResponse(room);
@@ -198,7 +200,7 @@ public class RoomServiceImpl implements RoomService {
                     .purpose(RoomPurpose.COURSE_CHAT)
                     .roomType(RoomType.PUBLIC)
                     .roomCode(generateUniqueRoomCode())
-                    .secretKey(aesUtils.generateRoomKey()) // Generates Key
+                    .secretKey(aesUtils.generateRoomKey()) 
                     .isDeleted(false)
                     .createdAt(OffsetDateTime.now())
                     .updatedAt(OffsetDateTime.now())
@@ -252,8 +254,9 @@ public class RoomServiceImpl implements RoomService {
         room.setRoomCode(generateUniqueRoomCode());
         room.setUpdatedAt(OffsetDateTime.now());
         
-        if (room.getRoomType() != RoomType.PRIVATE) {
-            room.setSecretKey(aesUtils.generateRoomKey()); // Generates Key
+        // Fix logic: Nếu là PRIVATE nhưng không phải chat 1-1 (tức là Quiz/Group có pass), vẫn cần tạo Secret Key
+        if (room.getRoomType() != RoomType.PRIVATE || room.getPurpose() != RoomPurpose.PRIVATE_CHAT) {
+            room.setSecretKey(aesUtils.generateRoomKey()); 
         }
         
         room = roomRepository.save(room);
@@ -311,19 +314,19 @@ public class RoomServiceImpl implements RoomService {
 
             if (existingRooms.size() > 1) {
                 for (Room r : existingRooms) {
-                     Optional<ChatMessage> lastMsg = chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(r.getRoomId());
-                     if (lastMsg.isPresent()) {
-                         OffsetDateTime msgTime = lastMsg.get().getId().getSentAt();
-                         if (maxTime == null || msgTime.isAfter(maxTime)) {
-                             maxTime = msgTime;
-                             selectedRoom = r;
-                         }
-                     } else {
-                         if (r.getUpdatedAt() != null && (maxTime == null || r.getUpdatedAt().isAfter(maxTime))) {
-                             maxTime = r.getUpdatedAt();
-                             selectedRoom = r;
-                         }
-                     }
+                      Optional<ChatMessage> lastMsg = chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(r.getRoomId());
+                      if (lastMsg.isPresent()) {
+                          OffsetDateTime msgTime = lastMsg.get().getId().getSentAt();
+                          if (maxTime == null || msgTime.isAfter(maxTime)) {
+                              maxTime = msgTime;
+                              selectedRoom = r;
+                          }
+                      } else {
+                          if (r.getUpdatedAt() != null && (maxTime == null || r.getUpdatedAt().isAfter(maxTime))) {
+                              maxTime = r.getUpdatedAt();
+                              selectedRoom = r;
+                          }
+                      }
                 }
             }
             restoreMemberIfDeleted(selectedRoom, userId1);
@@ -445,7 +448,7 @@ public class RoomServiceImpl implements RoomService {
 
         if (!room.getCreatorId().equals(currentUserId)) {
              RoomMember requester = roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, currentUserId)
-                           .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
+                            .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
              if(!Boolean.TRUE.equals(requester.getIsAdmin())) {
                  throw new AppException(ErrorCode.UNAUTHORIZED);
              }
@@ -599,11 +602,69 @@ public class RoomServiceImpl implements RoomService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public RoomResponse getCourseRoomByCourseId(UUID courseId) {
         if (courseId == null) throw new AppException(ErrorCode.INVALID_KEY);
-        Room room = roomRepository.findByCourseIdAndIsDeletedFalse(courseId)
-                .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+        
+        Optional<Room> roomOpt = roomRepository.findByCourseIdAndIsDeletedFalse(courseId);
+        Room room;
+
+        if (roomOpt.isPresent()) {
+            room = roomOpt.get();
+        } else {
+            // Lazy create room if not found
+            // Fetch Course info from CourseRepository
+            Course course = courseRepository.findByCourseIdAndIsDeletedFalse(courseId)
+                    .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
+
+            UUID creatorId = course.getCreatorId();
+            User creator = userRepository.findByUserIdAndIsDeletedFalse(creatorId)
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+            room = Room.builder()
+                    .roomName("Course: " + course.getTitle()) 
+                    .creatorId(creatorId)
+                    .courseId(courseId)
+                    .maxMembers(500)
+                    .purpose(RoomPurpose.COURSE_CHAT)
+                    .roomType(RoomType.PUBLIC)
+                    .roomCode(generateUniqueRoomCode())
+                    .secretKey(aesUtils.generateRoomKey())
+                    .isDeleted(false)
+                    .createdAt(OffsetDateTime.now())
+                    .updatedAt(OffsetDateTime.now())
+                    .build();
+            room = roomRepository.save(room);
+
+            // Add Creator as Admin
+            RoomMember adminMember = RoomMember.builder()
+                    .id(new RoomMemberId(room.getRoomId(), creatorId))
+                    .room(room)
+                    .user(creator)
+                    .role(RoomRole.ADMIN)
+                    .isAdmin(true)
+                    .joinedAt(OffsetDateTime.now())
+                    .build();
+            roomMemberRepository.save(adminMember);
+
+            // If the current user (viewer) is NOT the creator, add them as a MEMBER
+            UUID currentUserId = getCurrentUserUUID();
+            if (currentUserId != null && !currentUserId.equals(creatorId)) {
+                User currentUser = userRepository.findByUserIdAndIsDeletedFalse(currentUserId)
+                        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+                RoomMember member = RoomMember.builder()
+                        .id(new RoomMemberId(room.getRoomId(), currentUserId))
+                        .room(room)
+                        .user(currentUser)
+                        .role(RoomRole.MEMBER)
+                        .isAdmin(false)
+                        .joinedAt(OffsetDateTime.now())
+                        .build();
+                roomMemberRepository.save(member);
+            }
+        }
+        
         RoomResponse response = toRoomResponseWithMembers(room);
         userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
                 .ifPresent(creator -> {
@@ -634,7 +695,8 @@ public class RoomServiceImpl implements RoomService {
             throw new AppException(ErrorCode.EXCEEDS_MAX_MEMBERS);
         }
 
-        if (room.getRoomType() == RoomType.PRIVATE) {
+        // Fix logic: Check password nếu room có password, không phụ thuộc cứng vào RoomType (để cover trường hợp Group Private)
+        if (StringUtils.hasText(room.getPassword())) {
             if (!StringUtils.hasText(request.getPassword()) || !request.getPassword().equals(room.getPassword())) {
                 throw new AppException(ErrorCode.INVALID_PASSWORD);
             }

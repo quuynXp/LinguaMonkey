@@ -3,7 +3,6 @@ import json
 import google.generativeai as genai
 from google.ai.generativelanguage_v1beta.types import content
 
-# Cấu hình Model Gemini (Dùng Flash cho nhanh và rẻ)
 MATCHMAKING_MODEL = "gemini-2.5-flash"
 
 async def match_users_with_gemini(current_user_id, current_prefs, candidates):
@@ -13,7 +12,6 @@ async def match_users_with_gemini(current_user_id, current_prefs, candidates):
     if not candidates:
         return None, "No candidates available"
 
-    # 1. Chuẩn bị dữ liệu JSON để gửi cho AI
     user_profile = {
         "id": current_user_id,
         "native": current_prefs.native_language,
@@ -25,7 +23,6 @@ async def match_users_with_gemini(current_user_id, current_prefs, candidates):
 
     candidates_list = []
     for cand in candidates:
-        # Bỏ qua chính mình nếu lỡ có trong list
         if cand.user_id == current_user_id:
             continue
             
@@ -41,8 +38,6 @@ async def match_users_with_gemini(current_user_id, current_prefs, candidates):
     if not candidates_list:
         return None, "No valid candidates after filtering"
 
-    # 2. Tạo Prompt cho Gemini
-    # Yêu cầu trả về JSON thuần túy
     prompt = f"""
     Role: You are an expert Matchmaker for a language exchange app.
     
@@ -68,7 +63,6 @@ async def match_users_with_gemini(current_user_id, current_prefs, candidates):
 
     try:
         model = genai.GenerativeModel(MATCHMAKING_MODEL)
-        # Gọi Gemini (không stream để lấy trọn JSON)
         response = await model.generate_content_async(
             prompt,
             generation_config={"response_mime_type": "application/json"}

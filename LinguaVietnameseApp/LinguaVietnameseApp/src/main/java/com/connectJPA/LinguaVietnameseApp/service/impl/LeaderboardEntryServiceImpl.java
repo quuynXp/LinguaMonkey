@@ -21,7 +21,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.UUID;
@@ -36,6 +39,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
     private final LeaderboardEntryMapper leaderboardEntryMapper;
     private final UserRepository userRepository;
     private final LeaderboardRepository leaderboardRepository;
+    private final PlatformTransactionManager transactionManager;
 
     private LeaderboardEntryResponse mapToResponseWithUserInfo(LeaderboardEntry entry) {
         LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
@@ -47,7 +51,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             dto.setLevel(u.getLevel());
             dto.setGender(u.getGender());
             dto.setExp(u.getExp());
-            dto.setCountry(u.getCountry()); // Map EXP từ User để hiển thị riêng
+            dto.setCountry(u.getCountry());
         }
         return dto;
     }
@@ -56,9 +60,8 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
     public Page<LeaderboardEntryResponse> getAllLeaderboardEntries(String leaderboardId, Pageable pageable) {
         try {
             if (pageable == null) throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            if (leaderboardId == null || leaderboardId.trim().isEmpty()) throw new AppException(ErrorCode.INVALID_KEY);
-
             UUID leaderboardUuid = UUID.fromString(leaderboardId);
+            
             Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
 
@@ -69,10 +72,9 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
                 entries = leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardUuid, unsortedPageable);
             } else {
-                Pageable effectivePageable = pageable;
-                if (pageable.getSort().isUnsorted()) {
-                    effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "score"));
-                }
+                Pageable effectivePageable = pageable.getSort().isUnsorted() 
+                    ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "score"))
+                    : pageable;
                 entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid, effectivePageable);
             }
 
@@ -92,15 +94,9 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             LeaderboardEntryResponse response = mapToResponseWithUserInfo(entry);
 
             Leaderboard leaderboard = entry.getLeaderboard();
-            Integer rank;
-
-            if ("global".equalsIgnoreCase(leaderboard.getTab())) {
-                User u = entry.getUser();
-                rank = leaderboardEntryRepository.calculateRankByLevelAndExp(leaderboardId, u.getLevel(), u.getExp());
-            } else {
-                // For Hours, Coins, Admire - mapped to 'score'
-                rank = leaderboardEntryRepository.calculateRankByScore(leaderboardId, entry.getScore());
-            }
+            Integer rank = "global".equalsIgnoreCase(leaderboard.getTab())
+                ? leaderboardEntryRepository.calculateRankByLevelAndExp(leaderboardId, entry.getUser().getLevel(), entry.getUser().getExp())
+                : leaderboardEntryRepository.calculateRankByScore(leaderboardId, entry.getScore());
 
             response.setRank(rank != null ? rank : 0);
             return response;
@@ -111,171 +107,118 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
     }
 
     @Override
-    @Transactional
     public LeaderboardEntry ensureEntryExists(UUID userId, UUID leaderboardId) {
         return leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
-                .orElseGet(() -> {
-                    User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
-                            .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-                    
-                    Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId)
-                            .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+                .orElseGet(() -> createEntryInNewTransaction(userId, leaderboardId));
+    }
 
-                    LeaderboardEntry newEntry = new LeaderboardEntry();
-                    newEntry.setLeaderboardEntryId(new LeaderboardEntryId(leaderboardId, userId));
-                    newEntry.setUser(user);
-                    newEntry.setLeaderboard(leaderboard);
-                    
-                    if ("coins".equalsIgnoreCase(leaderboard.getTab())) {
-                        newEntry.setScore(user.getCoins());
-                    } else {
-                        newEntry.setScore(0);
-                    }
-                    
-                    newEntry.setDeleted(false);
-                    return leaderboardEntryRepository.save(newEntry);
-                });
+    private LeaderboardEntry createEntryInNewTransaction(UUID userId, UUID leaderboardId) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        try {
+            return template.execute(status -> {
+                User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+                
+                Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId)
+                        .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+
+                LeaderboardEntry newEntry = LeaderboardEntry.builder()
+                        .leaderboardEntryId(new LeaderboardEntryId(leaderboardId, userId))
+                        .user(user)
+                        .leaderboard(leaderboard)
+                        .score("coins".equalsIgnoreCase(leaderboard.getTab()) ? user.getCoins() : 0)
+                        .level(user.getLevel())
+                        .exp(user.getExp())
+                        .isDeleted(false)
+                        .build();
+
+                return leaderboardEntryRepository.save(newEntry);
+            });
+        } catch (Exception e) {
+            return leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
+                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
+        }
     }
 
     @Override
     public LeaderboardEntryResponse getLeaderboardEntryByIds(UUID leaderboardId, Pageable pageable) {
-        try {
-            if (pageable == null) throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            if (leaderboardId == null) throw new AppException(ErrorCode.INVALID_KEY);
+        if (leaderboardId == null || pageable == null) throw new AppException(ErrorCode.INVALID_KEY);
 
-            Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId)
-                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
-            
-            String tab = leaderboard.getTab();
-            Page<LeaderboardEntry> entries;
+        Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId)
+                .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+        
+        Page<LeaderboardEntry> entries = "global".equalsIgnoreCase(leaderboard.getTab())
+            ? leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardId, PageRequest.of(pageable.getPageNumber(), pageable.getPageSize()))
+            : leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId, pageable);
 
-            if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
-                   Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
-                   entries = leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardId, unsortedPageable);
-            } else {
-                Pageable effectivePageable = pageable;
-                if (pageable.getSort().isUnsorted()) {
-                    effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "score"));
-                }
-                entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId, effectivePageable);
-            }
-
-            return entries.getContent().stream()
-                    .findFirst()
-                    .map(this::mapToResponseWithUserInfo)
-                    .orElse(null);
-
-        } catch (Exception e) {
-            log.error("Error while fetching leaderboard entry: {}", e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        return entries.getContent().stream()
+                .findFirst()
+                .map(this::mapToResponseWithUserInfo)
+                .orElse(null);
     }
 
     @Override
     @Transactional
     public LeaderboardEntryResponse createLeaderboardEntry(LeaderboardEntryRequest request) {
-        try {
-            if (request == null || request.getLeaderboardId() == null || request.getUserId() == null) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
+        LeaderboardEntry entry = leaderboardEntryMapper.toEntity(request);
+        entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId())
+                .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND)));
+        entry.setUser(userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
 
-            LeaderboardEntry entry = leaderboardEntryMapper.toEntity(request);
-            entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId())
-                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND)));
-            entry.setUser(userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
-
-            entry = leaderboardEntryRepository.save(entry);
-            return mapToResponseWithUserInfo(entry);
-        } catch (Exception e) {
-            log.error("Error while creating leaderboard entry: {}", e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        entry = leaderboardEntryRepository.save(entry);
+        return mapToResponseWithUserInfo(entry);
     }
 
     @Override
     @Transactional
     public LeaderboardEntryResponse updateLeaderboardEntry(UUID leaderboardId, UUID userId, LeaderboardEntryRequest request) {
-        try {
-            if (leaderboardId == null || userId == null || request == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+        LeaderboardEntry entry = leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
 
-            LeaderboardEntry entry = leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
-                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
-
-            leaderboardEntryMapper.updateEntityFromRequest(request, entry);
-            
-            entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId())
-                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND)));
-            entry.setUser(userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
-
-            entry = leaderboardEntryRepository.save(entry);
-            return mapToResponseWithUserInfo(entry);
-        } catch (Exception e) {
-            log.error("Error while updating leaderboard entry for {} and {}: {}", leaderboardId, userId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        leaderboardEntryMapper.updateEntityFromRequest(request, entry);
+        entry = leaderboardEntryRepository.save(entry);
+        return mapToResponseWithUserInfo(entry);
     }
 
     @Override
     @Transactional
     public void deleteLeaderboardEntry(UUID leaderboardId, UUID userId) {
-        try {
-            if (leaderboardId == null || userId == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
-            leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
-                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
+        leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
 
-            leaderboardEntryRepository.softDeleteByLeaderboardIdAndUserId(leaderboardId, userId);
-        } catch (Exception e) {
-            log.error("Error while deleting leaderboard entry for {} and {}: {}", leaderboardId, userId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        leaderboardEntryRepository.softDeleteByLeaderboardIdAndUserId(leaderboardId, userId);
     }
 
     @Override
     public List<LeaderboardEntryResponse> getTop3LeaderboardEntries(UUID leaderboardId) {
-        try {
-            if (leaderboardId == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
-
-            Pageable pageable = PageRequest.of(0, 3);
-            List<LeaderboardEntry> entries = leaderboardEntryRepository.findTop3ByLeaderboardIdOrderByUserLevelDesc(leaderboardId, pageable);
-
-            return entries.stream()
-                    .map(this::mapToResponseWithUserInfo)
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            log.error("Error while fetching top 3 leaderboard entries for {}: {}", leaderboardId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        Pageable pageable = PageRequest.of(0, 3);
+        return leaderboardEntryRepository.findTop3ByLeaderboardIdOrderByUserLevelDesc(leaderboardId, pageable)
+                .stream()
+                .map(this::mapToResponseWithUserInfo)
+                .collect(Collectors.toList());
     }
 
     @Override
     public List<LeaderboardEntryResponse> getTop3GlobalLeaderboardEntries() {
-        try {
-            Leaderboard leaderboard = leaderboardRepository.findMostRecentByTab("global")
-                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+        Leaderboard leaderboard = leaderboardRepository.findMostRecentByTab("global")
+                .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
 
-            return getTop3LeaderboardEntries(leaderboard.getLeaderboardId());
-        } catch (AppException e) {
-            if (e.getErrorCode() == ErrorCode.LEADERBOARD_NOT_FOUND) {
-                log.warn("Global leaderboard not found for Top 3.");
-                return List.of();
-            }
-            throw e;
-        } catch (Exception e) {
-            log.error("Error while fetching top 3 global leaderboard entries: {}", e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        return getTop3LeaderboardEntries(leaderboard.getLeaderboardId());
     }
 
     @Override
     public Integer getRankForUserByTab(String tab, String type, UUID userId) {
         return leaderboardEntryRepository.findRankByUserAndTab(userId, tab);
+    }
+
+    @Override
+    @Transactional
+    public void updateScore(UUID leaderboardId, UUID userId, double score) {
+        LeaderboardEntry entry = ensureEntryExists(userId, leaderboardId);
+        entry.setScore((int) score);
+        leaderboardEntryRepository.save(entry);
     }
 }

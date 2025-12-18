@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
 AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION")
 
-# Chỉ hỗ trợ vi, en, zh như yêu cầu
 LANGUAGE_VOICE_MAP = {
     "en": "en-US-JennyNeural",
     "vi": "vi-VN-HoaiMyNeural",
@@ -31,7 +30,6 @@ else:
     logger.warning("Missing Azure Speech Credentials.")
 
 def _get_cache_key(text: str, voice_name: str) -> str:
-    # Hash text để làm key ngắn gọn
     text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
     return f"tts:{voice_name}:{text_hash}"
 
@@ -41,7 +39,6 @@ async def generate_tts(text: str, language: str, redis: Redis = None) -> tuple[b
 
     voice_name = LANGUAGE_VOICE_MAP.get(language, LANGUAGE_VOICE_MAP.get("en"))
     
-    # 1. Kiểm tra Cache (Tối ưu hóa giống Lexicon)
     if redis:
         try:
             cache_key = _get_cache_key(text, voice_name)
@@ -52,7 +49,6 @@ async def generate_tts(text: str, language: str, redis: Redis = None) -> tuple[b
         except Exception as e:
             logger.warning(f"Redis TTS Cache check failed: {e}")
 
-    # 2. Gọi Azure nếu không có Cache
     ssml = f"""
     <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{language}">
         <voice name="{voice_name}">
@@ -64,14 +60,11 @@ async def generate_tts(text: str, language: str, redis: Redis = None) -> tuple[b
     try:
         speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
         
-        # Azure SDK call is synchronous/blocking, wrapping logic needs careful consideration in high-load async
-        # For simplicity in Fastapi, we assume it's acceptable or run in threadpool if strictly needed
         result = speech_synthesizer.speak_ssml_async(ssml).get()
 
         if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
             audio_data = result.audio_data
             
-            # 3. Lưu vào Cache (TTL 24 giờ)
             if redis and audio_data:
                 try:
                     await redis.set(cache_key, audio_data, ex=86400)

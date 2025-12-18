@@ -1,5 +1,5 @@
 server:
-  port: ${SERVER_PORT:${PORT:10000}}
+  port: ${PORT:10000}
   address: 0.0.0.0
   tomcat:
     connection-timeout: 1200000
@@ -7,7 +7,6 @@ server:
     threads:
       max: 200
       min-spare: 10
-  shutdown: graceful
 
 spring:
   datasource:
@@ -23,11 +22,11 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      ddl-auto: none
-    show-sql: true
+      ddl-auto: update
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
 
   data:
     redis:
@@ -116,7 +115,7 @@ google:
 
 grpc:
   server:
-    port: ${GRPC_SERVER_PORT:${GRPC_PORT:9091}}
+    port: ${GRPC_PORT:9091}
     address: 0.0.0.0
   client:
     learning-service:
@@ -155,13 +154,15 @@ management:
 # Logging
 logging:
   level:
-    root: INFO
-    org.springframework: WARN
-    com.connectJPA.LinguaVietnameseApp: DEBUG
-    org.hibernate.SQL: DEBUG
-    com.google.auth: DEBUG
+    root: INFO # Root level là INFO để thấy log khởi chạy của Spring
+    org.springframework: WARN # Chỉ hiện cảnh báo/lỗi từ Framework
+    org.hibernate: WARN # Chỉ hiện lỗi từ Hibernate, tắt log SQL
+    org.hibernate.SQL: ERROR # Tắt hoàn toàn log query SQL
+    org.hibernate.type.descriptor.sql.BasicBinder: ERROR # Tắt log tham số truyền vào query
+    com.google.auth: WARN
+    com.connectJPA.LinguaVietnameseApp: INFO 
   pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 vip:
   price:
     monthly: 9.99

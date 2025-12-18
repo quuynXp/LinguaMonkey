@@ -23,7 +23,6 @@ from sqlalchemy.sql import func
 
 Base = declarative_base()
 
-# --- ENUMS ---
 
 class RoomPurpose(str, enum.Enum):
     QUIZ_TEAM = "QUIZ_TEAM"
@@ -33,20 +32,24 @@ class RoomPurpose(str, enum.Enum):
     AI_CHAT = "AI_CHAT"
     COURSE_CHAT = "COURSE_CHAT"
 
+
 class RoomStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     CLOSED = "CLOSED"
+
 
 class RoomType(str, enum.Enum):
     PUBLIC = "PUBLIC"
     PRIVATE = "PRIVATE"
     GROUP = "GROUP"
 
+
 class RoomTopic(str, enum.Enum):
     WORLD = "WORLD"
     VN = "VN"
     EN_LEARNING = "EN_LEARNING"
+
 
 class MessageType(str, enum.Enum):
     TEXT = "TEXT"
@@ -61,36 +64,28 @@ class VideoCallStatus(str, enum.Enum):
     ENDED = "ENDED"
     INITIATED = "INITIATED"
 
+
 class VideoCallType(str, enum.Enum):
     ONE_TO_ONE = "ONE_TO_ONE"
     GROUP = "GROUP"
+
 
 class VideoCall(Base):
     __tablename__ = "video_calls"
     __table_args__ = {"schema": "public"}
 
     video_call_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    room_id = Column(UUID(as_uuid=True), nullable=False) # Hoặc ForeignKey nếu cần
-    
-    # Người gọi và người nghe (có thể null nếu là Group call)
-    caller_id = Column(UUID(as_uuid=True), nullable=True) 
+    room_id = Column(UUID(as_uuid=True), nullable=False)
+    caller_id = Column(UUID(as_uuid=True), nullable=True)
     callee_id = Column(UUID(as_uuid=True), nullable=True)
-    
     video_call_type = Column(String(50), default=VideoCallType.ONE_TO_ONE)
     status = Column(String(50), default=VideoCallStatus.INITIATED, nullable=False)
-    
     start_time = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
     end_time = Column(TIMESTAMP(timezone=True), nullable=True)
-    
-    # duration thường được tính toán khi query, nhưng nếu muốn lưu cứng:
-    # duration = Column(String(50), nullable=True) 
-    
     quality_metrics = Column(JSONB, default={})
-    
     created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
     updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-# --- CORE TABLES ---
+
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -101,18 +96,39 @@ class Room(Base):
     course_id = Column(UUID(as_uuid=True), nullable=True)
     creator_id = Column(UUID(as_uuid=True), nullable=True)
     max_members = Column(Integer, nullable=False, default=2)
-
-    purpose = Column(String(50), nullable=True)
-    topic = Column(String(50), nullable=True)
+    purpose = Column(String(50))
+    topic = Column(String(50))
     room_type = Column(String(50), nullable=False, default="PRIVATE")
     status = Column(String(50), nullable=False, default="ACTIVE")
-
-    room_code = Column(String(6), unique=True, nullable=True)
-    password = Column(String(255), nullable=True)
-    content = Column(Text, nullable=True)
-
+    room_code = Column(String(6), unique=True)
+    password = Column(String(255))
+    content = Column(Text)
+    secret_key = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_deleted = Column(Boolean, default=False)
+
+    members = relationship("RoomMember", back_populates="room")
+
+
+class RoomMember(Base):
+    __tablename__ = "room_members"
+    __table_args__ = (
+        PrimaryKeyConstraint("room_id", "user_id"),
+        {"schema": "public"}
+    )
+
+    room_id = Column(UUID(as_uuid=True), ForeignKey("public.rooms.room_id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), nullable=False)
+    role = Column(String(50))
+    joined_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    end_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    is_admin = Column(Boolean, default=False)
+    nick_name_in_rom = Column(String(255))
+    is_deleted = Column(Boolean, default=False)
+
+    room = relationship("Room", back_populates="members")
+    user = relationship("User", back_populates="room_memberships")
 
 
 class TranslationLexicon(Base):
@@ -137,36 +153,39 @@ class ChatMessage(Base):
     room_id = Column(UUID(as_uuid=True), ForeignKey("public.rooms.room_id"))
     sender_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"))
     message_type = Column(String(20))
-    sent_at = Column(
-        TIMESTAMP(timezone=True), default=datetime.utcnow, primary_key=True
-    )
+    sent_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, primary_key=True)
     translations = Column(JSONB, default={})
 
 
-class Users(Base):
+class User(Base):
     __tablename__ = "users"
     __table_args__ = {"schema": "public"}
 
     user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), unique=True)
+    email = Column(String(255), unique=True, nullable=False)
     fullname = Column(String(255))
     nickname = Column(String(50))
+    bio = Column(Text)
+    phone = Column(String(20), unique=True)
     avatar_url = Column(String(255))
-    native_language_code = Column(
-        String(2), ForeignKey("public.languages.language_code")
-    )
+    native_language_code = Column(String(10))
+    country = Column(String(50))
     level = Column(Integer, default=1)
     exp = Column(Integer, default=0)
     streak = Column(Integer, default=0)
-    bio = Column(String(255))
+    coins = Column(Integer, default=0)
     proficiency = Column(String(50))
     last_active_at = Column(TIMESTAMP(timezone=True))
+    is_deleted = Column(Boolean, default=False)
+    latest_improvement_suggestion = Column(Text)
+    last_suggestion_generated_at = Column(TIMESTAMP(timezone=True))
 
+    room_memberships = relationship("RoomMember", back_populates="user")
     languages = relationship("UserLanguages", back_populates="user")
     goals = relationship("UserGoals", back_populates="user")
     interests = relationship("UserInterests", back_populates="user")
-    roadmaps = relationship("UserRoadmaps", back_populates="user")
     lesson_progress = relationship("LessonProgress", back_populates="user")
+    roadmaps = relationship("UserRoadmaps", back_populates="user")
 
 
 class Languages(Base):
@@ -180,16 +199,12 @@ class UserLanguages(Base):
     __tablename__ = "user_languages"
     __table_args__ = {"schema": "public"}
 
-    language_code = Column(
-        String(2), ForeignKey("public.languages.language_code"), primary_key=True
-    )
-    user_id = Column(
-        UUID(as_uuid=True), ForeignKey("public.users.user_id"), primary_key=True
-    )
+    language_code = Column(String(2), ForeignKey("public.languages.language_code"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), primary_key=True)
     proficiency_level = Column(String(50))
 
-    user = relationship("Users", back_populates="languages")
-    language = relationship("Languages", foreign_keys=[language_code])
+    user = relationship("User", back_populates="languages")
+    language = relationship("Languages")
 
 
 class UserGoals(Base):
@@ -203,7 +218,7 @@ class UserGoals(Base):
     target_skill = Column(String(50))
     custom_description = Column(Text)
 
-    user = relationship("Users", back_populates="goals")
+    user = relationship("User", back_populates="goals")
 
 
 class Interests(Base):
@@ -218,15 +233,11 @@ class UserInterests(Base):
     __tablename__ = "user_interests"
     __table_args__ = {"schema": "public"}
 
-    user_id = Column(
-        UUID(as_uuid=True), ForeignKey("public.users.user_id"), primary_key=True
-    )
-    interest_id = Column(
-        UUID(as_uuid=True), ForeignKey("public.interests.interest_id"), primary_key=True
-    )
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), primary_key=True)
+    interest_id = Column(UUID(as_uuid=True), ForeignKey("public.interests.interest_id"), primary_key=True)
 
-    user = relationship("Users", back_populates="interests")
-    interest = relationship("Interests", foreign_keys=[interest_id])
+    user = relationship("User", back_populates="interests")
+    interest = relationship("Interests")
 
 
 class Lessons(Base):
@@ -243,19 +254,15 @@ class LessonProgress(Base):
     __tablename__ = "lesson_progress"
     __table_args__ = {"schema": "public"}
 
-    lesson_id = Column(
-        UUID(as_uuid=True), ForeignKey("public.lessons.lesson_id"), primary_key=True
-    )
-    user_id = Column(
-        UUID(as_uuid=True), ForeignKey("public.users.user_id"), primary_key=True
-    )
+    lesson_id = Column(UUID(as_uuid=True), ForeignKey("public.lessons.lesson_id"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), primary_key=True)
     score = Column(Integer)
     completed_at = Column(TIMESTAMP(timezone=True))
     needs_review = Column(Boolean, default=False)
     updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
 
-    user = relationship("Users", back_populates="lesson_progress")
-    lesson = relationship("Lessons", foreign_keys=[lesson_id])
+    user = relationship("User", back_populates="lesson_progress")
+    lesson = relationship("Lessons")
 
 
 class Roadmaps(Base):
@@ -273,24 +280,21 @@ class UserRoadmaps(Base):
         PrimaryKeyConstraint("user_id", "roadmap_id"),
         {"schema": "public"}
     )
-    
+
     roadmap_id = Column(UUID(as_uuid=True), ForeignKey("public.roadmaps.roadmap_id"), primary_key=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), primary_key=True)
-    
     current_level = Column(Integer)
     target_level = Column(Integer)
     target_proficiency = Column(String(50))
     estimated_completion_time = Column(Integer)
-    completed_items = Column(Integer) 
+    completed_items = Column(Integer)
     status = Column(String(20), default="active")
     is_public = Column(Boolean, default=False, nullable=False)
     language = Column(String(50))
 
-    user = relationship("Users", back_populates="roadmaps")
-    roadmap = relationship("Roadmaps", foreign_keys=[roadmap_id])
+    user = relationship("User", back_populates="roadmaps")
+    roadmap = relationship("Roadmaps")
 
-
-# --- COURSE & ENROLLMENT TABLES ---
 
 class Course(Base):
     __tablename__ = "courses"
@@ -313,17 +317,12 @@ class CourseVersion(Base):
     title = Column(String, nullable=False)
     difficulty_level = Column(String)
     status = Column(String)
-
     created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
-    updated_at = Column(
-        TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
+    updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     is_deleted = Column(Boolean, default=False)
 
     course = relationship("Course", back_populates="versions")
-    enrollments = relationship(
-        "CourseVersionEnrollment", back_populates="course_version"
-    )
+    enrollments = relationship("CourseVersionEnrollment", back_populates="course_version")
 
 
 class CourseVersionEnrollment(Base):
@@ -331,16 +330,12 @@ class CourseVersionEnrollment(Base):
     __table_args__ = {"schema": "public"}
 
     enrollment_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), nullable=False) 
-    course_version_id = Column(
-        UUID(as_uuid=True), ForeignKey("public.course_versions.version_id"), nullable=False
-    )
-
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), nullable=False)
+    course_version_id = Column(UUID(as_uuid=True), ForeignKey("public.course_versions.version_id"), nullable=False)
     progress = Column(Float, default=0.0)
     status = Column(String)
-
     enrolled_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
     completed_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
     course_version = relationship("CourseVersion", back_populates="enrollments")
-    user = relationship("Users")
+    user = relationship("User")

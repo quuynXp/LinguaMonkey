@@ -23,15 +23,13 @@ public class RoomMember extends BaseEntity {
     @Column(name = "role")
     private RoomRole role;
 
-    // SỬA: Khai báo rõ ràng cột foreign key
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("roomId") // Maps trường 'roomId' trong RoomMemberId
+    @MapsId("roomId") 
     @JoinColumn(name = "room_id") 
     private Room room;
 
-    // SỬA: Khai báo rõ ràng cột foreign key
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("userId") // Maps trường 'userId' trong RoomMemberId
+    @MapsId("userId") 
     @JoinColumn(name = "user_id") 
     private User user;
 

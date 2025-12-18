@@ -15,15 +15,18 @@ import java.util.UUID;
 @AllArgsConstructor
 @Table(name = "lesson_questions")
 @SuperBuilder
+@EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true, exclude = "lesson")
 public class LessonQuestion extends BaseEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "lesson_question_id")
     private UUID lessonQuestionId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "lesson_id", referencedColumnName = "lesson_id")
-    private Lesson lesson; 
+    @JoinColumn(name = "lesson_id", referencedColumnName = "lesson_id", foreignKey = @ForeignKey(name = "FK_QUESTION_LESSON"))
+    private Lesson lesson;
 
     @Column(name = "question", columnDefinition = "TEXT")
     private String question;
@@ -58,7 +61,7 @@ public class LessonQuestion extends BaseEntity {
 
     @Column(name = "media_url", length = 500)
     private String mediaUrl;
-    
+
     @Column(name = "transcript", columnDefinition = "TEXT")
     private String transcript;
 
@@ -68,6 +71,9 @@ public class LessonQuestion extends BaseEntity {
 
     @Column(name = "correct_option", columnDefinition = "TEXT")
     private String correctOption;
+
+    @Column(name = "correct_answer", columnDefinition = "TEXT")
+    private String correctAnswer;
 
     @Column(name = "order_index")
     private Integer orderIndex;

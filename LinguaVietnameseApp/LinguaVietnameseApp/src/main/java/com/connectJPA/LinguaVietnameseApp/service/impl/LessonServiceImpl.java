@@ -11,6 +11,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.CourseLessonId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.CourseVersionLessonId;
+import com.connectJPA.LinguaVietnameseApp.entity.id.LeaderboardEntryId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressWrongItemsId;
 import com.connectJPA.LinguaVietnameseApp.enums.*;
@@ -36,7 +37,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -66,9 +70,11 @@ public class LessonServiceImpl implements LessonService {
     private final GrpcClientService grpcClientService;
     private final QuizQuestionMapper quizQuestionMapper;
     private final CourseVersionEnrollmentService courseEnrollmentService;
-
+    private final LeaderboardRepository leaderboardRepository;
+    private final LeaderboardEntryRepository leaderboardEntryRepository;
     private final DailyChallengeService dailyChallengeService;
     private final BadgeService badgeService;
+    private final PlatformTransactionManager transactionManager;
 
     @Override
     public Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters) {
@@ -333,7 +339,7 @@ public class LessonServiceImpl implements LessonService {
                                     .user(userRepository.getReferenceById(userId))
                                     .userId(userId)
                                     .enrolledAt(OffsetDateTime.now())
-                                    .status(CourseVersionEnrollmentStatus.IN_PROGRESS) // Set IN_PROGRESS để lần sau check status cũ cũng pass
+                                    .status(CourseVersionEnrollmentStatus.IN_PROGRESS) 
                                     .progress(0.0)
                                     .build();
                             courseVersionEnrollmentRepository.save(newEnrollment);
@@ -374,7 +380,6 @@ public class LessonServiceImpl implements LessonService {
             m.put("skillType", q.getSkillType());
             m.put("languageCode", q.getLanguageCode());
             m.put("optionsJson", q.getOptionsJson());
-            m.put("mediaUrl", q.getMediaUrl());
             return m;
         }).collect(Collectors.toList());
 
@@ -438,7 +443,8 @@ public class LessonServiceImpl implements LessonService {
         if (totalMax == 0) totalMax = 1; 
 
         int totalScore = 0;
-        List<LessonProgressWrongItem> wrongItems = new ArrayList<>();
+        List<LessonProgressWrongItem> currentWrongItems = new ArrayList<>();
+        List<String> currentWrongQuestionIds = new ArrayList<>();
 
         for (LessonQuestion q : questions) {
             String qid = q.getLessonQuestionId().toString();
@@ -469,19 +475,25 @@ public class LessonServiceImpl implements LessonService {
 
             if (correct) { totalScore += scoreGiven; } 
             else {
-                LessonProgressWrongItemsId wid = new LessonProgressWrongItemsId(); wid.setLessonId(lessonId); wid.setUserId(userId); wid.setLessonQuestionId(q.getLessonQuestionId()); wid.setAttemptNumber(attemptNumber);
-                wrongItems.add(LessonProgressWrongItem.builder().id(wid).wrongAnswer(userAnswerText).build());
+                LessonProgressWrongItemsId wid = new LessonProgressWrongItemsId(); 
+                wid.setLessonId(lessonId); 
+                wid.setUserId(userId); 
+                wid.setLessonQuestionId(q.getLessonQuestionId()); 
+                wid.setAttemptNumber(attemptNumber);
+                
+                currentWrongItems.add(LessonProgressWrongItem.builder().id(wid).wrongAnswer(userAnswerText).createdAt(OffsetDateTime.now()).updatedAt(OffsetDateTime.now()).isDeleted(false).build());
+                currentWrongQuestionIds.add(q.getLessonQuestionId().toString());
             }
         }
 
-        if (!wrongItems.isEmpty()) lessonProgressWrongItemRepository.saveAll(wrongItems);
+        if (!currentWrongItems.isEmpty()) lessonProgressWrongItemRepository.saveAll(currentWrongItems);
 
         float percent = ((float)totalScore / totalMax) * 100f;
-        
         LessonProgressId pid = new LessonProgressId(lessonId, userId);
-        LessonProgress lp = lessonProgressRepository.findById(pid)
-                .orElse(LessonProgress.builder().id(pid).score(0.0f).build()); 
+        Optional<LessonProgress> existingProgress = lessonProgressRepository.findById(pid);
+        boolean alreadyPassed = existingProgress.isPresent() && existingProgress.get().getScore() >= 50.0f;
         
+        LessonProgress lp = existingProgress.orElse(LessonProgress.builder().id(pid).score(0.0f).build()); 
         float currentHighestScore = lp.getScore();
 
         try { 
@@ -491,9 +503,7 @@ public class LessonServiceImpl implements LessonService {
         }
         lp.setAttemptNumber(attemptNumber);
         lp.setMaxScore(totalMax);
-        
-        boolean needsReview = questions.stream().anyMatch(q -> (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) && (percent < 100));
-        lp.setNeedsReview(needsReview);
+        lp.setNeedsReview(questions.stream().anyMatch(q -> (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) && (percent < 100)));
 
         if (percent > currentHighestScore) { 
             lp.setScore(percent);
@@ -501,10 +511,8 @@ public class LessonServiceImpl implements LessonService {
             lp.setScore(percent);
         }
         
-        if (percent >= 50) { 
-            if (lp.getCompletedAt() == null) {
-                lp.setCompletedAt(OffsetDateTime.now()); 
-            }
+        if (percent >= 50 && lp.getCompletedAt() == null) {
+            lp.setCompletedAt(OffsetDateTime.now()); 
         }
         
         lessonProgressRepository.saveAndFlush(lp);
@@ -516,64 +524,134 @@ public class LessonServiceImpl implements LessonService {
                 .relatedEntityId(lessonId)
                 .durationInSeconds(durationSeconds > 0 ? durationSeconds : lesson.getDurationSeconds()) 
                 .score(percent)
-                .maxScore((float)totalMax)
+                .maxScore(100.0f) 
                 .details("Completed lesson with score: " + percent)
                 .createdAt(OffsetDateTime.now())
+                .isDeleted(false)
                 .build();
         userLearningActivityRepository.save(activity);
         
+        Integer expEarned = 0;
+        Integer coinsEarned = 0;
         User user = userRepository.findById(userId).orElse(null);
+
         if (user != null) {
             user.setLastActiveAt(OffsetDateTime.now());
-            if (percent >= 50) {
-               user.setExp(user.getExp() + lesson.getExpReward());
+            if (percent >= 50 && !alreadyPassed) {
+               expEarned = lesson.getExpReward();
+               coinsEarned = lesson.getExpReward();
+               user.setExp(user.getExp() + expEarned);
+               user.setCoins(user.getCoins() + coinsEarned); 
             }
             userRepository.save(user);
+            syncLeaderboardData(user, percent >= 50 && !alreadyPassed ? expEarned : 0);
         }
 
-        List<CourseVersionLesson> linkedVersions = courseVersionLessonRepository.findByLesson_LessonId(lessonId);
-        if (linkedVersions != null && !linkedVersions.isEmpty()) {
-            for (CourseVersionLesson cvl : linkedVersions) {
-                try {
-                    courseEnrollmentService.syncEnrollmentProgress(userId, cvl.getCourseVersion().getVersionId());
-                } catch (AppException e) {
-                   log.warn("Failed to sync progress for version: " + cvl.getCourseVersion().getVersionId(), e);
-                }
-            }
-        }
+        runIsolatedSideEffects(userId, lessonId, percent, lesson.getSkillTypes(), durationSeconds > 0 ? durationSeconds : lesson.getDurationSeconds());
 
-        if (percent >= 80) { 
-            dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
-            badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
-            ChallengeType skillChallenge = mapSkillToChallengeType(lesson.getSkillTypes());
-            if (skillChallenge != null) dailyChallengeService.updateChallengeProgress(userId, skillChallenge, 1);
-        }
-        
-        int minutes = (durationSeconds > 0 ? durationSeconds : lesson.getDurationSeconds()) / 60;
-        if (minutes > 0) {
-            dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LEARNING_TIME, minutes);
-        }
-
-        int progressPercent = computeProgressVsUserGoal(userId, lesson, percent);
         Map<String, Object> result = new HashMap<>();
         result.put("lessonId", lessonId); 
         result.put("totalScore", totalScore); 
         result.put("maxScore", totalMax); 
         result.put("percent", percent); 
         result.put("needsReview", lp.getNeedsReview()); 
-        result.put("progressPercent", progressPercent);
+        result.put("progressPercent", computeProgressVsUserGoal(userId, lesson, percent));
+        result.put("expEarned", expEarned);
+        result.put("coinsEarned", coinsEarned);
+        result.put("wrongQuestionIds", currentWrongQuestionIds);
+        
         return result;
+    }
+
+    private void runIsolatedSideEffects(UUID userId, UUID lessonId, float percent, SkillType skill, int duration) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        
+        try {
+            template.execute(status -> {
+                List<CourseVersionLesson> linkedVersions = courseVersionLessonRepository.findByLesson_LessonId(lessonId);
+                if (linkedVersions != null) {
+                    for (CourseVersionLesson cvl : linkedVersions) {
+                        try {
+                            courseEnrollmentService.syncEnrollmentProgress(userId, cvl.getCourseVersion().getVersionId());
+                        } catch (Exception ignored) {}
+                    }
+                }
+
+                if (percent >= 80) { 
+                    dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
+                    badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
+                    ChallengeType skillChallenge = mapSkillToChallengeType(skill);
+                    if (skillChallenge != null) dailyChallengeService.updateChallengeProgress(userId, skillChallenge, 1);
+                }
+                
+                int minutes = duration / 60;
+                if (minutes > 0) {
+                    dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LEARNING_TIME, minutes);
+                }
+                return null;
+            });
+        } catch (Exception e) {
+            log.warn("Isolated side effects failed: {}", e.getMessage());
+        }
+    }
+    
+    private void syncLeaderboardData(User user, int expEarned) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        
+        try {
+            template.execute(status -> {
+                try {
+                    List<Leaderboard> allLeaderboards = leaderboardRepository.findAllByIsDeletedFalse();
+                    for (Leaderboard lb : allLeaderboards) {
+                        LeaderboardEntry entry = leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(lb.getLeaderboardId(), user.getUserId())
+                            .orElseGet(() -> {
+                                LeaderboardEntry newEntry = new LeaderboardEntry();
+                                newEntry.setLeaderboardEntryId(new LeaderboardEntryId(lb.getLeaderboardId(), user.getUserId()));
+                                newEntry.setLeaderboard(lb);
+                                newEntry.setUser(user);
+                                newEntry.setScore(0);
+                                newEntry.setDeleted(false);
+                                return newEntry;
+                            });
+
+                        boolean isUpdated = false;
+                        if ("global".equalsIgnoreCase(lb.getTab()) || "country".equalsIgnoreCase(lb.getTab())) {
+                            entry.setExp(user.getExp()); 
+                            entry.setLevel(user.getLevel());
+                            entry.setScore(entry.getScore() + expEarned); 
+                            isUpdated = true;
+                        }
+                        else if ("coins".equalsIgnoreCase(lb.getTab())) {
+                            entry.setScore(user.getCoins()); 
+                            isUpdated = true;
+                        }
+
+                        if (isUpdated) {
+                            leaderboardEntryRepository.save(entry);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to sync leaderboard for user {}: {}", user.getUserId(), e.getMessage());
+                    status.setRollbackOnly();
+                }
+                return null;
+            });
+        } catch (Exception e) {
+             log.warn("Leaderboard sync failed silently: {}", e.getMessage());
+        }
     }
 
     private ChallengeType mapSkillToChallengeType(SkillType skill) {
         if (skill == null) return null;
-        switch (skill) {
-            case SPEAKING: return ChallengeType.SPEAKING_PRACTICE;
-            case LISTENING: return ChallengeType.LISTENING_PRACTICE;
-            case READING: return ChallengeType.READING_COMPREHENSION;
-            case WRITING: return ChallengeType.VOCABULARY_REVIEW; 
-            default: return null;
-        }
+        return switch (skill) {
+            case SPEAKING -> ChallengeType.SPEAKING_PRACTICE;
+            case LISTENING -> ChallengeType.LISTENING_PRACTICE;
+            case READING -> ChallengeType.READING_COMPREHENSION;
+            case WRITING -> ChallengeType.VOCABULARY_REVIEW;
+            default -> null;
+        };
     }
 
     private boolean checkDeterministicAnswer(LessonQuestion q, String userAnswerText) {
@@ -622,11 +700,7 @@ public class LessonServiceImpl implements LessonService {
         } 
         else if (q.getMediaUrl() != null && !q.getMediaUrl().isEmpty()) {
             mediaUrl = q.getMediaUrl();
-            if (q.getSkillType() == SkillType.LISTENING) {
-                mimeType = "audio/mpeg";
-            } else {
-                mimeType = "image/jpeg";
-            }
+            mimeType = (q.getSkillType() == SkillType.LISTENING) ? "audio/mpeg" : "image/jpeg";
         }
 
         try {
@@ -642,49 +716,31 @@ public class LessonServiceImpl implements LessonService {
     @Override
     @Transactional
     public void completeLesson(UUID lessonId, UUID userId, Integer score) {
-        try {
-            Lesson lesson = lessonRepository.findById(lessonId)
-                    .filter(l -> !l.isDeleted())
-                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-            
-            LessonProgress progress = LessonProgress.builder()
-                    .id(new LessonProgressId(lessonId, userId))
-                    .score(score != null ? score.floatValue() : 0.0f) 
-                    .completedAt(OffsetDateTime.now())
-                    .build();
-            
-            lessonProgressRepository.saveAndFlush(progress);
+        Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
+                .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
+        
+        LessonProgress progress = LessonProgress.builder()
+                .id(new LessonProgressId(lessonId, userId))
+                .score(score != null ? score.floatValue() : 0.0f) 
+                .completedAt(OffsetDateTime.now())
+                .build();
+        
+        lessonProgressRepository.saveAndFlush(progress);
 
-            UserLearningActivity activity = UserLearningActivity.builder()
-                    .userId(userId)
-                    .activityType(ActivityType.LESSON_COMPLETE)
-                    .relatedEntityId(lessonId)
-                    .durationInSeconds(lesson.getDurationSeconds()) 
-                    .createdAt(OffsetDateTime.now())
-                    .build();
-            userLearningActivityRepository.save(activity);
+        UserLearningActivity activity = UserLearningActivity.builder()
+                .userId(userId)
+                .activityType(ActivityType.LESSON_COMPLETE)
+                .relatedEntityId(lessonId)
+                .durationInSeconds(lesson.getDurationSeconds())
+                .score(score != null ? score.floatValue() : 0.0f)
+                .maxScore(100.0f)
+                .createdAt(OffsetDateTime.now())
+                .isDeleted(false)
+                .build();
+        userLearningActivityRepository.save(activity);
 
-            userService.updateExp(userId, lesson.getExpReward());
-            
-            dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
-            badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
-            
-            List<CourseVersionLesson> linkedVersions = courseVersionLessonRepository.findByLesson_LessonId(lessonId);
-            if (linkedVersions != null) {
-                for (CourseVersionLesson cvl : linkedVersions) {
-                    try {
-                        courseEnrollmentService.syncEnrollmentProgress(userId, cvl.getCourseVersion().getVersionId());
-                    } catch (AppException e) {
-                        log.warn("Failed to sync progress for version: " + cvl.getCourseVersion().getVersionId(), e);
-                    }
-                }
-            }
-
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        userService.updateExp(userId, lesson.getExpReward());
+        runIsolatedSideEffects(userId, lessonId, score != null ? score.floatValue() : 0.0f, lesson.getSkillTypes(), lesson.getDurationSeconds());
     }
 
     @Override
@@ -707,22 +763,14 @@ public class LessonServiceImpl implements LessonService {
     @Override
     public Page<LessonResponse> getLessonsByCertificateOrTopic(UUID categoryId, UUID subCategoryId, Pageable pageable) {
         try {
-            if (categoryId != null && !lessonCategoryRepository.existsById(categoryId)) {
-                throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
-            }
-            if (subCategoryId != null && !lessonSubCategoryRepository.existsById(subCategoryId)) {
-                throw new AppException(ErrorCode.LESSON_SUB_CATEGORY_NOT_FOUND);
-            }
+            if (categoryId != null && !lessonCategoryRepository.existsById(categoryId)) throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
+            if (subCategoryId != null && !lessonSubCategoryRepository.existsById(subCategoryId)) throw new AppException(ErrorCode.LESSON_SUB_CATEGORY_NOT_FOUND);
 
             Specification<Lesson> spec = (root, query, cb) -> {
                 query.distinct(true);
                 List<Predicate> predicates = new ArrayList<>();
-                if (categoryId != null) {
-                    predicates.add(cb.equal(root.get("lessonCategoryId"), categoryId));
-                }
-                if (subCategoryId != null) {
-                    predicates.add(cb.equal(root.get("lessonSubCategoryId"), subCategoryId));
-                }
+                if (categoryId != null) predicates.add(cb.equal(root.get("lessonCategoryId"), categoryId));
+                if (subCategoryId != null) predicates.add(cb.equal(root.get("lessonSubCategoryId"), subCategoryId));
                 predicates.add(cb.isFalse(root.get("isDeleted")));
                 return cb.and(predicates.toArray(new Predicate[0]));
             };
@@ -735,18 +783,14 @@ public class LessonServiceImpl implements LessonService {
     }
 
     private LessonResponse toLessonResponse(Lesson lesson) {
-        try {
-            SkillType skillType = lesson.getSkillTypes();
-            List<String> videoUrls = videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId())
-                    .stream().map(Video::getVideoUrl).collect(Collectors.toList());
+        SkillType skillType = lesson.getSkillTypes();
+        List<String> videoUrls = videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId())
+                .stream().map(Video::getVideoUrl).collect(Collectors.toList());
 
-            LessonResponse response = lessonMapper.toResponse(lesson);
-            response.setSkillTypes(skillType != null ? skillType : SkillType.READING);
-            response.setVideoUrls(videoUrls);
-            return response;
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        LessonResponse response = lessonMapper.toResponse(lesson);
+        response.setSkillTypes(skillType != null ? skillType : SkillType.READING);
+        response.setVideoUrls(videoUrls);
+        return response;
     }
 
     private int computeProgressVsUserGoal(UUID userId, Lesson lesson, float percentScore) {
@@ -779,28 +823,23 @@ public class LessonServiceImpl implements LessonService {
     @Override
     @Transactional
     public Lesson saveLessonForVersion(Lesson lesson, UUID versionId, Integer lessonIndex) {
-        try {
-            if (lesson.getLessonName() == null) lesson.setLessonName("Untitled Lesson " + UUID.randomUUID());
-            lesson.setDeleted(false);
-            Lesson savedLesson = lessonRepository.save(lesson);
+        if (lesson.getLessonName() == null) lesson.setLessonName("Untitled Lesson " + UUID.randomUUID());
+        lesson.setDeleted(false);
+        Lesson savedLesson = lessonRepository.save(lesson);
 
-            CourseVersionLessonId linkId = new CourseVersionLessonId(versionId, savedLesson.getLessonId());
-            CourseVersionLesson courseVersionLesson = CourseVersionLesson.builder()
-                    .id(linkId)
-                    .orderIndex(lessonIndex != null ? lessonIndex : 0)
-                    .build();
-            courseVersionLessonRepository.save(courseVersionLesson);
-            return savedLesson;
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        CourseVersionLessonId linkId = new CourseVersionLessonId(versionId, savedLesson.getLessonId());
+        CourseVersionLesson courseVersionLesson = CourseVersionLesson.builder()
+                .id(linkId)
+                .orderIndex(lessonIndex != null ? lessonIndex : 0)
+                .build();
+        courseVersionLessonRepository.save(courseVersionLesson);
+        return savedLesson;
     }
 
     @Override
     public QuizResponse generateTeamQuiz(String token, String topic) {
         try {
-            QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
-                    token, null, 30, "team", topic).get();
+            QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(token, null, 30, "team", topic).get();
             return quizQuestionMapper.toResponse(grpcResponse);
         } catch (InterruptedException | ExecutionException e) {
             if (e.getCause() instanceof AppException appEx) throw appEx;
@@ -812,8 +851,7 @@ public class LessonServiceImpl implements LessonService {
     public QuizResponse generateSoloQuiz(String token, UUID userId) {
         if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
         try {
-            QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
-                    token, userId.toString(), 15, "solo", null).get();
+            QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(token, userId.toString(), 15, "solo", null).get();
             return quizQuestionMapper.toResponse(grpcResponse);
         } catch (InterruptedException | ExecutionException e) {
             if (e.getCause() instanceof AppException appEx) throw appEx;
@@ -824,17 +862,11 @@ public class LessonServiceImpl implements LessonService {
     @Override
     @Transactional
     public void deleteLesson(UUID id) {
-        try {
-            Lesson lesson = lessonRepository.findById(id).filter(l -> !l.isDeleted())
-                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-            lesson.setDeleted(true);
-            lesson.setDeletedAt(OffsetDateTime.now());
-            lessonRepository.save(lesson);
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        Lesson lesson = lessonRepository.findById(id).filter(l -> !l.isDeleted())
+                .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
+        lesson.setDeleted(true);
+        lesson.setDeletedAt(OffsetDateTime.now());
+        lessonRepository.save(lesson);
     }
 
     @Override

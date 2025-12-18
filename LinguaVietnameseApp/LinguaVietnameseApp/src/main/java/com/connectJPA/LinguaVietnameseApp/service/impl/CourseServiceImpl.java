@@ -98,11 +98,9 @@ public class CourseServiceImpl implements CourseService {
             UUID courseId = response.getCourseId();
 
             try {
-                // Ensure room linkage is correctly fetched, handle if missing
                 roomRepository.findByCourseId(courseId)
                     .ifPresent(room -> response.setRoomId(room.getRoomId()));
             } catch (Exception e) {
-                // Log warning silently, continue enriching other fields
             }
 
             if (response.getCreatorId() != null) {
@@ -259,7 +257,6 @@ public class CourseServiceImpl implements CourseService {
         course.setTitle(request.getTitle());
         course.setCreatorId(request.getCreatorId());
         
-        // FIX: Initially set to PENDING so it doesn't show in public lists until approved/published
         course.setApprovalStatus(CourseApprovalStatus.PENDING);
         course = courseRepository.save(course); 
 
@@ -273,7 +270,6 @@ public class CourseServiceImpl implements CourseService {
         
         courseVersionRepository.save(version);
         
-        // Ensure enrichment tries to find room (likely null now, which is correct)
         return enrichCourseResponse(courseMapper.toResponse(course));
     }
 
@@ -299,19 +295,16 @@ public class CourseServiceImpl implements CourseService {
 
         if (request.getLessonIds() != null) {
             
-            // 1. Lấy danh sách CourseVersionLesson hiện tại
             List<CourseVersionLesson> existingCvlList = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(versionId);
             Map<UUID, CourseVersionLesson> existingCvlMap = existingCvlList.stream()
                     .collect(Collectors.toMap(cvl -> cvl.getLesson().getLessonId(), cvl -> cvl));
             
             List<UUID> newLessonIds = request.getLessonIds();
             
-            // 2. Xóa các CourseVersionLesson không còn trong danh sách mới
             existingCvlList.stream()
                     .filter(cvl -> !newLessonIds.contains(cvl.getLesson().getLessonId()))
                     .forEach(cvlRepository::delete);
             
-            // 3. Cập nhật/Tạo mới danh sách CourseVersionLesson
             List<CourseVersionLesson> updatedCvlList = new ArrayList<>();
             int order = 0;
 
@@ -325,23 +318,17 @@ public class CourseServiceImpl implements CourseService {
 
                 CourseVersionLesson cvl;
                 if (existingCvlMap.containsKey(lessonId)) {
-                    // Cập nhật thứ tự cho entity đã tồn tại
                     cvl = existingCvlMap.get(lessonId);
                     cvl.setOrderIndex(order++);
                 } else {
-                    // Tạo mới entity
                     cvl = new CourseVersionLesson(version, lesson, order++);
                 }
                 
-                // Thêm vào danh sách để lưu/cập nhật
                 updatedCvlList.add(cvl);
             }
             
-            // Lưu tất cả các CourseVersionLesson đã tạo/cập nhật
             cvlRepository.saveAll(updatedCvlList);
 
-            // 4. Cập nhật lại list lessons trong version entity
-            // FIX: Use clear() and addAll() to prevent "referenced by the owning entity instance" exception
             if (version.getLessons() == null) {
                 version.setLessons(new ArrayList<>(updatedCvlList));
             } else {
@@ -407,7 +394,6 @@ public class CourseServiceImpl implements CourseService {
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         courseRepository.save(course); 
 
-        // FIX: Ensure room exists when publishing first public version
         roomService.ensureCourseRoomExists(course.getCourseId(), course.getTitle(), course.getCreatorId());
 
         sendLearnerUpdateNotification(
@@ -525,20 +511,10 @@ public class CourseServiceImpl implements CourseService {
             courses = courseRepository.searchCoursesByKeyword(title, pageable);
         } 
         else {
+            // Modified: Logic to exclude enrolled/created courses has been removed.
+            // This ensures "Marketplace" lists all available courses, even if owned.
             List<UUID> excludedIds = new ArrayList<>();
             excludedIds.add(UUID.fromString("00000000-0000-0000-0000-000000000000"));
-
-            if (currentUserId != null) {
-                List<CourseVersionEnrollment> enrollments = courseEnrollmentRepository.findByUserIdAndIsDeletedFalse(currentUserId);
-                enrollments.forEach(e -> {
-                    if (e.getCourseVersion() != null && e.getCourseVersion().getCourseId() != null) {
-                        excludedIds.add(e.getCourseVersion().getCourseId());
-                    }
-                });
-
-                List<Course> createdCourses = courseRepository.findByCreatorIdAndIsDeletedFalse(currentUserId);
-                createdCourses.forEach(c -> excludedIds.add(c.getCourseId()));
-            }
 
             if (type == CourseType.FREE) {
                 courses = courseRepository.findAvailableFreeCourses(excludedIds, CourseApprovalStatus.APPROVED, pageable);
@@ -568,7 +544,6 @@ public class CourseServiceImpl implements CourseService {
             
             response = enrichCourseResponse(response);
             
-            // Override latestPublicVersion to match the discount context
             CourseVersionResponse vr = versionMapper.toResponse(version);
             if (vr.getPrice() == null) vr.setPrice(BigDecimal.ZERO);
             response.setLatestPublicVersion(vr);
@@ -752,7 +727,6 @@ public class CourseServiceImpl implements CourseService {
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         courseRepository.save(course);
         
-        // FIX: Ensure course room is created when approved
         roomService.ensureCourseRoomExists(course.getCourseId(), course.getTitle(), course.getCreatorId());
 
         NotificationRequest creatorNotif = NotificationRequest.builder()

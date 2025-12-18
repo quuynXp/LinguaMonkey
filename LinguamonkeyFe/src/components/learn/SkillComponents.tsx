@@ -9,6 +9,32 @@ import { getDirectMediaUrl } from "../../utils/mediaUtils";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const MediaPlayer = ({ mediaUrl }: { mediaUrl: string }) => {
+    const { t } = useTranslation();
+
+    const player = useVideoPlayer(mediaUrl, (player) => {
+        player.loop = false;
+        player.staysActiveInBackground = true;
+    });
+
+    return (
+        <View style={styles.mediaContainer}>
+            <VideoView
+                player={player}
+                style={styles.videoView}
+                contentFit="contain"
+                allowsFullscreen={true}
+                allowsPictureInPicture={true}
+                nativeControls={true}
+            />
+            <TouchableOpacity style={styles.audioButton} onPress={() => player.replay()}>
+                <Icon name="replay" size={20} color="#FFF" />
+                <Text style={styles.audioButtonText}>{t("action.replay") || "Replay"}</Text>
+            </TouchableOpacity>
+        </View>
+    );
+};
+
 export const UniversalQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
     const { t } = useTranslation();
     const [imgError, setImgError] = useState(false);
@@ -21,35 +47,15 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
         mediaUrl.endsWith('.mp3') ||
         mediaUrl.includes('export=view') ||
         mediaUrl.includes('export=download')
-    ) && (question.questionType === QuestionType.VIDEO || question.questionType === QuestionType.AUDIO);
+    ) && (question.questionType === QuestionType.VIDEO || question.questionType === QuestionType.AUDIO || question.questionType === QuestionType.SPEAKING);
 
     const isImage = mediaUrl && !isVideoOrAudio;
-
-    const player = useVideoPlayer(isVideoOrAudio ? mediaUrl : "", (player) => {
-        player.loop = false;
-        player.staysActiveInBackground = true;
-    });
 
     const renderMedia = () => {
         if (!mediaUrl) return null;
 
         if (isVideoOrAudio) {
-            return (
-                <View style={styles.mediaContainer}>
-                    <VideoView
-                        player={player}
-                        style={styles.videoView}
-                        contentFit="contain"
-                        allowsFullscreen={true}
-                        allowsPictureInPicture={true}
-                        nativeControls={true}
-                    />
-                    <TouchableOpacity style={styles.audioButton} onPress={() => player.replay()}>
-                        <Icon name="replay" size={20} color="#FFF" />
-                        <Text style={styles.audioButtonText}>{t("action.replay") || "Replay"}</Text>
-                    </TouchableOpacity>
-                </View>
-            );
+            return <MediaPlayer mediaUrl={mediaUrl} />;
         }
 
         if (isImage) {
@@ -67,15 +73,6 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
     };
 
     const renderTranscript = () => {
-        if (question.questionType === QuestionType.SPEAKING) {
-            return (
-                <View style={styles.speakingBox}>
-                    <Icon name="record-voice-over" size={48} color="#10B981" />
-                    <Text style={styles.transcriptText}>{question.transcript || question.question}</Text>
-                </View>
-            );
-        }
-
         if (question.transcript) {
             return (
                 <View style={styles.readingPassageBox}>
@@ -91,16 +88,8 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
     return (
         <View style={styles.container}>
             {renderMedia()}
-
             {renderTranscript()}
-
-            {question.questionType !== QuestionType.SPEAKING && (
-                <Text style={styles.questionText}>{question.question}</Text>
-            )}
-
-            {question.questionType === QuestionType.SPEAKING && (
-                <Text style={styles.questionText}>{t("quiz.readAloud") || "Read aloud"}</Text>
-            )}
+            <Text style={styles.questionText}>{question.question}</Text>
         </View>
     );
 };
@@ -171,24 +160,5 @@ const styles = StyleSheet.create({
         fontSize: 15,
         color: '#431407',
         lineHeight: 24
-    },
-    speakingBox: {
-        alignItems: 'center',
-        padding: 24,
-        backgroundColor: '#ECFDF5',
-        borderRadius: 16,
-        width: '100%',
-        borderWidth: 1,
-        borderColor: '#10B981',
-        borderStyle: 'dashed',
-        marginTop: 12
-    },
-    transcriptText: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: '#065F46',
-        marginTop: 12,
-        textAlign: 'center',
-        lineHeight: 30
-    },
+    }
 });

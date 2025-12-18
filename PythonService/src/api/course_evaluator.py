@@ -10,7 +10,6 @@ async def evaluate_course_structure(title: str, description: str, lessons: list)
     Returns: (rating, review_comment, error)
     """
     
-    # Construct a detailed prompt
     lesson_summary = "\n".join([
         f"- {l.lesson_title} (Type: {l.lesson_type}, Duration: {l.duration_seconds}s)" 
         for l in lessons
@@ -45,7 +44,6 @@ async def evaluate_course_structure(title: str, description: str, lessons: list)
         if error:
             return 0.0, "", error
 
-        # Parse JSON from response (remove markdown code blocks if any)
         cleaned_text = response_text.replace("```json", "").replace("```", "").strip()
         data = json.loads(cleaned_text)
         

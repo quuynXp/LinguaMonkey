@@ -23,10 +23,15 @@ public class MemorizationRequest {
 
     private String noteText;
 
-    private boolean isFavorite; // Jackson sẽ map với field "favorite" hoặc "isFavorite" tùy config, tốt nhất FE gửi "favorite"
+    private String definition;
+    private String example;
+    private String imageUrl;
+    private String audioUrl;
+
+    private boolean isFavorite;
 
     private boolean isReminderEnabled;
-    private String reminderTime; // Format "HH:mm"
+    private String reminderTime;
     private RepeatType repeatType;
     private String reminderTitle;
 }

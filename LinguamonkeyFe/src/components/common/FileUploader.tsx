@@ -1,80 +1,77 @@
 import React, { ReactNode, useState } from 'react';
-import { TouchableOpacity, Alert, ViewStyle, StyleProp } from 'react-native';
+import { TouchableOpacity, Alert, ViewStyle, StyleProp, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { uploadTemp } from '../../services/cloudinary';
 import { useTranslation } from 'react-i18next';
-// Đảm bảo đường dẫn import đúng với project của bạn
 import { validateFileSignature } from '../../utils/FileUtils';
+import { uploadTemp } from '../../services/cloudinary';
 
 type MediaType = 'image' | 'video' | 'audio' | 'document' | 'all';
 
 interface FileUploaderProps {
     onUploadStart?: () => void;
     onUploadEnd?: () => void;
-    onUploadSuccess: (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => void;
-    onUploadError?: (error: any) => void;
+    onUploadSuccess?: (result: any, type?: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => void;
+    onFileSelected?: (file: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => void;
+
     mediaType?: MediaType;
     style?: StyleProp<ViewStyle>;
     children: ReactNode;
     allowEditing?: boolean;
     maxSizeMB?: number;
-    maxDuration?: number;
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({
     onUploadStart,
     onUploadEnd,
     onUploadSuccess,
-    onUploadError,
+    onFileSelected,
     mediaType = 'all',
     style,
     children,
     allowEditing = false,
     maxSizeMB = 2048,
-    maxDuration = 7200,
 }) => {
     const { t } = useTranslation();
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Hàm validate đã được update thêm tham số uri
-    const validateFile = async (fileSize: number | undefined, duration: number | undefined, type: string, uri: string) => {
+    const validateFile = async (fileSize: number | undefined, type: string, uri: string) => {
         if (fileSize && fileSize > maxSizeMB * 1024 * 1024) {
             Alert.alert(t('common.error'), t('errors.fileTooLarge', { size: maxSizeMB }));
             return false;
         }
-
-        // FIX ERROR: Ép kiểu 'as any' để tránh lỗi TS nếu FileUtils yêu cầu strict literal
-        const isSafe = await validateFileSignature(uri, type as any);
-        if (!isSafe) {
-            Alert.alert(t('common.error'), "Định dạng file không hợp lệ hoặc có dấu hiệu giả mạo.");
-            return false;
+        try {
+            const isSafe = await validateFileSignature(uri, type as any);
+            if (!isSafe) {
+                Alert.alert(t('common.error'), "Định dạng file không hợp lệ.");
+                return false;
+            }
+        } catch (e) {
         }
         return true;
     };
 
-    const handleUpload = async (file: { uri: string; name: string; type: string }) => {
-        try {
-            setIsProcessing(true);
-            if (onUploadStart) onUploadStart();
-            const response = await uploadTemp(file);
+    const processFile = async (file: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => {
+        if (onFileSelected) {
+            onFileSelected(file, type);
+            return;
+        }
 
-            let msgType: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'DOCUMENT';
-            if (file.type.startsWith('image')) msgType = 'IMAGE';
-            else if (file.type.startsWith('video')) msgType = 'VIDEO';
-            else if (file.type.startsWith('audio')) msgType = 'AUDIO';
+        if (onUploadSuccess) {
+            try {
+                setIsProcessing(true);
+                if (onUploadStart) onUploadStart();
 
-            onUploadSuccess(response, msgType);
-        } catch (error) {
-            console.error('Upload failed:', error);
-            if (onUploadError) {
-                onUploadError(error);
-            } else {
-                Alert.alert(t('common.error'), t('errors.uploadFailed'));
+                const response = await uploadTemp(file);
+
+                onUploadSuccess(response, type);
+            } catch (error: any) {
+                console.error('Upload failed:', error);
+                Alert.alert(t('common.error'), error?.message || t('errors.uploadFailed'));
+            } finally {
+                setIsProcessing(false);
+                if (onUploadEnd) onUploadEnd();
             }
-        } finally {
-            setIsProcessing(false);
-            if (onUploadEnd) onUploadEnd();
         }
     };
 
@@ -86,40 +83,33 @@ const FileUploader: React.FC<FileUploaderProps> = ({
                 return;
             }
 
-            let mediaTypes: any;
-            if (mediaType === 'video') {
-                mediaTypes = ['videos'];
-            } else if (mediaType === 'image') {
-                mediaTypes = ['images'];
-            } else {
-                mediaTypes = ['images', 'videos'];
-            }
+            let allowedTypes = ImagePicker.MediaTypeOptions.All;
+            if (mediaType === 'image') allowedTypes = ImagePicker.MediaTypeOptions.Images;
+            if (mediaType === 'video') allowedTypes = ImagePicker.MediaTypeOptions.Videos;
 
             const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: mediaTypes,
+                mediaTypes: allowedTypes,
                 allowsEditing: allowEditing,
                 quality: 1,
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                const typeStr = asset.type === 'video' ? 'video/mp4' : 'image/jpeg';
 
-                // FIX ERROR: Thêm await và truyền đủ 4 tham số (bao gồm uri)
-                const isValid = await validateFile(
-                    asset.fileSize,
-                    asset.duration,
-                    asset.type || 'image',
-                    asset.uri // <-- Đã thêm
-                );
-
+                const isValid = await validateFile(asset.fileSize, asset.type || 'image', asset.uri);
                 if (!isValid) return;
 
-                const filePayload = {
+                const fileObj = {
                     uri: asset.uri,
                     name: asset.fileName || `upload_${Date.now()}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
-                    type: asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
+                    type: asset.mimeType || typeStr,
+                    duration: asset.duration,
+                    width: asset.width,
+                    height: asset.height
                 };
-                await handleUpload(filePayload);
+
+                await processFile(fileObj, asset.type === 'video' ? 'VIDEO' : 'IMAGE');
             }
         } catch (error) {
             console.error('Image picker error:', error);
@@ -130,12 +120,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     const pickDocument = async () => {
         try {
             let type = '*/*';
-            switch (mediaType) {
-                case 'video': type = 'video/*'; break;
-                case 'audio': type = 'audio/*'; break;
-                case 'document': type = 'application/*'; break;
-                default: type = '*/*';
-            }
+            if (mediaType === 'audio') type = 'audio/*';
+            if (mediaType === 'video') type = 'video/*';
 
             const result = await DocumentPicker.getDocumentAsync({
                 type,
@@ -145,22 +131,22 @@ const FileUploader: React.FC<FileUploaderProps> = ({
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
 
-                // FIX ERROR: Thêm await và truyền đủ 4 tham số (bao gồm uri)
-                const isValid = await validateFile(
-                    asset.size,
-                    undefined,
-                    asset.mimeType || 'application',
-                    asset.uri // <-- Đã thêm
-                );
-
+                const isValid = await validateFile(asset.size, asset.mimeType || 'application', asset.uri);
                 if (!isValid) return;
 
-                const filePayload = {
+                const fileObj = {
                     uri: asset.uri,
                     name: asset.name,
                     type: asset.mimeType || 'application/octet-stream',
+                    size: asset.size
                 };
-                await handleUpload(filePayload);
+
+                let msgType: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'DOCUMENT';
+                if (asset.mimeType?.startsWith('audio')) msgType = 'AUDIO';
+                else if (asset.mimeType?.startsWith('video')) msgType = 'VIDEO';
+                else if (asset.mimeType?.startsWith('image')) msgType = 'IMAGE';
+
+                await processFile(fileObj, msgType);
             }
         } catch (error) {
             console.error('Document picker error:', error);
@@ -170,15 +156,15 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
     const handlePress = () => {
         if (isProcessing) return;
-        if (mediaType === 'image' || mediaType === 'video' || mediaType === 'all') {
-            pickImage();
-        } else {
+        if (mediaType === 'document' || mediaType === 'audio') {
             pickDocument();
+        } else {
+            pickImage();
         }
     };
 
     return (
-        <TouchableOpacity onPress={handlePress} style={style} activeOpacity={0.7}>
+        <TouchableOpacity onPress={handlePress} style={style} activeOpacity={0.7} disabled={isProcessing}>
             {children}
         </TouchableOpacity>
     );

@@ -45,7 +45,6 @@ type LanguageOption = {
   flag: React.JSX.Element | null;
 };
 
-// --- Sub-View: List of Lessons for a specific Category ---
 const CategoryLessonsView = ({
   categoryId,
   categoryName,
@@ -96,12 +95,12 @@ const CategoryLessonsView = ({
           <Text style={[styles.lessonRowSubtitle, { color: '#F59E0B' }]}>
             {item.expReward || 10} XP
           </Text>
-          {item.durationSeconds && item.durationSeconds > 0 && (
+          {typeof item.durationSeconds === 'number' && item.durationSeconds > 0 ? (
             <>
               <View style={styles.dotSmall} />
               <Text style={styles.lessonRowSubtitle}>{Math.ceil(item.durationSeconds / 60)} mins</Text>
             </>
-          )}
+          ) : null}
         </View>
       </View>
       <View style={styles.playButtonSmall}>
@@ -137,7 +136,9 @@ const CategoryLessonsView = ({
                 <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMore} disabled={isFetching}>
                   {isFetching ? <ActivityIndicator color="#4F46E5" /> : <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>}
                 </TouchableOpacity>
-              ) : lessons.length > 0 ? <Text style={styles.endText}>{t("common.endOfList")}</Text> : null}
+              ) : lessons.length > 0 ? (
+                <Text style={styles.endText}>{t("common.endOfList")}</Text>
+              ) : null}
             </View>
           }
           ListEmptyComponent={
@@ -151,7 +152,6 @@ const CategoryLessonsView = ({
   );
 };
 
-// --- Language Selector Component ---
 const LearningLanguageSelector = ({
   selectedLanguage,
   onSelectLanguage,
@@ -184,17 +184,17 @@ const LearningLanguageSelector = ({
         <View style={styles.languageFlagWrapper}>
           {selectedLanguage.flag}
         </View>
-        {canExpand && (
+        {canExpand ? (
           <Icon
             name={isExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
             size={20}
             color="#4F46E5"
             style={{ marginLeft: 4 }}
           />
-        )}
+        ) : null}
       </TouchableOpacity>
 
-      {isExpanded && canExpand && (
+      {isExpanded && canExpand ? (
         <View style={styles.languageDropdown}>
           {learningLanguages.filter(lang => lang.code !== selectedLanguage.code).map((lang) => (
             <TouchableOpacity
@@ -211,24 +211,23 @@ const LearningLanguageSelector = ({
             </TouchableOpacity>
           ))}
         </View>
-      )}
+      ) : null}
     </View>
   );
 };
 
-// --- Sub-View: Top 10 Best Selling Courses ---
 const TopSellingCoursesList = ({
   t,
   onSeeAll,
   courses,
   isLoading,
-  navigation // FIX: Thêm navigation vào props
+  navigation
 }: {
-  t: ReturnType<typeof useTranslation>['t'];
+  t: any;
   onSeeAll: () => void;
   courses: CourseResponse[];
   isLoading: boolean;
-  navigation: any; // FIX: Thêm kiểu cho navigation
+  navigation: any;
 }) => {
   const handleCoursePress = (course: CourseResponse) => {
     gotoTab("CourseStack", "CourseDetailsScreen", { courseId: course.courseId });
@@ -290,14 +289,12 @@ const TopSellingCoursesList = ({
   );
 };
 
-
-const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigation }: any)
+const LearnScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const userStore = useUserStore();
   const isVip = userStore.vip;
   const { user, refreshUserProfile } = userStore;
 
-  // Hooks
   const { useEnrollments, useRecommendedCourses, useCreatorCourses, useTopSellingCourses } = useCourses();
   const { useCategories } = useLessonStructure();
 
@@ -327,7 +324,6 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
     }
   }, [learningLanguages]);
 
-  // Data Fetching
   const { data: enrolledData, isLoading: enrolledLoading, refetch: refetchEnrolled } = useEnrollments({
     userId: user?.userId,
     page: 0,
@@ -370,12 +366,10 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
 
   const topSellingCourses = useMemo(() => (topSellingData as CourseResponse[]) || [], [topSellingData]);
 
-  // FIX: Cập nhật điều hướng để truyền mode MARKETPLACE
   const handleSeeAllMarketplace = () => {
     navigation.navigate("StudentCoursesScreen", { mode: 'MARKETPLACE' });
   };
 
-  // FIX: Cập nhật điều hướng để truyền mode ENROLLED
   const handleSeeAllEnrolled = () => {
     navigation.navigate("StudentCoursesScreen", { mode: 'ENROLLED' });
   };
@@ -394,11 +388,7 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
 
   const handleMyCoursePress = (enrollment: CourseVersionEnrollmentResponse) => {
     const courseId = enrollment.course?.courseId || enrollment.courseVersion?.courseId;
-
-    if (!courseId) {
-      console.error("Course ID is undefined in enrollment", enrollment);
-      return;
-    }
+    if (!courseId) return;
 
     const creatorId = enrollment.course?.creatorId;
     const isCreator = user?.userId === creatorId;
@@ -459,8 +449,6 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
           showsVerticalScrollIndicator={false}
         >
-
-          {/* Banner Section - VIP Course / Creator Dashboard */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{isVip ? t("learn.creatorDashboardTitle", "Quản lý Khóa học") : t("learn.becomeCreator", "Trở thành Giảng viên")}</Text>
             <TouchableOpacity
@@ -473,7 +461,7 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
                 style={styles.certBigCardBg}
                 imageStyle={{ borderRadius: 16 }}
               >
-                {!isVip && <View style={styles.certDarkOverlay} />}
+                {!isVip ? <View style={styles.certDarkOverlay} /> : null}
                 <View style={styles.certContentOverlay}>
                   <View style={[styles.certIconContainer, { backgroundColor: isVip ? '#FFFFFF' : '#FFF0E5' }]}>
                     <Icon name={isVip ? "cast-for-education" : "lock"} size={24} color={isVip ? "#0369A1" : "#F97316"} />
@@ -490,28 +478,26 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
                     <Text style={styles.vipTagText}>{isVip ? 'TEACH' : 'VIP'}</Text>
                   </View>
                 </View>
-                {!isVip && (
+                {!isVip ? (
                   <View style={styles.certUnlockTextContainer}>
                     <Text style={styles.certUnlockText}>{t("common.unlock", "Mở khóa")}</Text>
                   </View>
-                )}
+                ) : null}
               </ImageBackground>
             </TouchableOpacity>
           </View>
 
-          {/* TOP SELLING COURSES (MARKETPLACE) */}
-          {topSellingCourses.length > 0 && (
+          {topSellingCourses.length > 0 ? (
             <TopSellingCoursesList
               t={t}
-              onSeeAll={handleSeeAllMarketplace} // FIX: Dùng marketplace mode
+              onSeeAll={handleSeeAllMarketplace}
               courses={topSellingCourses}
               isLoading={topSellingLoading}
-              navigation={navigation} // FIX: Truyền navigation
+              navigation={navigation}
             />
-          )}
+          ) : null}
 
-          {/* Enrolled Courses Section (My Courses) */}
-          {purchasedCourses.length > 0 && (
+          {purchasedCourses.length > 0 ? (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>{t("learn.enrolledCourses", "Khóa học của tôi")}</Text>
@@ -523,7 +509,7 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
                 {purchasedCourses.map((enrollment: CourseVersionEnrollmentResponse, index: number) => {
                   const courseVersion = enrollment.courseVersion;
                   if (!courseVersion) return null;
-                  const key = enrollment.enrollmentId || courseVersion.versionId || `enroll-${index}`; // FIX: Dùng enrollmentId làm key nếu có
+                  const key = enrollment.enrollmentId || courseVersion.versionId || `enroll-${index}`;
                   const dateEnrolled = enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : '';
 
                   const processedUrl = getDirectMediaUrl(courseVersion.thumbnailUrl);
@@ -552,10 +538,9 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
                 })}
               </ScrollView>
             </View>
-          )}
+          ) : null}
 
-          {/* Creator Courses List */}
-          {creatorCourses.length > 0 && (
+          {creatorCourses.length > 0 ? (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>{t("learn.myCreatorCourses", "Khóa học đã tạo")}</Text>
@@ -595,14 +580,13 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
                 })}
               </ScrollView>
             </View>
-          )}
+          ) : null}
 
-          {/* Recommended Courses (MARKETPLACE) */}
-          {recommendedData && recommendedData.length > 0 && (
+          {recommendedData && recommendedData.length > 0 ? (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
-                <TouchableOpacity onPress={handleSeeAllMarketplace}> {/* FIX: Dùng marketplace mode */}
+                <TouchableOpacity onPress={handleSeeAllMarketplace}>
                   <Text style={styles.seeAllText}>{t("common.seeAll", "Xem tất cả")}</Text>
                 </TouchableOpacity>
               </View>
@@ -650,7 +634,7 @@ const LearnScreen = ({ navigation }: any) => { // FIX: Giữ nguyên ({ navigati
                 })}
               </ScrollView>
             </View>
-          )}
+          ) : null}
 
           <View style={{ height: 60 }} />
         </ScrollView>
@@ -1044,7 +1028,6 @@ const styles = createScaledSheet({
     color: '#6B7280',
   },
   listContainer: {
-    flex: 1,
     padding: 16,
   },
   lessonRow: {

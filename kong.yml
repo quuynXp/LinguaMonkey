@@ -23,7 +23,6 @@ services:
     routes:
       - name: public-routes
         strip_path: false
-        # UPDATED: Added PUT, DELETE, PATCH to allow course editing endpoints through this route prefix
         methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
         paths:
           - /actuator/health

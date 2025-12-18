@@ -22,19 +22,19 @@ public class LessonQuestionResponse {
     private UUID lessonId;
     private String question;
     
-    // Options rời
     private String optionA;
     private String optionB;
     private String optionC;
     private String optionD;
     
-    // JSON Options (quan trọng cho FE mới)
     private String optionsJson;
     
     private String correctOption;
-    private String mediaUrl;       // Chứa URL ảnh hoặc file ghi âm
-    private String transcript;     // Chứa nội dung bài đọc hoặc transcript bài nói
-    private String explainAnswer;  // Giải thích đáp án
+    private String correctAnswer;
+    
+    private String mediaUrl;    
+    private String transcript;  
+    private String explainAnswer;
     
     private Integer weight;
     private Integer orderIndex;

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
     Alert,
     Animated,
@@ -10,24 +10,23 @@ import {
     View,
     ActivityIndicator,
     KeyboardAvoidingView,
-    Platform,
-    Image
+    Platform
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
-import { useRooms } from '../../hooks/useRoom';
+import { usePublicRooms, useJoinRoom } from '../../hooks/useRoom';
 import { RoomResponse } from '../../types/dto';
 import { RoomPurpose, RoomType } from '../../types/enums';
+import RoomAvatar from '../../components/common/RoomAvatar';
 
 const PublicRoomListScreen = ({ navigation }: any) => {
     const { t } = useTranslation();
-    const { usePublicRooms, useJoinRoom } = useRooms();
     const { mutate: joinRoomApi, isPending: isJoining } = useJoinRoom();
 
     const [searchQuery, setSearchQuery] = useState('');
-    const [selectedFilter, setSelectedFilter] = useState<RoomPurpose>(RoomPurpose.GROUP_CHAT);
+    const [selectedFilter, setSelectedFilter] = useState<'ALL' | RoomPurpose>('ALL');
 
     const [showCodeModal, setShowCodeModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -46,15 +45,13 @@ const PublicRoomListScreen = ({ navigation }: any) => {
         }).start();
     }, []);
 
-    // FIXED: Explicitly added roomType: RoomType.PUBLIC to ensure backend filters correctly
-    // Without this, the backend might receive null for roomType and return an empty list
-    const queryParams = {
+    const queryParams = useMemo(() => ({
         page: 0,
         size: 20,
-        purpose: selectedFilter,
+        purpose: selectedFilter === 'ALL' ? undefined : selectedFilter,
         roomName: searchQuery || undefined,
         roomType: RoomType.PUBLIC,
-    };
+    }), [selectedFilter, searchQuery]);
 
     const { data: roomsData, isLoading, isError, refetch } = usePublicRooms(queryParams);
     const rooms = (roomsData?.data || []) as RoomResponse[];
@@ -72,17 +69,19 @@ const PublicRoomListScreen = ({ navigation }: any) => {
     };
 
     const handleRoomPress = (room: RoomResponse) => {
-        // If room is public and NOT password protected (no roomCode used as password proxy here), join immediately
-        if (room.roomType === 'PUBLIC' && !room.password) {
+        setSelectedRoomId(room.roomId);
+
+        if (room.roomType === RoomType.PUBLIC && !room.password) {
             joinRoomApi({ roomId: room.roomId }, {
                 onSuccess: (data) => handleJoinSuccess(data),
-                onError: () => Alert.alert(t('common.error'), t('room.join.failed'))
+                onError: () => {
+                    setSelectedRoomId(null);
+                    Alert.alert(t('common.error'), t('room.join.failed'));
+                }
             });
             return;
         }
 
-        // If password is required (private room or public room with password)
-        setSelectedRoomId(room.roomId);
         setPasswordInput('');
         setShowPasswordModal(true);
     };
@@ -93,11 +92,14 @@ const PublicRoomListScreen = ({ navigation }: any) => {
             return;
         }
 
-        // Use roomCode to join (backend will check if password is needed based on room config)
+        if (roomCodeInput.length !== 6 || isNaN(Number(roomCodeInput))) {
+            Alert.alert(t('error'), t('room.code.invalid_format'));
+            return;
+        }
+
         joinRoomApi({ roomCode: roomCodeInput.trim(), password: passwordInput || undefined }, {
             onSuccess: (data) => handleJoinSuccess(data),
             onError: (err: any) => {
-                // Assuming Error Code 1009 = Password Required
                 if (err?.response?.data?.code === 1009) {
                     Alert.alert(t('error'), t('room.password.required'));
                 } else {
@@ -110,7 +112,11 @@ const PublicRoomListScreen = ({ navigation }: any) => {
     const submitPasswordJoin = () => {
         if (!selectedRoomId) return;
 
-        // Attempt to join using room ID and provided password
+        if (passwordInput.length !== 6 || isNaN(Number(passwordInput))) {
+            Alert.alert(t('error'), "Mật khẩu phải là 6 chữ số");
+            return;
+        }
+
         joinRoomApi({ roomId: selectedRoomId, password: passwordInput }, {
             onSuccess: (data) => handleJoinSuccess(data),
             onError: () => Alert.alert(t('error'), t('room.password.invalid'))
@@ -119,45 +125,80 @@ const PublicRoomListScreen = ({ navigation }: any) => {
 
     const renderRoomItem = ({ item }: { item: RoomResponse }) => {
         const isPrivate = item.roomType === RoomType.PRIVATE;
-        const avatarSource = item.avatarUrl
-            ? { uri: item.avatarUrl }
-            : require('../../assets/images/ImagePlacehoderCourse.png');
+        const hasPassword = !!item.password;
+        const isLoadingThisRoom = isJoining && selectedRoomId === item.roomId;
 
         return (
-            <TouchableOpacity style={styles.roomItem} onPress={() => handleRoomPress(item)}>
+            <TouchableOpacity
+                style={styles.roomItem}
+                onPress={() => handleRoomPress(item)}
+                disabled={isJoining}
+            >
                 <View style={styles.avatarContainer}>
-                    <Image source={avatarSource} style={styles.avatar} />
+                    <RoomAvatar
+                        avatarUrl={item.avatarUrl}
+                        members={item.members}
+                        isGroup={item.roomType !== RoomType.PRIVATE}
+                        size={50}
+                    />
                 </View>
 
                 <View style={styles.roomInfo}>
                     <View style={styles.roomHeader}>
                         <Text style={styles.roomName} numberOfLines={1}>{item.roomName}</Text>
-                        {(item.roomCode || item.password) && (
+                        {hasPassword && (
                             <Icon name="lock" size={16} color="#EF4444" style={{ marginLeft: 4 }} />
                         )}
                     </View>
 
                     <View style={styles.detailsRow}>
-                        {/* Displaying Room Code (ID 6 digits) only for non 1-1 chats */}
                         {!isPrivate && item.roomCode && (
                             <Text style={styles.roomCode}>ID: {item.roomCode}</Text>
                         )}
                         {!isPrivate && item.roomCode && <Text style={styles.dot}>•</Text>}
-
                         <Text style={styles.memberCount}>{item.memberCount}/{item.maxMembers} {t('members')}</Text>
-
                     </View>
 
                     <Text style={styles.roomDescription} numberOfLines={1}>
-                        {item.description || t('common.noDescription')}
+                        {item.content || t('common.noDescription')}
                     </Text>
                 </View>
 
                 <View style={styles.joinAction}>
-                    {isJoining && selectedRoomId === item.roomId ? <ActivityIndicator size="small" color="#4F46E5" /> :
-                        <Icon name="chevron-right" size={24} color="#9CA3AF" />}
+                    {isLoadingThisRoom ? (
+                        <ActivityIndicator size="small" color="#4F46E5" />
+                    ) : (
+                        <Icon name="chevron-right" size={24} color="#9CA3AF" />
+                    )}
                 </View>
             </TouchableOpacity>
+        );
+    };
+
+    const renderContent = () => {
+        if (isLoading && rooms.length === 0) {
+            return <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 20 }} />;
+        }
+
+        if (isError) {
+            return <Text style={styles.emptyText}>{t('errors.loading')}</Text>;
+        }
+
+        return (
+            <FlatList
+                data={rooms}
+                renderItem={renderRoomItem}
+                keyExtractor={(item) => item.roomId}
+                contentContainerStyle={styles.listContent}
+                refreshing={isLoading}
+                onRefresh={refetch}
+                ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                        <Icon name="public-off" size={48} color="#D1D5DB" />
+                        <Text style={styles.emptyText}>{t('room.empty_public')}</Text>
+                    </View>
+                }
+            />
         );
     };
 
@@ -189,6 +230,14 @@ const PublicRoomListScreen = ({ navigation }: any) => {
 
                 <View style={styles.filtersContainer}>
                     <TouchableOpacity
+                        style={[styles.filterButton, selectedFilter === 'ALL' && styles.activeFilterButton]}
+                        onPress={() => setSelectedFilter('ALL')}
+                    >
+                        <Text style={[styles.filterButtonText, selectedFilter === 'ALL' && styles.activeFilterButtonText]}>
+                            {t('common.all')}
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                         style={[styles.filterButton, selectedFilter === RoomPurpose.GROUP_CHAT && styles.activeFilterButton]}
                         onPress={() => setSelectedFilter(RoomPurpose.GROUP_CHAT)}
                     >
@@ -206,26 +255,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                     </TouchableOpacity>
                 </View>
 
-                {isLoading ? (
-                    <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 20 }} />
-                ) : isError ? (
-                    <Text style={styles.emptyText}>{t('errors.loading')}</Text>
-                ) : (
-                    <FlatList
-                        data={rooms}
-                        renderItem={renderRoomItem}
-                        keyExtractor={(item) => item.roomId}
-                        contentContainerStyle={styles.listContent}
-                        refreshing={isLoading}
-                        onRefresh={refetch}
-                        ListEmptyComponent={
-                            <View style={styles.emptyContainer}>
-                                <Icon name="public-off" size={48} color="#D1D5DB" />
-                                <Text style={styles.emptyText}>{t('room.empty_public')}</Text>
-                            </View>
-                        }
-                    />
-                )}
+                {renderContent()}
             </Animated.View>
 
             <TouchableOpacity
@@ -235,7 +265,6 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                 <Icon name="add" size={28} color="#FFFFFF" />
             </TouchableOpacity>
 
-            {/* Code Join Modal (for Private Rooms or joining by Code) */}
             <Modal visible={showCodeModal} transparent animationType="slide" onRequestClose={() => setShowCodeModal(false)}>
                 <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -247,10 +276,10 @@ const PublicRoomListScreen = ({ navigation }: any) => {
 
                         <TextInput
                             style={styles.codeInput}
-                            placeholder="000000 (Mã phòng 6 số)"
+                            placeholder="000000"
                             placeholderTextColor="#9CA3AF"
                             value={roomCodeInput}
-                            onChangeText={setRoomCodeInput}
+                            onChangeText={(text) => setRoomCodeInput(text.replace(/[^0-9]/g, ''))}
                             keyboardType="number-pad"
                             maxLength={6}
                             textAlign="center"
@@ -260,7 +289,9 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                             placeholder={t('password.optional')}
                             placeholderTextColor="#9CA3AF"
                             value={passwordInput}
-                            onChangeText={setPasswordInput}
+                            onChangeText={(text) => setPasswordInput(text.replace(/[^0-9]/g, ''))}
+                            keyboardType="number-pad"
+                            maxLength={6}
                             secureTextEntry
                         />
 
@@ -280,18 +311,20 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                 </KeyboardAvoidingView>
             </Modal>
 
-            {/* Password Modal (For joining protected rooms directly from list) */}
             <Modal visible={showPasswordModal} transparent animationType="fade" onRequestClose={() => setShowPasswordModal(false)}>
                 <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>{t('room.private.title')}</Text>
                         <Text style={styles.modalDescription}>{t('room.enter.password')}</Text>
+
                         <TextInput
                             style={styles.codeInput}
                             placeholder="******"
                             placeholderTextColor="#9CA3AF"
                             value={passwordInput}
-                            onChangeText={setPasswordInput}
+                            onChangeText={(text) => setPasswordInput(text.replace(/[^0-9]/g, ''))}
+                            keyboardType="number-pad"
+                            maxLength={6}
                             secureTextEntry
                             autoFocus
                         />
@@ -342,9 +375,8 @@ const styles = createScaledSheet({
         borderBottomWidth: 1,
         borderBottomColor: '#F9FAFB'
     },
-    avatarContainer: { position: 'relative' },
-    avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E0E7FF' },
-    roomInfo: { flex: 1, marginLeft: 12, justifyContent: 'center' },
+    avatarContainer: { position: 'relative', marginRight: 12 },
+    roomInfo: { flex: 1, justifyContent: 'center' },
     roomHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
     roomName: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginRight: 6 },
     detailsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },

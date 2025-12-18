@@ -36,10 +36,6 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
     List<Lesson> findTop50ByThumbnailUrlIsNullAndCreatedAtBefore(OffsetDateTime threshold);
     Page<Lesson> findAll(Specification<com.connectJPA.LinguaVietnameseApp.entity.Lesson> spec, Pageable pageable);
 
-    /**
-     * THÊM: Phương thức tìm kiếm Lesson thay thế Elasticsearch.
-     * Tìm kiếm theo keyword trong lessonName và description.
-     */
     @Query("SELECT l FROM Lesson l WHERE (" +
             "LOWER(l.lessonName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
             "LOWER(l.description) LIKE LOWER(CONCAT('%', :keyword, '%'))" +
@@ -49,4 +45,6 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
 
     List<Lesson> findByLessonSubCategoryIdAndSkillTypesAndIsDeletedFalseOrderByOrderIndex(UUID lessonSubCategoryId,
             SkillType skillType);
+
+        Optional<Lesson> findFirstByCreatorIdAndLessonName(UUID creatorId, String lessonName);
 }

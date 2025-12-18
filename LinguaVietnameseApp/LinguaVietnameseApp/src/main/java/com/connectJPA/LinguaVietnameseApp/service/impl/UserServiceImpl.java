@@ -176,15 +176,16 @@ public class UserServiceImpl implements UserService {
         response.setHasDonePlacementTest(user.isHasDonePlacementTest());
         response.setLastDailyWelcomeAt(user.getLastDailyWelcomeAt());
         response.setGender(user.getGender());
+        response.setCoins(user.getCoins());
         
         boolean isVip = user.isVip();
         response.setVip(isVip); 
         
         if (isVip && user.getVipExpirationDate() != null) {
              long days = Duration.between(OffsetDateTime.now(), user.getVipExpirationDate()).toDays();
-             response.setVipDaysRemaining(Math.max(0L, days)); // FIXED: Passed Long value
+             response.setVipDaysRemaining(Math.max(0L, days)); 
         } else {
-             response.setVipDaysRemaining(0L); // FIXED: Passed Long value
+             response.setVipDaysRemaining(0L); 
         }
         int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
         response.setExpToNextLevel(nextLevelExp);
@@ -576,7 +577,7 @@ public class UserServiceImpl implements UserService {
                     try {
                         return UserCertificate.builder()
                                 .id(new UserCertificateId(userId,
-                                             Certification.valueOf(certStr.toUpperCase()).toString()))
+                                        Certification.valueOf(certStr.toUpperCase()).toString()))
                                 .build();
                     } catch (IllegalArgumentException ex) {
                         log.warn("Unknown Certification: {}", certStr);
@@ -882,7 +883,7 @@ public class UserServiceImpl implements UserService {
                  throw new AppException(ErrorCode.INVALID_URL);
              }
              User user = userRepository.findByUserIdAndIsDeletedFalse(id)
-                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+                      .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
              
              user.setAvatarUrl(avatarUrl);
              user = userRepository.saveAndFlush(user);
@@ -1049,6 +1050,8 @@ public class UserServiceImpl implements UserService {
             int currentStreak = user.getStreak();
             
             Long totalDurationMinutesToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, today);
+            if (totalDurationMinutesToday == null) totalDurationMinutesToday = 0L;
+
             int minGoal = user.getMinLearningDurationMinutes();
             
             boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
@@ -1113,6 +1116,8 @@ public class UserServiceImpl implements UserService {
             LocalDate yesterday = LocalDate.now().minusDays(1);
             int minGoal = user.getMinLearningDurationMinutes();
             Long totalDurationMinutesYesterday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, yesterday);
+            if (totalDurationMinutesYesterday == null) totalDurationMinutesYesterday = 0L;
+
             boolean hasHitDailyGoalYesterday = totalDurationMinutesYesterday >= minGoal;
             
             boolean streakCheckYesterday = yesterday.equals(user.getLastStreakCheckDate());
@@ -1148,6 +1153,8 @@ public class UserServiceImpl implements UserService {
             LocalDate today = LocalDate.now();
             int minGoal = user.getMinLearningDurationMinutes();
             Long totalDurationMinutesToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, today);
+            if (totalDurationMinutesToday == null) totalDurationMinutesToday = 0L;
+            
             boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
             if (!hasHitDailyGoal && user.getStreak() > 0) {
                 long minutesRemaining = minGoal - totalDurationMinutesToday;
@@ -1406,6 +1413,19 @@ public class UserServiceImpl implements UserService {
                 .createdAt(OffsetDateTime.now())
                 .build();
         admirationRepository.saveAndFlush(a);
+        
+        // --- SYNC WITH LEADERBOARD ---
+        try {
+            List<Leaderboard> boards = leaderboardRepository.findLatestByTabAndIsDeletedFalse("admire", PageRequest.of(0, 1)).getContent();
+            if (!boards.isEmpty()) {
+                Leaderboard lb = boards.get(0);
+                long totalAdmirations = admirationRepository.countByUserId(targetId);
+                leaderboardEntryService.updateScore(lb.getLeaderboardId(), targetId, (double) totalAdmirations);
+            }
+        } catch (Exception e) {
+            log.error("Failed to sync admiration score to leaderboard for user {}: {}", targetId, e.getMessage());
+        }
+        // -----------------------------
 
         NotificationRequest notificationRequest = NotificationRequest.builder()
                 .userId(targetId)

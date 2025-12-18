@@ -11,7 +11,7 @@ public interface StorageService {
     
     String uploadTemp(MultipartFile file);
 
-    String uploadBytes(byte[] data, String fileName, String contentType); // <--- THÊM KHAI BÁO NÀY
+    String uploadBytes(byte[] data, String fileName, String contentType);
 
     String uploadStream(InputStream inputStream, String objectName, String contentType);
 
@@ -20,6 +20,8 @@ public interface StorageService {
     void deleteFile(String objectPath);
 
     String getFileUrl(String objectName);
+
+    String getFileUrl(String objectName, MediaType mediaType);
 
     byte[] getFile(String objectPath);
 }

@@ -11,8 +11,7 @@ import {
   ScrollView,
   Pressable,
   Animated,
-  Easing,
-  StyleSheet
+  Easing
 } from 'react-native';
 import {
   RTCView,
@@ -69,35 +68,13 @@ const FloatingReaction = React.memo(({ emoji, onComplete }: { emoji: string, onC
     ]).start(() => onComplete());
   }, []);
 
-  const translateY = animValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -300]
-  });
-
-  const opacity = animValue.interpolate({
-    inputRange: [0, 0.7, 1],
-    outputRange: [1, 1, 0]
-  });
-
-  const scale = animValue.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: [0.5, 1.2, 1]
-  });
-
+  const translateY = animValue.interpolate({ inputRange: [0, 1], outputRange: [0, -300] });
+  const opacity = animValue.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] });
+  const scale = animValue.interpolate({ inputRange: [0, 0.1, 1], outputRange: [0.5, 1.2, 1] });
   const randomX = Math.random() * 40 - 20;
 
   return (
-    <Animated.Text style={[
-      styles.floatingEmoji,
-      {
-        opacity,
-        transform: [
-          { translateY },
-          { translateX: randomX },
-          { scale }
-        ]
-      }
-    ]}>
+    <Animated.Text style={[styles.floatingEmoji, { opacity, transform: [{ translateY }, { translateX: randomX }, { scale }] }]}>
       {emoji}
     </Animated.Text>
   );
@@ -115,11 +92,7 @@ const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, c
   const createFriendshipMutation = useCreateFriendship();
 
   if (isLoading || !profile) {
-    return (
-      <View style={styles.miniProfileContainer}>
-        <Text style={{ color: 'white' }}>Loading...</Text>
-      </View>
-    );
+    return <View style={styles.miniProfileContainer}><Text style={{ color: 'white' }}>Loading...</Text></View>;
   }
 
   const isFriend = profile.isFriend;
@@ -127,17 +100,11 @@ const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, c
 
   const handleAddFriend = () => {
     if (isFriend || hasSentRequest) return;
-    createFriendshipMutation.mutate({
-      requesterId: currentUserId,
-      receiverId: userId,
-      status: FriendshipStatus.PENDING
-    });
+    createFriendshipMutation.mutate({ requesterId: currentUserId, receiverId: userId, status: FriendshipStatus.PENDING });
   };
 
   const handleAdmire = () => {
-    if (!profile.hasAdmired) {
-      admireMutation.mutate(userId);
-    }
+    if (!profile.hasAdmired) admireMutation.mutate(userId);
   };
 
   return (
@@ -153,7 +120,6 @@ const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, c
           <Icon name="close" size={24} color="#9ca3af" />
         </TouchableOpacity>
       </View>
-
       <View style={styles.miniStatsRow}>
         <View style={styles.miniStat}>
           <Text style={styles.miniStatVal}>{profile.level || 0}</Text>
@@ -164,28 +130,16 @@ const MiniUserProfile = ({ userId, currentUserId, onClose }: { userId: string, c
           <Text style={styles.miniStatLabel}>Streak</Text>
         </View>
       </View>
-
       <View style={styles.miniActions}>
         {!isFriend && (
-          <TouchableOpacity
-            onPress={handleAddFriend}
-            disabled={hasSentRequest}
-            style={[styles.miniBtn, hasSentRequest ? styles.btnDisabled : styles.btnAdd]}
-          >
+          <TouchableOpacity onPress={handleAddFriend} disabled={hasSentRequest} style={[styles.miniBtn, hasSentRequest ? styles.btnDisabled : styles.btnAdd]}>
             <Icon name={hasSentRequest ? "check" : "person-add"} size={20} color="white" />
             <Text style={styles.miniBtnText}>{hasSentRequest ? t('sent') : t('add_friend')}</Text>
           </TouchableOpacity>
         )}
-
-        <TouchableOpacity
-          onPress={handleAdmire}
-          disabled={profile.hasAdmired}
-          style={[styles.miniBtn, profile.hasAdmired ? styles.btnAdmired : styles.btnAdmire]}
-        >
+        <TouchableOpacity onPress={handleAdmire} disabled={profile.hasAdmired} style={[styles.miniBtn, profile.hasAdmired ? styles.btnAdmired : styles.btnAdmire]}>
           <Icon name="favorite" size={20} color={profile.hasAdmired ? 'white' : '#db2777'} />
-          <Text style={[styles.miniBtnText, !profile.hasAdmired && { color: '#db2777' }]}>
-            {profile.admirationCount}
-          </Text>
+          <Text style={[styles.miniBtnText, !profile.hasAdmired && { color: '#db2777' }]}>{profile.admirationCount}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -196,12 +150,7 @@ const SmoothVideoItem = React.memo(({ stream, style, userId, isActiveSpeaker }: 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.quad),
-    }).start();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true, easing: Easing.out(Easing.quad) }).start();
   }, []);
 
   return (
@@ -219,7 +168,7 @@ const SmoothVideoItem = React.memo(({ stream, style, userId, isActiveSpeaker }: 
       </View>
     </Animated.View>
   );
-}, (prev, next) => prev.stream.id === next.stream.id && prev.isActiveSpeaker === next.isActiveSpeaker);
+}, (prev, next) => prev.stream.id === next.stream.id && prev.isActiveSpeaker === next.isActiveSpeaker && JSON.stringify(prev.style) === JSON.stringify(next.style));
 
 SmoothVideoItem.displayName = 'SmoothVideoItem';
 
@@ -257,11 +206,7 @@ const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId, targetLang }
     <View style={styles.subtitleContainer}>
       <Text style={[styles.subtitleSender, { textAlign: 'center' }]}>{senderName}</Text>
       {effectiveShowOriginal && (
-        <Text style={[
-          styles.subtitleTextOriginal,
-          { textAlign: 'center' },
-          mode === 'native' && !translatedText && { opacity: 0.6, fontSize: 14 }
-        ]}>
+        <Text style={[styles.subtitleTextOriginal, { textAlign: 'center' }, mode === 'native' && !translatedText && { opacity: 0.8, fontSize: 16, fontStyle: 'italic' }]}>
           {originalFull}
         </Text>
       )}
@@ -271,10 +216,7 @@ const SubtitleOverlay = React.memo(({ data, mode, t, currentUserId, targetLang }
     </View>
   );
 }, (prev, next) => {
-  return prev.data?.originalFull === next.data?.originalFull &&
-    prev.data?.isFiller === next.data?.isFiller &&
-    prev.mode === next.mode &&
-    prev.targetLang === next.targetLang;
+  return prev.data?.originalFull === next.data?.originalFull && prev.mode === next.mode && prev.targetLang === next.targetLang;
 });
 
 SubtitleOverlay.displayName = 'SubtitleOverlay';
@@ -292,10 +234,7 @@ type SubtitleData = {
   isFiller?: boolean;
 };
 
-type ReactionItem = {
-  id: string;
-  emoji: string;
-};
+type ReactionItem = { id: string; emoji: string; };
 
 const iceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -324,10 +263,12 @@ const WebRTCCallScreen = () => {
   const subtitleTimeoutRef = useRef<any>(null);
 
   const [isMicOn, setIsMicOn] = useState(callPreferences.micEnabled);
+  // FIX: Use ref to track mic state inside event listeners without dependency cycle
+  const isMicOnRef = useRef(callPreferences.micEnabled);
+
   const [isCameraOn, setIsCameraOn] = useState(callPreferences.cameraEnabled);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
-  const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
   const [reactions, setReactions] = useState<ReactionItem[]>([]);
 
@@ -337,24 +278,21 @@ const WebRTCCallScreen = () => {
   const [fullSubtitle, setFullSubtitle] = useState<SubtitleData | null>(null);
   const [isViewAll, setIsViewAll] = useState(false);
 
+  // Sync state to ref
+  useEffect(() => {
+    isMicOnRef.current = isMicOn;
+  }, [isMicOn]);
+
   const sendAudioConfig = useCallback(() => {
     if (wsAudio.current?.readyState === WebSocket.OPEN) {
       wsAudio.current.send(JSON.stringify({
-        config: {
-          subtitleMode: callPreferences.subtitleMode,
-          micEnabled: callPreferences.micEnabled
-        }
+        config: { subtitleMode: callPreferences.subtitleMode, micEnabled: callPreferences.micEnabled }
       }));
     }
   }, [callPreferences.subtitleMode, callPreferences.micEnabled]);
 
   const audioOptions = useMemo(() => ({
-    sampleRate: 16000,
-    channels: 1,
-    bitsPerSample: 16,
-    audioSource: Platform.OS === 'android' ? 7 : 0,
-    bufferSize: 4096,
-    wavFile: 'temp.wav'
+    sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: Platform.OS === 'android' ? 7 : 0, bufferSize: 4096, wavFile: 'temp.wav'
   }), []);
 
   const initSubtitleAudioStream = useCallback(async () => {
@@ -362,22 +300,27 @@ const WebRTCCallScreen = () => {
       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
     }
+
+    // Use timeout to allow other streams to settle, but don't re-init constantly
     setTimeout(() => {
       if (isManuallyClosed.current) return;
       try {
         LiveAudioStream.stop();
         LiveAudioStream.init(audioOptions);
+
         LiveAudioStream.on('data', (base64Data: string) => {
-          if (wsAudio.current?.readyState === WebSocket.OPEN && isMicOn) {
+          // KEY FIX: Check Ref here instead of state closure. 
+          // Do not send data if mic is logically off, but keep stream running.
+          if (wsAudio.current?.readyState === WebSocket.OPEN && isMicOnRef.current) {
             wsAudio.current.send(JSON.stringify({ audio: base64Data }));
           }
         });
-        if (isMicOn) LiveAudioStream.start();
-      } catch (e) {
-        console.error("❌ Audio Init Error:", e);
-      }
+
+        // Always start stream once to hold microphone permission for WebRTC
+        LiveAudioStream.start();
+      } catch (e) { console.error("❌ Audio Init Error:", e); }
     }, 2000);
-  }, [isMicOn, audioOptions]);
+  }, [audioOptions]); // Removed isMicOn from dependency to prevent re-init loop
 
   const connectAudioSocket = useCallback(() => {
     if (!roomId || !accessToken || isManuallyClosed.current) return;
@@ -392,14 +335,13 @@ const WebRTCCallScreen = () => {
     wsAudio.current = ws;
 
     ws.onopen = () => {
+      // Init stream only once on connection open
       initSubtitleAudioStream();
       setTimeout(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
-            config: {
-              subtitleMode: useAppStore.getState().callPreferences.subtitleMode,
-              micEnabled: useAppStore.getState().callPreferences.micEnabled
-            }
+            config: { subtitleMode: useAppStore.getState().callPreferences.subtitleMode, micEnabled: useAppStore.getState().callPreferences.micEnabled },
+            nativeLang: targetLang
           }));
         }
       }, 500);
@@ -417,18 +359,14 @@ const WebRTCCallScreen = () => {
         }
       } catch (_) { }
     };
-    ws.onclose = () => {
-      if (!isManuallyClosed.current) setTimeout(connectAudioSocket, 5000);
-    };
+    ws.onclose = () => { if (!isManuallyClosed.current) setTimeout(connectAudioSocket, 5000); };
   }, [roomId, accessToken, targetLang, initSubtitleAudioStream]);
 
   const getMediaStream = useCallback(async () => {
     try {
       const stream = await mediaDevices.getUserMedia({
         audio: true,
-        video: {
-          width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 }, facingMode: 'user'
-        }
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 }, facingMode: 'user' }
       });
       return stream;
     } catch (e) { return null; }
@@ -444,7 +382,10 @@ const WebRTCCallScreen = () => {
     }
     setRemoteStreams(prev => {
       const newMap = new Map(prev);
-      if (newMap.delete(userId)) return newMap;
+      if (newMap.has(userId)) {
+        newMap.delete(userId);
+        return newMap;
+      }
       return prev;
     });
   }, []);
@@ -458,9 +399,6 @@ const WebRTCCallScreen = () => {
       localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
     }
 
-    // --- FORCE ASSIGNMENT (BYPASS TS CHECK) ---
-    // TS Error: Property 'onicecandidate' does not exist...
-    // Runtime: It DOES exist. We cast to 'any' to fix compilation.
     (pc as any).onicecandidate = (event: any) => {
       if (event.candidate) {
         sendSignalingMessage({ type: 'ice_candidate', targetId: partnerId }, { candidate: event.candidate });
@@ -469,8 +407,11 @@ const WebRTCCallScreen = () => {
 
     (pc as any).ontrack = (event: any) => {
       if (event.streams && event.streams[0]) {
-        setRemoteStreams(prev => new Map(prev).set(partnerId, event.streams[0]));
-        setConnectionStatus("Connected");
+        setRemoteStreams(prev => {
+          const newMap = new Map(prev);
+          newMap.set(partnerId, event.streams[0]);
+          return newMap;
+        });
       }
     };
 
@@ -479,10 +420,9 @@ const WebRTCCallScreen = () => {
         handleUserLeft(partnerId);
       }
     };
-    // ------------------------------------------
 
     if (shouldCreateOffer) {
-      const offer = await pc.createOffer({});
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
       await pc.setLocalDescription(offer);
       sendSignalingMessage({ type: 'offer', targetId: partnerId }, offer);
     }
@@ -500,7 +440,7 @@ const WebRTCCallScreen = () => {
 
   const connectSignalingSocket = useCallback(() => {
     if (!roomId || !accessToken || isManuallyClosed.current) return;
-    if (wsSignal.current) { wsSignal.current.close(); }
+    if (wsSignal.current) wsSignal.current.close();
 
     const normalizedRoomId = String(roomId).trim().toLowerCase();
     let cleanBase = API_BASE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -510,10 +450,7 @@ const WebRTCCallScreen = () => {
     const ws = new WebSocket(url);
     wsSignal.current = ws;
 
-    ws.onopen = () => {
-      setConnectionStatus("Waiting for partner...");
-      sendSignalingMessage({ type: 'JOIN_ROOM' });
-    };
+    ws.onopen = () => { sendSignalingMessage({ type: 'JOIN_ROOM' }); };
     ws.onmessage = async (e) => {
       try {
         const data = JSON.parse(e.data);
@@ -558,9 +495,7 @@ const WebRTCCallScreen = () => {
     };
   }, [roomId, accessToken, user?.userId, createPeerConnection, sendSignalingMessage, handleUserLeft]);
 
-  useEffect(() => {
-    sendAudioConfig();
-  }, [callPreferences.subtitleMode, callPreferences.micEnabled, sendAudioConfig]);
+  useEffect(() => { sendAudioConfig(); }, [callPreferences.subtitleMode, callPreferences.micEnabled, sendAudioConfig]);
 
   useEffect(() => {
     let isMounted = true;
@@ -592,22 +527,36 @@ const WebRTCCallScreen = () => {
     const id = Math.random().toString(36).substr(2, 9);
     setReactions(prev => [...prev, { id, emoji }]);
   };
-
-  const removeReaction = (id: string) => {
-    setReactions(prev => prev.filter(r => r.id !== id));
-  };
-
-  const sendReaction = (emoji: string) => {
-    addReaction(emoji);
-    sendSignalingMessage({ type: 'REACTION' }, { emoji });
-  };
+  const removeReaction = (id: string) => setReactions(prev => prev.filter(r => r.id !== id));
+  const sendReaction = (emoji: string) => { addReaction(emoji); sendSignalingMessage({ type: 'REACTION' }, { emoji }); };
 
   const toggleMic = () => {
     const newState = !isMicOn;
     setIsMicOn(newState);
+
+    // 1. Update preferences
     setCallPreferences({ micEnabled: newState });
-    localStreamRef.current?.getAudioTracks().forEach(t => t.enabled = newState);
-    if (newState) LiveAudioStream.start();
+
+    // 2. Toggle WebRTC Audio Track (This is for the Call Audio)
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(t => {
+        t.enabled = newState;
+      });
+    }
+
+    // 3. Notify Backend (for UI sync, etc.)
+    if (wsAudio.current?.readyState === WebSocket.OPEN) {
+      wsAudio.current.send(JSON.stringify({
+        config: {
+          subtitleMode: callPreferences.subtitleMode,
+          micEnabled: newState
+        }
+      }));
+    }
+
+    // CRITICAL FIX: Do NOT call LiveAudioStream.stop() here.
+    // It kills the audio session for WebRTC too. 
+    // The Ref check in 'data' listener handles the muting for subtitles.
   };
 
   const toggleCamera = () => {
@@ -639,11 +588,23 @@ const WebRTCCallScreen = () => {
 
   const remainingCount = Math.max(0, remoteStreamsArr.length - visibleStreams.length);
 
+  const getStreamDimensions = () => {
+    const total = visibleStreams.length;
+    if (total === 1) return { width: '100%', height: 500 };
+    if (total === 2) return { width: '48%', aspectRatio: 0.8 };
+    if (isViewAll) return { width: '30%', aspectRatio: 1 };
+    return { width: '45%', aspectRatio: 1 };
+  };
+  const streamDims = getStreamDimensions();
+
   return (
     <ScreenLayout>
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollGrid}>
-          <View style={styles.gridWrapper}>
+          <View style={[
+            styles.gridWrapper,
+            visibleStreams.length === 1 && { flexDirection: 'column', height: '100%', justifyContent: 'flex-start' }
+          ]}>
             {visibleStreams.map(([id, stream]) => (
               <SmoothVideoItem
                 key={id}
@@ -651,8 +612,9 @@ const WebRTCCallScreen = () => {
                 userId={id}
                 isActiveSpeaker={id === activeSpeakerId}
                 style={{
-                  width: isViewAll ? '30%' : '45%',
-                  aspectRatio: 1,
+                  width: streamDims.width,
+                  height: streamDims.height,
+                  aspectRatio: streamDims.aspectRatio,
                   margin: 5
                 }}
               />
@@ -682,11 +644,8 @@ const WebRTCCallScreen = () => {
           </View>
         )}
 
-        {/* REACTION OVERLAY */}
         <View style={styles.reactionOverlay} pointerEvents="none">
-          {reactions.map(r => (
-            <FloatingReaction key={r.id} emoji={r.emoji} onComplete={() => removeReaction(r.id)} />
-          ))}
+          {reactions.map(r => <FloatingReaction key={r.id} emoji={r.emoji} onComplete={() => removeReaction(r.id)} />)}
         </View>
 
         <SubtitleOverlay
@@ -735,9 +694,7 @@ const WebRTCCallScreen = () => {
             {settingTab === 'subtitle' && (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 15 }}>
                 {['dual', 'native', 'original', 'off'].map(m => (
-                  <TouchableOpacity key={m}
-                    onPress={() => setCallPreferences({ subtitleMode: m as any })}
-                    style={[styles.modeButton, callPreferences.subtitleMode === m && styles.modeButtonActive]}>
+                  <TouchableOpacity key={m} onPress={() => setCallPreferences({ subtitleMode: m as any })} style={[styles.modeButton, callPreferences.subtitleMode === m && styles.modeButtonActive]}>
                     <Text style={{ color: 'white', fontWeight: 'bold' }}>{m.toUpperCase()}</Text>
                   </TouchableOpacity>
                 ))}
@@ -758,13 +715,10 @@ const WebRTCCallScreen = () => {
             )}
           </View>
         </Modal>
-
         <Modal visible={!!selectedProfileId} transparent animationType="fade" onRequestClose={() => setSelectedProfileId(null)}>
           <View style={styles.centerModalOverlay}>
             <View style={styles.popupWrapper}>
-              {selectedProfileId && user?.userId && (
-                <MiniUserProfile userId={selectedProfileId} currentUserId={user.userId} onClose={() => setSelectedProfileId(null)} />
-              )}
+              {selectedProfileId && user?.userId && <MiniUserProfile userId={selectedProfileId} currentUserId={user.userId} onClose={() => setSelectedProfileId(null)} />}
             </View>
           </View>
         </Modal>
@@ -826,7 +780,6 @@ const styles = createScaledSheet({
   btnAdmired: { backgroundColor: '#db2777' },
   btnDisabled: { backgroundColor: '#4b5563' },
   miniBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
-  // Reaction Styles
   reactionBar: { position: 'absolute', bottom: 100, flexDirection: 'row', alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 30, padding: 5, gap: 10 },
   reactionBtn: { padding: 8 },
   reactionText: { fontSize: 24 },

@@ -15,7 +15,6 @@ import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import PaymentMethodSelector from "../../components/payment/PaymentMethodSelector"
 
-// --- FIX: Đổi tên Interface để tránh trùng với Enum CourseType ---
 interface PaymentCourseVersion {
   versionId: string;
   price: number;
@@ -33,7 +32,6 @@ interface PaymentCourseParams {
 const PaymentScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
 
-  // --- FIX: Cast kiểu về Interface mới ---
   const { course } = route.params as { course: PaymentCourseParams };
   const { user } = useUserStore();
 
@@ -82,7 +80,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
   const displayOriginalPrice = convert(originalPrice, userCurrency);
   const isBalanceSufficient = (walletData?.balance || 0) >= displayFinalPrice;
 
-  // --- LOGIC DEEP LINK (Bắt tín hiệu từ VNPAY) ---
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
       const { url } = event;
@@ -117,7 +114,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
     };
   }, []);
 
-  // --- FIX: Định nghĩa hàm handleApplyCoupon ---
   const handleApplyCoupon = () => {
     Keyboard.dismiss();
     if (!couponCode.trim()) return;

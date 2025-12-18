@@ -1,7 +1,9 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.ReadReceiptRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.UserStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
@@ -15,10 +17,6 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import io.swagger.v3.oas.annotations.Operation;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
@@ -52,15 +50,6 @@ public class ChatController {
     private final RoomMemberRepository roomMemberRepository;
     private final RedisTemplate<String, Object> redisTemplate;
 
-    @Data
-    @Builder
-    @AllArgsConstructor
-    @NoArgsConstructor
-    public static class UserStatusRequest {
-        private UUID userId;
-        private String status;
-    }
-
     @GetMapping("/status/{userId}")
     public ResponseEntity<AppApiResponse<Boolean>> getUserOnlineStatus(@PathVariable UUID userId, Locale locale) {
         String redisKey = "user:online:" + userId.toString();
@@ -90,7 +79,7 @@ public class ChatController {
     @GetMapping("/stats/{userId}")
     public ResponseEntity<AppApiResponse<ChatStatsResponse>> getStats(
             @PathVariable UUID userId,
-            Locale locale) {
+            Locale locale) { // Fixed: Removed incorrect @Locale annotation
         ChatStatsResponse stats = chatMessageService.getStatsByUser(userId);
         return ResponseEntity.ok(AppApiResponse.<ChatStatsResponse>builder()
                 .code(200)
@@ -168,6 +157,13 @@ public class ChatController {
         
         if (updatedMessage != null) {
             messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId(), updatedMessage);
+            
+            ReadReceiptRequest receipt = ReadReceiptRequest.builder()
+                    .userId(userId)
+                    .messageId(messageId)
+                    .roomId(updatedMessage.getRoomId())
+                    .build();
+            messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId() + "/read", receipt);
         }
     }
 

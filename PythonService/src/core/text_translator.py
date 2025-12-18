@@ -15,7 +15,6 @@ from src.core.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
-# Config GenAI (Load Once at Module Level)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if GOOGLE_API_KEY:
@@ -23,7 +22,6 @@ if GOOGLE_API_KEY:
 else:
     logger.error("Missing GOOGLE_API_KEY. Text translation fallback will fail.")
 
-# Model tiers for translation, prioritized from most capable/fastest down to fallbacks
 TRANSLATION_MODEL_TIERS = [
     {"name": "gemini-2.5-flash", "purpose": "Flash - High-Speed Translation"},
     {"name": "gemini-2.5-pro", "purpose": "Pro - High-Quality Translation (as fallback)"},
@@ -163,7 +161,6 @@ class TextTranslator:
         if detected_lang == target_lang:
             return text, detected_lang
 
-        # 1. Try LPM (Fast Path)
         lpm_result, coverage = await self.lpm_translate(text, detected_lang, target_lang)
         
         is_dictionary_dump = False
@@ -178,7 +175,6 @@ class TextTranslator:
         if not GOOGLE_API_KEY:
             return lpm_result, detected_lang
 
-        # 2. Call Gemini with Model Fallback
         target_lang_name = target_lang
         if target_lang == 'zh-CN': target_lang_name = "Simplified Chinese"
         elif target_lang == 'vi': target_lang_name = "Vietnamese"

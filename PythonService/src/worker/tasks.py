@@ -7,7 +7,6 @@ from celery.signals import worker_ready
 from sqlalchemy import select, update, func, desc
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.models import TranslationLexicon
 from src.core.session import AsyncSessionLocal
@@ -28,6 +27,7 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="Asia/Ho_Chi_Minh",
     enable_utc=True,
+    broker_connection_retry_on_startup=True
 )
 
 def run_async(coro):
@@ -43,17 +43,12 @@ def run_async(coro):
         
     return loop.run_until_complete(coro)
 
-# --- TRIGGER ON STARTUP ---
 @worker_ready.connect
 def trigger_startup_tasks(sender, **kwargs):
-    """Tự động chạy task ingest khi worker khởi động"""
     with sender.app.connection() as conn:
         sender.app.send_task("src.worker.tasks.ingest_huggingface_task", connection=conn)
         logger.info("🚀 [Startup] Triggered ingest_huggingface_task automatically.")
 
-# ==============================================================================
-#  TASK 1: INGEST DATA FROM HUGGING FACE
-# ==============================================================================
 @celery_app.task(name="src.worker.tasks.ingest_huggingface_task")
 def ingest_huggingface_task():
     logger.info("🚀 [Celery] Starting Hugging Face Ingestion Task...")
@@ -75,29 +70,11 @@ def ingest_huggingface_task():
         logger.error(f"❌ [Celery] Task Failed: {e}")
         return f"Failed: {str(e)}"
 
-# ==============================================================================
-#  TASK 2: RUNTIME SYNC (Save specific word to DB immediately)
-# ==============================================================================
 @celery_app.task(name="src.worker.tasks.sync_translation_to_db_task")
 def sync_translation_to_db_task(original_text: str, src_lang: str, translations: dict):
     async def _logic():
         async with AsyncSessionLocal() as session:
             try:
-                stmt = insert(TranslationLexicon).values(
-                    original_text=original_text,
-                    original_lang=src_lang,
-                    translations=translations,
-                    usage_count=1
-                )
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=['id'],
-                    set_={
-                        "translations": translations,
-                        "usage_count": TranslationLexicon.usage_count + 1,
-                        "last_used_at": func.now()
-                    }
-                )
-                
                 existing = await session.execute(
                     select(TranslationLexicon).where(
                         TranslationLexicon.original_text == original_text,
@@ -129,9 +106,6 @@ def sync_translation_to_db_task(original_text: str, src_lang: str, translations:
 
     run_async(_logic())
 
-# ==============================================================================
-#  TASK 3: BACKUP REDIS TO DB
-# ==============================================================================
 @celery_app.task(name="src.worker.tasks.backup_redis_to_db_task")
 def backup_redis_to_db_task():
     logger.info("💾 [Backup] Starting Redis -> DB Backup...")
@@ -197,16 +171,12 @@ def backup_redis_to_db_task():
                     count += 1
                     if count % BATCH_SIZE == 0:
                         await session.commit()
-                        logger.info(f"   Saved {count} items...")
 
             await session.commit()
             logger.info(f"✅ Backup complete. Total items processed: {count}")
 
     run_async(_logic())
 
-# ==============================================================================
-#  TASK 4: RESTORE DB TO REDIS
-# ==============================================================================
 @celery_app.task(name="src.worker.tasks.restore_db_to_redis_task")
 def restore_db_to_redis_task():
     logger.info("🔥 [Restore] Starting DB -> Redis Warmup...")

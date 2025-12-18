@@ -1,38 +1,34 @@
-// components/chat/ChatBubble.tsx
-
 import React, { useEffect, useRef, useMemo, useState } from "react";
 import {
     View,
     Text,
     TouchableOpacity,
-    Image,
     PanResponder,
     Animated,
     Dimensions,
-    StyleSheet,
     KeyboardAvoidingView,
-    Platform
+    Platform,
+    StyleSheet
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
-// ❌ ĐÃ XÓA import useNavigation
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
-import { useRooms } from "../../hooks/useRoom";
+import { useRoomMembers, useRoom } from "../../hooks/useRoom";
 import ChatInnerView from "./ChatInnerView";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { RoomPurpose } from "../../types/enums";
-// 🎯 DÙNG gotoTab TỪ REF
+import { RoomPurpose, RoomType } from "../../types/enums";
 import { gotoTab } from "../../utils/navigationRef";
+import RoomAvatar from '../common/RoomAvatar';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const BUBBLE_SIZE = 60;
 
 const ChatBubble = () => {
-    // ❌ KHÔNG DÙNG useNavigation Ở ĐÂY
     const { t } = useTranslation();
+    const insets = useSafeAreaInsets();
 
-    // Stores
     const { user } = useUserStore();
     const {
         activeBubbleRoomId,
@@ -41,16 +37,15 @@ const ChatBubble = () => {
         userStatuses
     } = useChatStore();
 
-    // Hooks
-    const { useRoomMembers, useRoom } = useRooms();
     const { data: members } = useRoomMembers(activeBubbleRoomId || "");
     const { data: roomInfo } = useRoom(activeBubbleRoomId || "");
 
-    // Animations
-    const pan = useRef(new Animated.ValueXY({ x: SCREEN_WIDTH - BUBBLE_SIZE - 20, y: SCREEN_HEIGHT / 2 })).current;
-    const [isMinimized, setIsMinimized] = useState(false);
+    const [isMinimized, setIsMinimized] = useState(true);
 
-    // --- LOGIC: Xác định đối phương và trạng thái Online ---
+    const initialX = SCREEN_WIDTH - BUBBLE_SIZE - 20;
+    const initialY = insets.top + 100;
+    const pan = useRef(new Animated.ValueXY({ x: initialX, y: initialY })).current;
+
     const targetMember = useMemo(() => {
         if (!members || !user?.userId) return null;
         return members.find(m => m.userId !== user.userId);
@@ -69,7 +64,6 @@ const ChatBubble = () => {
         return roomInfo.roomName;
     }, [roomInfo, targetMember]);
 
-    // --- DRAG GESTURE FOR MINIMIZED BUBBLE ---
     const panResponder = useRef(
         PanResponder.create({
             onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -82,46 +76,119 @@ const ChatBubble = () => {
                     // @ts-ignore
                     y: pan.y._value,
                 });
+                pan.setValue({ x: 0, y: 0 });
             },
-            onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+            onPanResponderMove: Animated.event(
+                [null, { dx: pan.x, dy: pan.y }],
+                { useNativeDriver: false }
+            ),
             onPanResponderRelease: (_, gestureState) => {
                 pan.flattenOffset();
+                const currentX = (pan.x as any)._value;
+                const currentY = (pan.y as any)._value;
+
+                let newX = currentX;
+                let newY = currentY;
+
+                if (currentX < insets.left) newX = insets.left + 10;
+                if (currentX > SCREEN_WIDTH - BUBBLE_SIZE - insets.right) newX = SCREEN_WIDTH - BUBBLE_SIZE - insets.right - 10;
+
+                if (currentY < insets.top) newY = insets.top + 10;
+                if (currentY > SCREEN_HEIGHT - BUBBLE_SIZE - insets.bottom) newY = SCREEN_HEIGHT - BUBBLE_SIZE - insets.bottom - 50;
+
+                Animated.spring(pan, {
+                    toValue: { x: newX, y: newY },
+                    useNativeDriver: false,
+                    friction: 5
+                }).start();
             },
         })
     ).current;
 
-    // Effects
-    useEffect(() => {
-        if (!isBubbleOpen) {
-            setIsMinimized(false);
-        }
-    }, [isBubbleOpen]);
-
-    const handleExpand = () => setIsMinimized(false);
-    const handleMinimize = () => setIsMinimized(true);
+    const handleToggleExpand = () => {
+        setIsMinimized(!isMinimized);
+    };
 
     const handleClose = () => {
         closeBubble();
-        setIsMinimized(false);
+        setIsMinimized(true);
     };
 
     const handleOpenFullChat = () => {
         if (activeBubbleRoomId) {
             closeBubble();
-            // 🎯 DÙNG gotoTab: Tab cha "Chat", screen con "GroupChatScreen"
             gotoTab(
-                "Chat", // Tên Tab Navigator
-                "GroupChatScreen", // Tên Screen trong ChatStack
-                { roomId: activeBubbleRoomId, roomName: displayTitle }
+                "ChatStack",
+                "GroupChatScreen",
+                {
+                    roomId: activeBubbleRoomId,
+                    roomName: displayTitle,
+                    ChatRoom: {
+                        roomId: activeBubbleRoomId,
+                        roomName: displayTitle
+                    }
+                }
             );
         }
     };
 
+    useEffect(() => {
+        if (isBubbleOpen) {
+            setIsMinimized(true);
+        }
+    }, [isBubbleOpen, activeBubbleRoomId]);
+
     if (!isBubbleOpen || !activeBubbleRoomId) return null;
 
-    // --- RENDER: MINIMIZED MODE (ICON TRÒN) ---
-    if (isMinimized) {
-        return (
+    return (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+            {!isMinimized && (
+                <View style={styles.expandedWrapper} pointerEvents="box-none">
+                    <TouchableOpacity
+                        style={styles.backdrop}
+                        activeOpacity={1}
+                        onPress={() => setIsMinimized(true)}
+                    />
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        style={[styles.window, { marginTop: insets.top + 60, marginBottom: insets.bottom + 20 }]}
+                    >
+                        <View style={styles.header}>
+                            <View style={styles.headerInfo}>
+                                <TouchableOpacity onPress={handleOpenFullChat} style={styles.headerTitleRow}>
+                                    <Text style={styles.headerTitle} numberOfLines={1}>{displayTitle}</Text>
+                                    <Icon name="open-in-new" size={16} color="#6B7280" style={{ marginLeft: 5 }} />
+                                </TouchableOpacity>
+                                {roomInfo?.purpose === RoomPurpose.PRIVATE_CHAT && (
+                                    <View style={styles.statusRow}>
+                                        {isTargetOnline && <View style={styles.onlineDotHeader} />}
+                                        <Text style={styles.statusText}>
+                                            {isTargetOnline ? t('chat.active_now') : t('chat.offline')}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                            <View style={styles.headerControls}>
+                                <TouchableOpacity onPress={() => setIsMinimized(true)} style={styles.controlBtn}>
+                                    <Icon name="remove" size={24} color="#4B5563" />
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={handleClose} style={styles.controlBtn}>
+                                    <Icon name="close" size={24} color="#4B5563" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        <View style={styles.content}>
+                            <ChatInnerView
+                                roomId={activeBubbleRoomId}
+                                isBubbleMode={true}
+                                members={members || []}
+                            />
+                        </View>
+                    </KeyboardAvoidingView>
+                </View>
+            )}
+
             <Animated.View
                 style={[
                     styles.bubbleContainer,
@@ -129,75 +196,32 @@ const ChatBubble = () => {
                 ]}
                 {...panResponder.panHandlers}
             >
-                <TouchableOpacity onPress={handleExpand} style={styles.bubbleTouch}>
-                    <Image
-                        source={
-                            targetMember?.avatarUrl
-                                ? { uri: targetMember.avatarUrl }
-                                : require('../../assets/images/ImagePlacehoderCourse.png')
-                        }
-                        style={styles.bubbleImage}
+                <TouchableOpacity
+                    onPress={handleToggleExpand}
+                    style={styles.bubbleTouch}
+                    activeOpacity={0.9}
+                >
+                    <RoomAvatar
+                        avatarUrl={roomInfo?.avatarUrl}
+                        members={members || []}
+                        isGroup={roomInfo?.roomType !== RoomType.PRIVATE}
+                        size={BUBBLE_SIZE}
                     />
-                    {isTargetOnline && <View style={styles.onlineDotBubble} />}
+
+                    {roomInfo?.purpose === RoomPurpose.PRIVATE_CHAT && isTargetOnline && (
+                        <View style={styles.onlineDotBubble} />
+                    )}
                 </TouchableOpacity>
+
                 <TouchableOpacity style={styles.closeBadge} onPress={handleClose}>
                     <Icon name="close" size={12} color="#FFF" />
                 </TouchableOpacity>
             </Animated.View>
-        );
-    }
-
-    // --- RENDER: EXPANDED MODE (CỬA SỔ CHAT) ---
-    return (
-        <View style={styles.expandedContainer} pointerEvents="box-none">
-            <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                style={styles.window}
-            >
-                {/* Header */}
-                <View style={styles.header} {...panResponder.panHandlers}>
-                    <View style={styles.headerInfo}>
-                        <TouchableOpacity onPress={handleOpenFullChat} style={styles.headerTitleRow}>
-                            <Text style={styles.headerTitle} numberOfLines={1}>{displayTitle}</Text>
-                            <Icon name="open-in-new" size={16} color="#6B7280" style={{ marginLeft: 5 }} />
-                        </TouchableOpacity>
-
-                        {roomInfo?.purpose === RoomPurpose.PRIVATE_CHAT && (
-                            <View style={styles.statusRow}>
-                                {isTargetOnline && <View style={styles.onlineDotHeader} />}
-                                <Text style={styles.statusText}>
-                                    {isTargetOnline ? t('chat.active_now') : t('chat.offline')}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-
-                    <View style={styles.headerControls}>
-                        <TouchableOpacity onPress={handleMinimize} style={styles.controlBtn}>
-                            <Icon name="remove" size={24} color="#4B5563" />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={handleClose} style={styles.controlBtn}>
-                            <Icon name="close" size={24} color="#4B5563" />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                {/* Content */}
-                <View style={styles.content}>
-                    <ChatInnerView
-                        roomId={activeBubbleRoomId}
-                        isBubbleMode={true}
-                        initialRoomName={displayTitle}
-                        initialFocusMessageId={null} // 🎯 QUAN TRỌNG: Truyền null vì bubble không cần focus lịch sử
-                    />
-                </View>
-            </KeyboardAvoidingView>
         </View>
     );
 };
 
 const styles = createScaledSheet({
-    // Minimized Styles
     bubbleContainer: {
         position: 'absolute',
         width: BUBBLE_SIZE,
@@ -205,29 +229,23 @@ const styles = createScaledSheet({
         zIndex: 9999,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 8,
     },
     bubbleTouch: {
         width: '100%',
         height: '100%',
         borderRadius: BUBBLE_SIZE / 2,
         backgroundColor: '#FFF',
-        justifyContent: 'center',
-        alignItems: 'center',
+        overflow: 'hidden',
         borderWidth: 2,
         borderColor: '#FFF',
-        overflow: 'hidden'
-    },
-    bubbleImage: {
-        width: '100%',
-        height: '100%',
     },
     closeBadge: {
         position: 'absolute',
-        top: -5,
-        right: 0,
+        top: -2,
+        right: -2,
         backgroundColor: '#EF4444',
         width: 20,
         height: 20,
@@ -235,45 +253,46 @@ const styles = createScaledSheet({
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 10,
+        elevation: 9,
+        borderWidth: 1,
+        borderColor: '#FFF'
     },
     onlineDotBubble: {
         position: 'absolute',
-        bottom: 8,
-        right: 8,
-        width: 12,
-        height: 12,
-        borderRadius: 6,
+        bottom: 4,
+        right: 4,
+        width: 14,
+        height: 14,
+        borderRadius: 7,
         backgroundColor: '#10B981',
         borderWidth: 2,
         borderColor: '#FFF',
         zIndex: 5
     },
-
-    // Expanded Styles
-    expandedContainer: {
+    expandedWrapper: {
         ...StyleSheet.absoluteFillObject,
-        zIndex: 9998,
-        justifyContent: 'flex-end',
-        alignItems: 'flex-end',
-        pointerEvents: 'box-none', // Allow touches to pass through empty areas
+        zIndex: 9990,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    backdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.1)',
     },
     window: {
         width: SCREEN_WIDTH * 0.9,
-        height: SCREEN_HEIGHT * 0.65, // Chiều cao cửa sổ chat bubble
+        height: SCREEN_HEIGHT * 0.7,
         backgroundColor: '#FFF',
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-        borderBottomLeftRadius: 0, // Gắn đáy màn hình hoặc float tùy ý
-        marginRight: 10,
-        marginBottom: 0, // Sát đáy hoặc cách 1 chút
+        borderRadius: 16,
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
         shadowRadius: 10,
         elevation: 10,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: '#E5E7EB'
+        borderColor: '#E5E7EB',
+        zIndex: 9991
     },
     header: {
         flexDirection: 'row',

@@ -34,8 +34,6 @@ public class CourseController {
     private final CourseService courseService;
     private final MessageSource messageSource;
 
-    // === LEARNER API (API CHO NGƯỜI HỌC) ===
-
     @Operation(summary = "Get all public courses (paginated, filters out enrolled/owned)")
     @GetMapping
     public AppApiResponse<Page<CourseResponse>> getAllCourses(
@@ -46,17 +44,12 @@ public class CourseController {
             Pageable pageable,
             Locale locale) {
 
-        // Get Current User from Context
         UUID currentUserId = null;
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.isAuthenticated() && !authentication.getPrincipal().equals("anonymousUser")) {
              try {
-                // Assuming the Principal is the User ID (String) or username that can be mapped
-                // In a JWT setup, this is usually the subject (userId)
                 currentUserId = UUID.fromString(authentication.getName());
              } catch (IllegalArgumentException e) {
-                 // Handle case where authentication name is not UUID (e.g. username) if needed
-                 // For now, fail silently or null
              }
         }
 
@@ -69,7 +62,6 @@ public class CourseController {
                 .build();
     }
 
-    // --- NEW: Top Selling Courses Endpoint ---
     @Operation(summary = "Get top selling courses", description = "Lấy danh sách khóa học có nhiều lượt mua nhất")
     @GetMapping("/top-selling")
     public AppApiResponse<List<CourseResponse>> getTopSellingCourses(

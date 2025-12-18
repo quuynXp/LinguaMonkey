@@ -17,9 +17,10 @@ export const roomKeys = {
     detail: (id: string) => [...roomKeys.all, "detail", id] as const,
     members: (id: string) => [...roomKeys.all, "members", id] as const,
     ai: () => [...roomKeys.all, "aiRoom"] as const,
-    // 💡 Key mới để lấy Room liên quan đến Course
     courseRoom: (courseId: string) => [...roomKeys.all, "courseRoom", courseId] as const,
 };
+
+const BASE = "/api/v1/rooms";
 
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
     data: (result?.content as T[]) || [],
@@ -32,200 +33,189 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
     },
 });
 
-export const useRooms = () => {
+export const usePublicRooms = (params?: {
+    roomName?: string;
+    creatorId?: string;
+    purpose?: RoomPurpose;
+    roomType?: RoomType;
+    page?: number;
+    size?: number;
+}) => {
+    // Ổn định params: Đảm bảo default value được tính vào key
+    const finalParams = { page: 0, size: 10, ...params };
+
+    return useQuery({
+        queryKey: roomKeys.publicLists(finalParams),
+        queryFn: async () => {
+            const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
+                BASE,
+                { params: finalParams }
+            );
+            return mapPageResponse(data.result, finalParams.page, finalParams.size);
+        },
+        staleTime: 5 * 60 * 1000,
+    });
+};
+
+export const useJoinedRooms = (params?: {
+    purpose?: RoomPurpose;
+    page?: number;
+    size?: number;
+    userId: string;
+}) => {
+    const finalParams = { page: 0, size: 20, ...params };
+
+    return useQuery({
+        queryKey: roomKeys.joinedLists(finalParams),
+        queryFn: async () => {
+            const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
+                `${BASE}/joined`,
+                { params: finalParams }
+            );
+            return mapPageResponse(data.result, finalParams.page, finalParams.size);
+        },
+        refetchInterval: 10000, // Lưu ý: Cái này sẽ trigger re-render mỗi 10s
+    });
+};
+
+export const useRoom = (id?: string | null) => {
+    return useQuery({
+        // Sử dụng id || "" để key luôn valid string, tránh null crash key
+        queryKey: roomKeys.detail(id || ""),
+        queryFn: async () => {
+            if (!id) throw new Error("Room ID required");
+            const { data } = await instance.get<AppApiResponse<RoomResponse>>(`${BASE}/${id}`);
+            return data.result!;
+        },
+        enabled: !!id,
+    });
+};
+
+export const useCourseRoom = (courseId: string | null) => {
+    return useQuery({
+        queryKey: roomKeys.courseRoom(courseId || ""),
+        queryFn: async () => {
+            if (!courseId) return null;
+            const { data } = await instance.get<AppApiResponse<RoomResponse>>(
+                `${BASE}/course/${courseId}`
+            );
+            return data.result || null;
+        },
+        enabled: !!courseId,
+        staleTime: Infinity,
+    });
+};
+
+export const useRoomMembers = (roomId?: string | null) => {
+    return useQuery({
+        queryKey: roomKeys.members(roomId || ""),
+        queryFn: async () => {
+            if (!roomId) throw new Error("Room ID required");
+            const { data } = await instance.get<AppApiResponse<MemberResponse[]>>(
+                `${BASE}/${roomId}/members`
+            );
+            return data.result || [];
+        },
+        enabled: !!roomId,
+    });
+};
+
+export const useCreateRoom = () => {
     const queryClient = useQueryClient();
-    const BASE = "/api/v1/rooms";
+    return useMutation({
+        mutationFn: async (req: RoomRequest) => {
+            const { data } = await instance.post<AppApiResponse<RoomResponse>>(BASE, req);
+            return data.result!;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: roomKeys.all });
+        },
+    });
+};
 
-    const usePublicRooms = (params?: {
-        roomName?: string;
-        creatorId?: string;
-        purpose?: RoomPurpose;
-        roomType?: RoomType;
-        page?: number;
-        size?: number;
-    }) => {
-        const { page = 0, size = 10 } = params || {};
-        return useQuery({
-            queryKey: roomKeys.publicLists(params),
-            queryFn: async () => {
-                const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
-                    BASE,
-                    { params: { ...params, page, size } }
-                );
-                return mapPageResponse(data.result, page, size);
-            },
-            staleTime: 5 * 60 * 1000,
-        });
-    };
+export const useJoinRoom = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ roomId, roomCode, password }: { roomId?: string; roomCode?: string; password?: string }) => {
+            const { data } = await instance.post<AppApiResponse<RoomResponse>>(`${BASE}/join`, {
+                roomId,
+                roomCode,
+                password
+            });
+            return data.result!;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: roomKeys.all });
+        },
+    });
+};
 
-    const useJoinedRooms = (params?: {
-        purpose?: RoomPurpose;
-        page?: number;
-        size?: number;
-        userId: string;
-    }) => {
-        const { page = 0, size = 20 } = params || {};
-        return useQuery({
-            queryKey: roomKeys.joinedLists(params),
-            queryFn: async () => {
-                const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
-                    `${BASE}/joined`,
-                    { params: { ...params, page, size } }
-                );
-                return mapPageResponse(data.result, page, size);
-            },
-            refetchInterval: 10000,
-        });
-    };
+export const useLeaveRoom = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ roomId, targetAdminId }: { roomId: string; targetAdminId?: string }) => {
+            await instance.post<AppApiResponse<void>>(
+                `${BASE}/${roomId}/leave`,
+                null,
+                { params: { targetAdminId } }
+            );
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: roomKeys.all });
+        },
+    });
+};
 
-    const useRoom = (id?: string | null) => {
-        return useQuery({
-            queryKey: roomKeys.detail(id!),
-            queryFn: async () => {
-                if (!id) throw new Error("Room ID required");
-                const { data } = await instance.get<AppApiResponse<RoomResponse>>(`${BASE}/${id}`);
-                return data.result!;
-            },
-            enabled: !!id,
-        });
-    };
+export const useAddRoomMembers = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ roomId, memberRequests }: { roomId: string; memberRequests: RoomMemberRequest[] }) => {
+            await instance.post<AppApiResponse<void>>(
+                `${BASE}/${roomId}/members`,
+                memberRequests
+            );
+        },
+        onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
+    });
+};
 
-    // 💡 HOOK MỚI: Lấy Room ID/Room Response của Course
-    const useCourseRoom = (courseId: string | null) => {
-        return useQuery({
-            queryKey: roomKeys.courseRoom(courseId!),
-            queryFn: async () => {
-                if (!courseId) return null;
-                // 💡 API endpoint giả định để lấy Room ID liên kết với Course
-                const { data } = await instance.get<AppApiResponse<RoomResponse>>(
-                    `${BASE}/course/${courseId}`
-                );
-                return data.result || null;
-            },
-            enabled: !!courseId,
-            staleTime: Infinity,
-        });
-    };
+export const useRemoveRoomMembers = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ roomId, userIds }: { roomId: string; userIds: string[] }) => {
+            await instance.delete<AppApiResponse<void>>(
+                `${BASE}/${roomId}/members`,
+                { data: userIds }
+            );
+        },
+        onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
+    });
+};
 
-    const useRoomMembers = (roomId?: string | null) => {
-        return useQuery({
-            queryKey: roomKeys.members(roomId!),
-            queryFn: async () => {
-                if (!roomId) throw new Error("Room ID required");
-                const { data } = await instance.get<AppApiResponse<MemberResponse[]>>(
-                    `${BASE}/${roomId}/members`
-                );
-                return data.result || [];
-            },
-            enabled: !!roomId,
-        });
-    };
+export const useUpdateMemberNickname = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ roomId, nickname }: { roomId: string; nickname: string }) => {
+            await instance.put<AppApiResponse<void>>(
+                `${BASE}/${roomId}/members/nickname`,
+                { nickname }
+            );
+        },
+        onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
+    });
+};
 
-    const useCreateRoom = () => {
-        return useMutation({
-            mutationFn: async (req: RoomRequest) => {
-                const { data } = await instance.post<AppApiResponse<RoomResponse>>(BASE, req);
-                return data.result!;
-            },
-            onSuccess: () => {
-                queryClient.invalidateQueries({ queryKey: roomKeys.all });
-            },
-        });
-    };
-
-    const useJoinRoom = () => {
-        return useMutation({
-            mutationFn: async ({ roomId, roomCode, password }: { roomId?: string; roomCode?: string; password?: string }) => {
-                const { data } = await instance.post<AppApiResponse<RoomResponse>>(`${BASE}/join`, {
-                    roomId,
-                    roomCode,
-                    password
-                });
-                return data.result!;
-            },
-            onSuccess: () => {
-                queryClient.invalidateQueries({ queryKey: roomKeys.all });
-            },
-        });
-    };
-
-    const useLeaveRoom = () => {
-        return useMutation({
-            mutationFn: async ({ roomId, targetAdminId }: { roomId: string; targetAdminId?: string }) => {
-                await instance.post<AppApiResponse<void>>(
-                    `${BASE}/${roomId}/leave`,
-                    null,
-                    { params: { targetAdminId } }
-                );
-            },
-            onSuccess: () => {
-                queryClient.invalidateQueries({ queryKey: roomKeys.all });
-            },
-        });
-    };
-
-    const useAddRoomMembers = () => {
-        return useMutation({
-            mutationFn: async ({ roomId, memberRequests }: { roomId: string; memberRequests: RoomMemberRequest[] }) => {
-                await instance.post<AppApiResponse<void>>(
-                    `${BASE}/${roomId}/members`,
-                    memberRequests
-                );
-            },
-            onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
-        });
-    };
-
-    const useRemoveRoomMembers = () => {
-        return useMutation({
-            mutationFn: async ({ roomId, userIds }: { roomId: string; userIds: string[] }) => {
-                await instance.delete<AppApiResponse<void>>(
-                    `${BASE}/${roomId}/members`,
-                    { data: userIds }
-                );
-            },
-            onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
-        });
-    };
-
-    const useUpdateMemberNickname = () => {
-        return useMutation({
-            mutationFn: async ({ roomId, nickname }: { roomId: string; nickname: string }) => {
-                await instance.put<AppApiResponse<void>>(
-                    `${BASE}/${roomId}/members/nickname`,
-                    { nickname }
-                );
-            },
-            onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
-        });
-    };
-
-    const useFindOrCreatePrivateRoom = () => {
-        return useMutation({
-            mutationFn: async (targetUserId: string) => {
-                const { data } = await instance.post<AppApiResponse<RoomResponse>>(
-                    `${BASE}/private`,
-                    null,
-                    { params: { targetUserId } }
-                );
-                return data.result!;
-            },
-            onSuccess: () => queryClient.invalidateQueries({ queryKey: roomKeys.all })
-        });
-    }
-
-    return {
-        usePublicRooms,
-        useJoinedRooms,
-        useRoom,
-        useCourseRoom, // 💡 Export hook mới
-        useRoomMembers,
-        useCreateRoom,
-        useJoinRoom,
-        useLeaveRoom,
-        useAddRoomMembers,
-        useRemoveRoomMembers,
-        useUpdateMemberNickname,
-        useFindOrCreatePrivateRoom
-    };
+export const useFindOrCreatePrivateRoom = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (targetUserId: string) => {
+            const { data } = await instance.post<AppApiResponse<RoomResponse>>(
+                `${BASE}/private`,
+                null,
+                { params: { targetUserId } }
+            );
+            return data.result!;
+        },
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: roomKeys.all })
+    });
 };

@@ -1,4 +1,3 @@
-# src/core/cache.py
 from redis import asyncio as aioredis  # <<< THAY ĐỔI DUY NHẤT Ở ĐÂY
 import logging
 import os

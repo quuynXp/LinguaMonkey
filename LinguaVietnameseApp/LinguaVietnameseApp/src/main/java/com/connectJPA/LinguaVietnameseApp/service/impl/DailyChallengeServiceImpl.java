@@ -13,13 +13,12 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
-import com.connectJPA.LinguaVietnameseApp.dto.response.UserDailyChallengeResponse;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
+import com.connectJPA.LinguaVietnameseApp.mapper.UserDailyChallengeMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.connectJPA.LinguaVietnameseApp.mapper.UserDailyChallengeMapper;
 
 import java.time.DayOfWeek;
 import java.time.OffsetDateTime;
@@ -114,8 +113,8 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 userId, ChallengePeriod.WEEKLY, startOfWeek, endOfWeek
         );
 
-        boolean needDaily = dailies.size() < 5;
-        boolean needWeekly = weeklies.size() < 5;
+        boolean needDaily = dailies.size() < 3; 
+        boolean needWeekly = weeklies.size() < 2; 
 
         if (needDaily || needWeekly) {
             assignMissingChallengesV2(userId, dailies, weeklies, needDaily, needWeekly);
@@ -134,13 +133,13 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         List<UserDailyChallenge> finalDailies = dailies.stream()
                 .filter(distinctByKey(udc -> udc.getChallenge().getId()))
                 .sorted(getComparator())
-                .limit(5) 
+                .limit(3)
                 .collect(Collectors.toList());
 
         List<UserDailyChallenge> finalWeeklies = weeklies.stream()
                 .filter(distinctByKey(udc -> udc.getChallenge().getId()))
                 .sorted(getComparator())
-                .limit(5)
+                .limit(2)
                 .collect(Collectors.toList());
 
         return Stream.concat(finalDailies.stream(), finalWeeklies.stream())
@@ -157,10 +156,10 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     }
 
     private void assignMissingChallengesV2(UUID userId, 
-                                          List<UserDailyChallenge> existingDailies, 
-                                          List<UserDailyChallenge> existingWeeklies,
-                                          boolean assignDaily, 
-                                          boolean assignWeekly) {
+                                           List<UserDailyChallenge> existingDailies, 
+                                           List<UserDailyChallenge> existingWeeklies,
+                                           boolean assignDaily, 
+                                           boolean assignWeekly) {
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         String userLang = (user.getNativeLanguageCode() != null) ? user.getNativeLanguageCode() : "en";
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
@@ -176,7 +175,7 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .map(udc -> udc.getChallenge().getId())
                 .collect(Collectors.toSet());
 
-            int needed = Math.max(0, 5 - existingDailies.size());
+            int needed = Math.max(0, 3 - existingDailies.size());
             if (needed > 0) {
                 List<DailyChallenge> availableDailies = allChallenges.stream()
                     .filter(c -> ChallengePeriod.DAILY.name().equalsIgnoreCase(String.valueOf(c.getPeriod())))
@@ -192,7 +191,7 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .map(udc -> udc.getChallenge().getId())
                 .collect(Collectors.toSet());
 
-            int needed = Math.max(0, 5 - existingWeeklies.size());
+            int needed = Math.max(0, 2 - existingWeeklies.size());
             if (needed > 0) {
                 List<DailyChallenge> availableWeeklies = allChallenges.stream()
                     .filter(c -> ChallengePeriod.WEEKLY.name().equalsIgnoreCase(String.valueOf(c.getPeriod())))
@@ -265,14 +264,13 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 target.setCompletedAt(now);
                 target.setStatus(ChallengeStatus.CAN_CLAIM);
                 anyCompleted = true;
-                if (target.getChallenge().getLanguageCode().equals(userLang)) {
-                    sendChallengeCompletedNotification(userId, target);
-                }
+                
+                sendChallengeCompletedNotification(userId, target);
             }
             
-            if (target.getChallenge().getLanguageCode().equals(userLang)) {
+            if (primaryUpdated == null) {
                 primaryUpdated = target;
-            } else if (primaryUpdated == null) {
+            } else if (target.getChallenge().getLanguageCode().equals(userLang)) {
                 primaryUpdated = target;
             }
         }
@@ -330,20 +328,18 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
             end = start.plusDays(1).minusNanos(1);
         }
         
-        // FIX: Find ALL duplicates
         List<UserDailyChallenge> candidateChallenges = userDailyChallengeRepository.findClaimableChallenge(userId, challengeId, start, end);
         
         if (candidateChallenges.isEmpty()) {
              throw new AppException(ErrorCode.CHALLENGE_NOT_COMPLETED);
         }
 
-        // Handle duplicates: Take the first one, delete the rest (Self-healing)
         UserDailyChallenge challenge = candidateChallenges.get(0);
         if (candidateChallenges.size() > 1) {
             log.warn("Found duplicate challenges for user {} and challenge {}. Cleaning up...", userId, challengeId);
             for (int i = 1; i < candidateChallenges.size(); i++) {
                 UserDailyChallenge duplicate = candidateChallenges.get(i);
-                duplicate.setDeleted(true); // Soft delete
+                duplicate.setDeleted(true); 
                 userDailyChallengeRepository.save(duplicate);
             }
         }

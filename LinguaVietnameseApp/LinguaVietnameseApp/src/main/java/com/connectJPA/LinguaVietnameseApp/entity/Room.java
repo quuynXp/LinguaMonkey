@@ -23,7 +23,7 @@ public class Room extends BaseEntity {
     @Column(name = "room_id")
     private UUID roomId;
 
-    @Column(name = "room_name", nullable = false)
+    @Column(name = "room_name", nullable = false, columnDefinition = "VARCHAR(255)")
     private String roomName;
 
     @Column(name = "course_id")
@@ -35,11 +35,11 @@ public class Room extends BaseEntity {
     @Column(name = "max_members", nullable = false)
     private int maxMembers;
 
-   @Enumerated(EnumType.STRING)
+    @Enumerated(EnumType.STRING)
     @Column(name = "purpose")
     private RoomPurpose purpose;
 
-   @Enumerated(EnumType.STRING)
+    @Enumerated(EnumType.STRING)
     @Column(name = "topic")
     private RoomTopic topic;
 
@@ -53,6 +53,7 @@ public class Room extends BaseEntity {
     @Column(name = "password")
     private String password;
 
+    @Column(columnDefinition = "TEXT")
     private String content;
 
     @Enumerated(EnumType.STRING)

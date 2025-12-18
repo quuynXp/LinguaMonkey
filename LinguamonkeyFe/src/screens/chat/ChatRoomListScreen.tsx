@@ -11,9 +11,9 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
-import { useRooms } from '../../hooks/useRoom';
+import { useJoinedRooms } from '../../hooks/useRoom';
 import { useUserStore } from '../../stores/UserStore';
-import { useChatStore } from '../../stores/ChatStore'; // Import Store
+import { useChatStore } from '../../stores/ChatStore';
 import { RoomResponse } from '../../types/dto';
 import { RoomType } from '../../types/enums';
 import DecryptedText from '../../components/common/DecryptedText';
@@ -21,9 +21,11 @@ import DecryptedText from '../../components/common/DecryptedText';
 const ChatRoomListScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
-  const { useJoinedRooms } = useRooms();
+  
+  // FIX: Xóa dòng gọi hook factory cũ: const { useJoinedRooms } = useRooms();
   const { messagesByRoom } = useChatStore();
 
+  // Gọi trực tiếp hook đã import
   const { data: roomsData, isLoading, refetch } = useJoinedRooms({
     userId: user?.userId || '',
     page: 0,
@@ -37,14 +39,23 @@ const ChatRoomListScreen = ({ navigation }: any) => {
   const rooms = (roomsData?.data || []) as RoomResponse[];
 
   const handleRoomPress = (room: RoomResponse) => {
+    if (!room.roomId) {
+      console.warn("Attempted to join room with undefined ID");
+      return;
+    }
+
     navigation.navigate('GroupChatScreen', {
       roomId: room.roomId,
       roomName: room.roomName,
+      avatarUrl: room.avatarUrl,
+      isPrivate: room.roomType === RoomType.PRIVATE
     });
   };
 
   const renderRoomItem = ({ item }: { item: RoomResponse }) => {
     const isPrivate = item.roomType === RoomType.PRIVATE;
+    const isSelf = item.lastMessageSenderId === user?.userId;
+    const isUnread = !isSelf && item.read === false;
 
     return (
       <TouchableOpacity style={styles.roomItem} onPress={() => handleRoomPress(item)}>
@@ -58,10 +69,10 @@ const ChatRoomListScreen = ({ navigation }: any) => {
 
         <View style={styles.roomInfo}>
           <View style={styles.roomHeader}>
-            <Text style={styles.roomName} numberOfLines={1}>{item.roomName}</Text>
+            <Text style={[styles.roomName, isUnread && styles.unReadText]} numberOfLines={1}>{item.roomName}</Text>
             {item.lastMessageTime && (
-              <Text style={styles.timeText}>
-                {/* Convert time logic here */}
+              <Text style={[styles.timeText, isUnread && styles.unReadText]}>
+                {new Date(item.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Text>
             )}
           </View>
@@ -71,7 +82,7 @@ const ChatRoomListScreen = ({ navigation }: any) => {
               <Text style={styles.statusText}>{item.partnerLastActiveText} • </Text>
             )}
             <DecryptedText
-              style={styles.lastMessage}
+              style={[styles.lastMessage, isUnread && styles.unReadMessage]}
               numberOfLines={1}
               content={item.lastMessage || ''}
               senderId={item.lastMessageSenderId}
@@ -108,7 +119,7 @@ const ChatRoomListScreen = ({ navigation }: any) => {
         <FlatList
           data={rooms}
           renderItem={renderRoomItem}
-          keyExtractor={(item) => item.roomId}
+          keyExtractor={(item) => item.roomId ? item.roomId.toString() : Math.random().toString()}
           contentContainerStyle={styles.listContent}
           refreshing={isLoading}
           onRefresh={refetch}
@@ -159,6 +170,8 @@ const styles = createScaledSheet({
   lastMessageContainer: { flexDirection: 'row', alignItems: 'center' },
   statusText: { fontSize: 12, color: '#9CA3AF' },
   lastMessage: { fontSize: 14, color: '#6B7280', flex: 1 },
+  unReadText: { fontWeight: '700', color: '#111827' },
+  unReadMessage: { fontWeight: '600', color: '#111827' },
   emptyContainer: { alignItems: 'center', marginTop: 50 },
   emptyText: { fontSize: 16, fontWeight: '600', color: '#374151' },
   emptySubText: { fontSize: 14, color: '#6B7280', marginTop: 4 },

@@ -23,7 +23,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from "@tanstack/react-query"; // <--- THÊM IMPORT NÀY
 
-// THÊM courseKeys VÀO IMPORT
 import { useCourses, courseKeys } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
 import { createScaledSheet } from "../../utils/scaledStyles";

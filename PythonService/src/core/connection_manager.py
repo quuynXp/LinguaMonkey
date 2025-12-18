@@ -13,7 +13,6 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str = None, native_lang: str = None):
         await websocket.accept()
-        # Chuẩn hóa native_lang để tránh logic lỗi (ví dụ 'vi-VN' -> 'vi')
         lang_code = (native_lang or "vi").split('-')[0].lower()
         
         meta = {
@@ -43,7 +42,6 @@ class ConnectionManager:
         
         languages = set()
         for meta in self.active_connections[room_id]:
-            # Chỉ lấy ngôn ngữ nếu user đó không tắt subtitle (tùy chọn, ở đây ta cứ lấy để cache)
             mode = meta.get("config", {}).get("subtitleMode", "dual")
             if mode != "off":
                 languages.add(meta.get("native_lang", "vi"))
