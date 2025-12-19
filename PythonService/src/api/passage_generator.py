@@ -23,7 +23,7 @@ def generate_passage(user_id: str, language: str, topic: str, user_profile: dict
     CRITICAL: Ensures prompt prevents leaking User ID into the output.
     """
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         level = user_profile.get("proficiency", "beginner") if user_profile else "beginner"
         

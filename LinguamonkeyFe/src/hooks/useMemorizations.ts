@@ -17,6 +17,7 @@ export const useMemorizations = () => {
   const queryClient = useQueryClient();
 
   const useUserMemorizations = (params?: {
+    userId?: string;
     content_type?: string;
     page?: number;
     size?: number;
@@ -26,6 +27,8 @@ export const useMemorizations = () => {
       queryKey: memorizationKeys.list(params),
       queryFn: async () => {
         const qp = new URLSearchParams();
+        if (params?.userId) qp.append("userId", params.userId);
+
         if (params?.content_type) qp.append("contentType", params.content_type);
         if (params?.keyword) qp.append("keyword", params.keyword);
         if (params?.page !== undefined) qp.append("page", String(params.page));
@@ -34,8 +37,9 @@ export const useMemorizations = () => {
         const { data } = await instance.get<AppApiResponse<PageResponse<MemorizationResponse>>>(
           `/api/v1/memorizations?${qp.toString()}`
         );
-        return data.result; // Return full PageResponse object
+        return data.result;
       },
+      enabled: !!params?.userId,
       staleTime: 60_000,
     });
   };
@@ -73,8 +77,8 @@ export const useMemorizations = () => {
 
   const useDeleteMemorization = () => {
     return useMutation({
-      mutationFn: async (id: string) => {
-        await instance.delete(`/api/v1/memorizations/${id}`);
+      mutationFn: async ({ id, userId }: { id: string; userId: string }) => {
+        await instance.delete(`/api/v1/memorizations/${id}?userId=${userId}`);
       },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: memorizationKeys.lists() });

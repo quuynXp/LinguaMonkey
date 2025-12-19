@@ -23,20 +23,20 @@
             "transactions": "交易"
         },
         "desc": {
-            "createVideo": "上传新的视频课时",
+            "createVideo": "上传新视频课程",
             "analytics": "查看系统分析和报告",
             "transactions": "监控系统交易"
         },
         "transactions": {
             "title": "交易",
             "defaultTitle": "交易",
-            "noTransactions": "暂无交易"
+            "noTransactions": "无交易"
         },
         "lessons": {
             "title": "课时管理",
-            "completions": "课时完成度",
+            "completions": "课时完成情况",
             "listTitle": "课时",
-            "noLessons": "暂无课时"
+            "noLessons": "无课时"
         },
         "courseDetail": {
             "title": "课程详情",
@@ -48,7 +48,7 @@
                 "successMessage": "课程已移除。"
             },
             "form": {
-                "thumbnailUrl": "缩略图网址",
+                "thumbnailUrl": "缩略图 URL",
                 "title": "标题",
                 "description": "描述",
                 "difficultyLevel": "难度等级",
@@ -66,21 +66,21 @@
                 "lessons": "课时"
             },
             "listTitle": "课程",
-            "noCourses": "暂无课程"
+            "noCourses": "无课程"
         },
         "menu": {
             "appInfo": "应用信息"
         },
         "auth": {
-            "logout": "退出登录",
-            "logoutTitle": "退出登录",
-            "logoutConfirm": "您确定要立即退出登录吗？"
+            "logout": "登出",
+            "logoutTitle": "登出",
+            "logoutConfirm": "您确定要现在登出吗？"
         },
         "analytics": {
             "title": "收入分析",
             "logout": {
-                "title": "退出登录",
-                "message": "您确定要退出登录吗？"
+                "title": "登出",
+                "message": "您确定要登出吗？"
             },
             "periods": {
                 "week": "周",
@@ -90,7 +90,7 @@
             },
             "errors": {
                 "invalidRangeTitle": "无效范围",
-                "invalidRangeMessage": "结束日期必须等于或晚于开始日期。"
+                "invalidRangeMessage": "结束日期必须在开始日期之后或相同。"
             },
             "charts": {
                 "revenue": "收入",
@@ -98,7 +98,7 @@
                 "breakdown": "明细",
                 "notAvailable": "不可用",
                 "itemLabel": "项目 {{index}}",
-                "noBreakdown": "暂无明细数据"
+                "noBreakdown": "无明细数据"
             },
             "overview": {
                 "title": "概览",
@@ -108,9 +108,9 @@
         },
         "dashboard": {
             "loading": "正在加载仪表板...",
-            "totalUsers": "用户总数",
-            "totalCourses": "课程总数",
-            "totalLessons": "课时总数",
+            "totalUsers": "总用户",
+            "totalCourses": "总课程",
+            "totalLessons": "总课时",
             "totalRevenue": "总收入",
             "revenueThisMonth": "本月收入",
             "quickActions": "快速操作",
@@ -120,7 +120,7 @@
                 "year": "今年"
             },
             "overview": "概览",
-            "totalTransactions": "交易总数",
+            "totalTransactions": "总交易",
             "selectStart": "选择开始日期",
             "selectEnd": "选择结束日期",
             "charts": {
@@ -142,17 +142,2207 @@
         },
         "users": {
             "title": "用户管理",
-            "total": "用户总数",
+            "total": "总用户",
             "new": "新用户",
             "growthChart": "增长图表",
             "overview": {
-                "totalUsers": "用户总数",
+                "totalUsers": "总用户",
                 "growth": "增长"
             },
             "listTitle": "用户",
             "defaultfullname": "用户",
-            "noUsers": "暂无用户可显示",
+            "noUsers": "暂无用户显示",
             "searchPlaceholder": "按姓名或邮箱搜索用户..."
         }
+    },
+    "login": {
+        "success": "登录成功",
+        "failed": "登录失败"
+    },
+    "auth": {
+        "phoneNumber": "电话号码",
+        "enterPhoneNumber": "输入您的电话号码",
+        "phoneHint": "我们将向此号码发送验证码。",
+        "emailAddress": "邮箱地址",
+        "password": "密码",
+        "forgotPassword": "忘记密码？",
+        "signIn": "登录",
+        "loginWithGoogle": "使用 Google 登录",
+        "loginWithFacebook": "使用 Facebook 登录",
+        "createAccount": "创建账户",
+        "signUp": "注册",
+        "alreadyHaveAccount": "已有账户？",
+        "createAccountDescription": "创建一个免费账户以访问所有功能",
+        "termsOfService": "注册即表示您同意我们的服务条款和隐私政策",
+        "privacyPolicy": "隐私政策",
+        "accountSetup": "账户设置",
+        "choice": {
+            "subtitle": "选择您的开始方式",
+            "signInTitle": "登录",
+            "signInDescription": "已有账户？欢迎回来！",
+            "createAccountTitle": "创建账户",
+            "createAccountDescription": "设置您的个性化学习档案",
+            "startNowTitle": "立即开始",
+            "startNowDescription": "使用临时账户直接进入",
+            "termsAndPolicy": "继续即表示您同意我们的<1>服务条款</1>和<3>隐私政策</3>"
+        },
+        "fullName": "全名",
+        "enterName": "输入您的全名",
+        "email": "邮箱地址",
+        "enterEmail": "输入您的邮箱",
+        "createPassword": "创建一个安全密码",
+        "welcomeBack": "欢迎回到 MonkeyLingua",
+        "orContinueWith": "或继续使用",
+        "orSignUpWith": "或注册使用",
+        "sendOtp": "发送验证码",
+        "signInContinue": "登录以继续",
+        "dontHaveAccount": "没有账户",
+        "agreeTo": "注册即表示您同意我们的 ",
+        "and": " 和 ",
+        "google": "Google",
+        "haveAccount": "已有账户？ ",
+        "facebook": "Facebook"
+    },
+    "account": {
+        "startFresh": "创建账户",
+        "startFreshDesc": "设置您的个性化学习档案",
+        "welcomeBack": "登录",
+        "signInDesc": "已有账户？欢迎回来！",
+        "choose": "您想如何开始？",
+        "quickStart": "立即开始",
+        "quickStartDesc": "使用临时账户直接进入",
+        "disclaimer": "临时账户将在 30 天不活动后自动删除。升级以永久保存您的进度。"
+    },
+    "terms": {
+        "byContinuing": "继续即表示您同意我们的",
+        "termsOfService": "服务条款",
+        "privacyPolicy": "隐私政策",
+        "and": " 和 "
+    },
+    "setup": {
+        "title": "账户设置",
+        "skip": "跳过",
+        "chooseCompanion": "选择您的学习伙伴",
+        "chooseCompanion.desc": "选择一个 3D 角色来引导您的学习旅程",
+        "createAccount": "创建您的账户",
+        "createAccount.desc": "让我们从您的基本信息开始",
+        "ageRange": "年龄范围",
+        "selected": "已选",
+        "certificationGoals": "认证目标",
+        "certificationGoals.desc": "您对哪些认证感兴趣？（可选）",
+        "interests": "您的兴趣",
+        "interests.desc": "您对什么话题感兴趣？这有助于我们个性化内容",
+        "learningGoals.desc": "您想实现什么目标？（多选）",
+        "learningPace.desc": "您能投入多少时间学习？",
+        "setGoals": "设定学习目标",
+        "setGoals.desc": "定义您的目标和提醒",
+        "goalType": "目标类型",
+        "goalType.placeholder": "例如：备考",
+        "targetProficiency": "目标熟练度",
+        "targetProficiency.placeholder": "例如：高级",
+        "targetDate": "目标日期",
+        "targetDate.placeholder": "YYYY-MM-DD",
+        "customDescription": "自定义描述",
+        "customDescription.placeholder": "您的目标详情",
+        "reminderTime": "提醒时间",
+        "reminderTime.placeholder": "HH:MM",
+        "repeatType": "重复类型",
+        "repeatType.placeholder": "例如：每天",
+        "readyToStart": "准备开始学习！",
+        "readyToStart.desc": "在参加熟练度测试前检查您的选择",
+        "character": "角色",
+        "certifications": "认证",
+        "learningGoals": "学习目标",
+        "learningPace": "学习进度",
+        "goal": "目标",
+        "by": "截止",
+        "nextProficiencyTest": "下一步：参加快速熟练度测试以确定您的起始水平",
+        "takeTest": "参加熟练度测试",
+        "continue": "继续",
+        "certificationsAndPace": "认证和学习进度",
+        "certificationsAndPace.desc": "选择您的认证目标和首选学习进度",
+        "interestsAndGoals": "兴趣和目标",
+        "interestsAndGoals.desc": "选择您的兴趣并设定学习目标以进行个性化",
+        "loadingModels": "正在加载 3D 模型..."
+    },
+    "onboarding": {
+        "skip": "跳过",
+        "next": "下一步",
+        "start": "开始"
+    },
+    "enterEmailForReset": "输入您的邮箱以接收密码重置说明",
+    "enterEmailAddress": "输入您的邮箱地址",
+    "sendResetLink": "发送重置链接",
+    "rememberPassword": "记起密码了？ ",
+    "noAccount": "没有账户？ ",
+    "joinLearners": "加入全球数百万学习者的行列",
+    "firstName": "名",
+    "lastName": "姓",
+    "passwordLength": "密码长度必须至少为 8 个字符",
+    "passwordUppercase": "密码必须包含至少一个大写字母",
+    "verifyCode": "验证代码",
+    "enterCodeSentTo": "输入发送至 {{email}} 的代码",
+    "enter6DigitCode": "输入 6 位数代码",
+    "verify": "验证",
+    "resendCode": "重新发送代码",
+    "info": "通知",
+    "verificationFailed": "验证失败",
+    "codeResent": "验证代码已重新发送至 {{email}}",
+    "timeRemaining": "剩余时间 {{time}}",
+    "youCanResend": "您可以重新发送代码",
+    "Loading": "加载中...",
+    "anErrorOccurred": "发生错误",
+    "useOtpInstead": "使用 OTP",
+    "overview": "概览",
+    "vip": {
+        "renewTitle": "续费 VIP",
+        "monthly": "1 个月",
+        "yearly": "1 年",
+        "upgradeTitle": "升级 VIP",
+        "upgradeDesc": "解锁全部 TOEIC、IELTS 模拟测试，无限听力、口语、阅读和写作技能。",
+        "feature1": "无限 1 对 1 模拟",
+        "feature2": "TOEIC & IELTS 题库",
+        "feature3": "详细 AI 评分",
+        "price": "仅需",
+        "lifetime": "/ 终身",
+        "buyNow": "立即注册"
+    },
+    "usePasswordInstead": "使用密码",
+    "error": {
+        "generic_internal": "加载错误",
+        "general": "错误",
+        "title": "错误",
+        "loadCharacters": "无法加载角色",
+        "loadLanguages": "无法加载语言",
+        "loadInterests": "无法加载兴趣",
+        "characterRequired": "请选择一个角色以继续。",
+        "infoRequired": "请填写所有必填字段。",
+        "certificationsRequired": "请选择至少一个认证。",
+        "interestsRequired": "请选择至少一个兴趣。",
+        "learningGoalsRequired": "请选择至少一个学习目标。",
+        "learningPaceRequired": "请选择您的学习进度。",
+        "goalRequired": "请设置您的学习目标。",
+        "setupAccount": "无法设置账户",
+        "classifyLevel": "无法分类用户等级",
+        "connection": "抱歉，连接出现问题。请稍后再试。",
+        "sendMessage": "发送消息失败",
+        "translation": "翻译失败",
+        "fillRequired": "请填写所有必填字段",
+        "enterRoomId": "请输入房间 ID",
+        "createRoom": "创建房间失败",
+        "joinRoom": "加入房间失败",
+        "nameRequired": "姓名为必填项",
+        "nameMin": "姓名必须至少 2 个字符",
+        "connection_title": "连接错误",
+        "connection_message": "网络连接错误或超时。请重试。",
+        "info_title": "通知",
+        "warning_title": "警告",
+        "server_error_title": "服务器错误",
+        "system_error_title": "系统错误",
+        "request_error_title": "请求错误",
+        "generic_message": "发生错误。请稍后再试。"
+    },
+    "common": {
+        "items": "项目",
+        "connect": "连接",
+        "connected": "已连接",
+        "seeAll": "查看全部",
+        "searchByNameNickEmailPhone": "按姓名、昵称、邮箱或电话搜索",
+        "filter": "筛选",
+        "apply": "应用",
+        "noResults": "无结果",
+        "claim": "领取",
+        "noData": "无数据",
+        "teacher": "教师",
+        "view": "查看",
+        "buy": "购买",
+        "coins": "金币",
+        "webViewTitle": "网页",
+        "overview": "概览",
+        "year": "年",
+        "skip": "跳过",
+        "hot": "热门",
+        "server_maintenance": "服务器维护",
+        "please_wait_reconnecting": "请稍候，正在重新连接",
+        "server_unavailable_msg": "服务器不可用，请稍后再试，我们为此次不愉快的体验感到抱歉。",
+        "reconnecting": "重新连接中",
+        "loading": "加载中...",
+        "appName": "MonkeyLingua",
+        "error": "错误",
+        "success": "成功",
+        "cancel": "取消",
+        "create": "创建",
+        "authRequired": "需要登录",
+        "open_settings": "打开设置",
+        "no_internet": "无互联网连接。请检查您的网络。",
+        "save": "保存",
+        "delete": "删除",
+        "edit": "编辑",
+        "add": "添加",
+        "search": "搜索",
+        "retry": "重试",
+        "back": "返回",
+        "next": "下一步",
+        "previous": "上一步",
+        "close": "关闭",
+        "confirm": "确认",
+        "yes": "是",
+        "no": "否",
+        "ok": "确定",
+        "done": "完成",
+        "refresh": "刷新",
+        "viewAll": "查看全部",
+        "all": "全部",
+        "minutes": "分钟",
+        "hours": "小时",
+        "days": "天",
+        "weeks": "周",
+        "months": "月",
+        "years": "年",
+        "starting": "正在开始...",
+        "completing": "正在完成...",
+        "submitting": "正在提交...",
+        "reset": "重置",
+        "optional": "可选",
+        "viewAll_vn": "查看全部",
+        "complete_vn": "完成",
+        "create_vn": "创建",
+        "cancel_vn": "取消",
+        "select": "选择",
+        "complete": "测验完成！",
+        "reload": "重新加载",
+        "noDescription": "无可用描述",
+        "loadingData": "正在加载数据...",
+        "period": {
+            "day": "天",
+            "week": "周",
+            "month": "月",
+            "year": "年"
+        }
+    },
+    "upload": {
+        "inProgress": "正在上传...",
+        "success": "上传成功",
+        "failed": "上传失败",
+        "preview": "预览",
+        "commit": "提交上传",
+        "cancel": "取消上传"
+    },
+    "dialogs": {
+        "confirmDelete": "您确定要删除此项吗？",
+        "confirmLogout": "您确定要登出吗？",
+        "unsavedChanges": "您有未保存的更改。您想放弃它们吗？"
+    },
+    "navigation": {
+        "home": "首页",
+        "lessons": "课时",
+        "grammar": "语法",
+        "videos": "视频",
+        "notes": "笔记",
+        "profile": "个人资料"
+    },
+    "validation": {
+        "note": {
+            "content": {
+                "required": "笔记内容为必填项",
+                "min": "笔记内容不能为空",
+                "max": "笔记内容不能超过 500 个字符"
+            },
+            "type": {
+                "required": "笔记类型为必填项",
+                "invalid": "无效的笔记类型"
+            },
+            "topic": {
+                "required": "主题为必填项"
+            },
+            "language": {
+                "required": "语言为必填项"
+            }
+        },
+        "topic": {
+            "name": {
+                "required": "主题名称为必填项",
+                "min": "主题名称必须至少 2 个字符",
+                "max": "主题名称不能超过 50 个字符"
+            },
+            "color": {
+                "required": "颜色为必填项",
+                "invalid": "无效的颜色格式"
+            },
+            "icon": {
+                "required": "图标为必填项"
+            }
+        },
+        "quiz": {
+            "lesson": {
+                "required": "课时 ID 为必填项"
+            },
+            "answers": {
+                "required": "答案为必填项",
+                "empty": "请回答所有问题"
+            }
+        },
+        "grammar": {
+            "rule": {
+                "required": "语法规则 ID 为必填项"
+            },
+            "answers": {
+                "required": "答案为必填项",
+                "empty": "请回答所有练习"
+            }
+        },
+        "search": {
+            "query": {
+                "min": "搜索查询必须至少 2 个字符",
+                "max": "搜索查询不能超过 50 个字符"
+            }
+        },
+        "friend": {
+            "userId": {
+                "required": "用户 ID 为必填项"
+            }
+        }
+    },
+    "errors": {
+        "webview_load_failed": "无法加载页面。请检查您的网络连接。",
+        "network": "网络错误。请检查您的连接。",
+        "server": "服务器错误",
+        "loading": "加载中...",
+        "loadTestsFailed": "无法加载测试",
+        "unauthorized": "您无权执行此操作。",
+        "notFound": "未找到请求的资源。",
+        "validation": "请检查您的输入并重试。",
+        "unknown": "发生了意外错误。",
+        "networkError": "发生网络错误",
+        "loadRoadmapFailed": "无法加载路线图",
+        "loadItemFailed": "无法加载项目详情",
+        "loadLearnDataFailed": "无法加载学习数据",
+        "loadCourseDetailsFailed": "无法加载课程详情",
+        "purchaseFailed": "购买失败。请重试。",
+        "loadCertificationsFailed": "无法加载认证",
+        "uploadFailed": "上传失败",
+        "aiRoomNotFound": "无法创建 AI 聊天室。请重试。",
+        "roomNotReady": "聊天室未就绪。",
+        "userNotFound": "未找到用户"
+    },
+    "user": {
+        "proficiency": "您的熟练程度",
+        "learningPace": "您的学习进度"
+    },
+    "success": {
+        "noteCreated": "笔记创建成功",
+        "noteUpdated": "笔记更新成功",
+        "noteDeleted": "笔记删除成功",
+        "topicCreated": "主题创建成功",
+        "lessonCompleted": "课时完成成功",
+        "quizSubmitted": "测验提交成功",
+        "exerciseCompleted": "练习完成成功",
+        "friendRequestSent": "好友请求发送成功",
+        "friendRequestAccepted": "好友请求已接受"
+    },
+    "loadingGeneric": "加载中...",
+    "loading": {
+        "ai": "AI 正在响应...",
+        "room": "正在加载聊天室...",
+        "aiRoom": "正在加载 AI 房间..."
+    },
+    "input": {
+        "placeholder": "输入消息..."
+    },
+    "modal": {
+        "environment": {
+            "title": "选择环境"
+        },
+        "topics": {
+            "title": "选择主题"
+        }
+    },
+    "action": {
+        "retry": "重试",
+        "reload": "重新加载"
+    },
+    "days": {
+        "mon": "周一",
+        "tue": "周二",
+        "wed": "周三",
+        "thu": "周四",
+        "fri": "周五",
+        "sat": "周六",
+        "sun": "周日"
+    },
+    "welcome": {
+        "title": "欢迎来到 MonkeyLingua",
+        "subtitle": "您的 AI 驱动英语学习伙伴"
+    },
+    "password": {
+        "optional": "密码（可选）"
+    },
+    "cancel": "取消",
+    "confirm": "确认",
+    "tabbar": {
+        "home": "首页",
+        "learn": "学习",
+        "progress": "进度",
+        "chat_ai": "AI 聊天",
+        "profile": "个人资料"
+    },
+    "Unknown error": "发生了意外错误",
+    "Target Language": "目标语言",
+    "Target Proficiency": "目标熟练度",
+    "Target Completion Date": "目标完成日期",
+    "Focus Areas": "重点领域",
+    "Study Time (minutes/day)": "学习时间（分钟/天）",
+    "Additional Requirements": "其他要求",
+    "Any specific goals or interests?": "有什么具体目标或兴趣吗？",
+    "errorLabel": "错误",
+    "auto_detect": "自动检测",
+    "public": "公开",
+    "close": "关闭",
+    "last_months": "最近几个月",
+    "less": "较少",
+    "more": "较多",
+    "viewAll": "查看全部",
+    "hot": "热门",
+    "items": "项目",
+    "no": "否",
+    "currency": {
+        "title": "货币",
+        "select": "选择货币",
+        "convert": "转换",
+        "rate": "汇率",
+        "updatedAt": "最后更新",
+        "VND": "越南盾",
+        "USD": "美元",
+        "CNY": "人民币",
+        "JPY": "日元",
+        "KRW": "韩元",
+        "EUR": "欧元"
+    },
+    "language": {
+        "chooseLanguages": "选择您的母语和学习语言",
+        "nativeLanguage": "母语",
+        "learningLanguage": "学习语言",
+        "selectLanguages": "选择语言",
+        "changed": "语言更改成功",
+        "vietnamese": "越南语",
+        "english": "英语",
+        "chinese": "中文"
+    },
+    "languageSelection": {
+        "title": "选择您的语言",
+        "nativeLanguage": "母语",
+        "learningLanguage": "学习语言",
+        "selectNative": "选择您的母语",
+        "selectLearning": "选择您想学习的语言"
+    },
+    "environment": {
+        "general": "通用",
+        "generalDesc": "练习日常对话。",
+        "business": "商务",
+        "businessDesc": "提高您的商务沟通技巧。",
+        "casual": "休闲",
+        "casualDesc": "与朋友轻松对话。",
+        "academic": "学术",
+        "academicDesc": "在学术环境中学习。",
+        "travel": "旅游",
+        "travelDesc": "出国旅游对话。",
+        "restaurant": "餐厅",
+        "restaurantDesc": "练习点餐和就餐对话。",
+        "switch": "切换环境"
+    },
+    "categories": {
+        "all": "所有类别",
+        "free": "免费",
+        "paid": "付费",
+        "purchased": "已购买"
+    },
+    "enums": {
+        "proficiency": {
+            "A1": "A1（入门）",
+            "A2": "A2（初级）",
+            "B1": "B1（中级）",
+            "B2": "B2（中高级）",
+            "C1": "C1（高级）",
+            "C2": "C2（精通）",
+            "NATIVE": "母语",
+            "BEGINER": "入门",
+            "INTERMEDIATE": "中级"
+        },
+        "pace": {
+            "NORMAL": "正常",
+            "SLOW": "慢速",
+            "MAINTAIN": "保持",
+            "FAST": "快速",
+            "ACCELERATED": "加速"
+        },
+        "level": "等级",
+        "country": {
+            "VIETNAM": "越南",
+            "CHINA": "中国",
+            "JAPAN": "日本",
+            "KOREAN": "韩国",
+            "FRANCE": "法国"
+        },
+        "ageRange": {
+            "AGE_18_24": "18 - 24 岁"
+        },
+        "learningPace": {
+            "SLOW": "慢速（20 分钟/天）"
+        }
+    },
+    "proficiency": {
+        "A1": "A1",
+        "A2": "A2",
+        "B1": "B1",
+        "B2": "B2",
+        "C1": "C1",
+        "C2": "C2",
+        "NATIVE": "母语者",
+        "BEGINER": "入门"
+    },
+    "difficulty": {
+        "title": "难度",
+        "easy": "简单",
+        "medium": "中等",
+        "hard": "困难"
+    },
+    "tips": {
+        "title": "提示"
+    },
+    "appSubtitle": {
+        "feature": {
+            "aiLearning": "AI 辅助学习",
+            "socialLearning": "社交学习",
+            "gamified": "游戏化体验"
+        }
+    },
+    "levels": {
+        "beginner": "入门",
+        "intermediate": "中级",
+        "advanced": "高级"
+    },
+    "level": {
+        "beginner": "入门",
+        "intermediate": "中级",
+        "advanced": "高级"
+    },
+    "purpose": {
+        "learning": "学习",
+        "social": "社交",
+        "quiz": "测验"
+    },
+    "flashcards": {
+        "title": "词汇卡片",
+        "searchPlaceholder": "搜索卡片...",
+        "studyModes": "学习模式",
+        "definitionStudy": "定义学习",
+        "imageStudy": "图像学习",
+        "loadError": "加载卡片错误",
+        "noCardsTitle": "无卡片",
+        "noCardsMessage": "无可供学习的卡片",
+        "studyCompleteTitle": "学习完成",
+        "studyCompleteMessage": "您已复习完所有卡片！",
+        "fillWordAndDefinition": "请填写单词和定义",
+        "createLocalSuccess": "本地卡片创建成功。",
+        "permissionDenied": "权限被拒绝",
+        "reviewDoneTitle": "完成",
+        "reviewDoneMessage": "已完成复习可用卡片。",
+        "reviewFailed": "复习失败。请重试。",
+        "favorite": "收藏",
+        "implementFavorite": "如果需要，实施收藏 API",
+        "like": "点赞",
+        "implementLike": "如果需要，实施点赞 API",
+        "exampleLabel": "例子：",
+        "noCardsAvailable": "无可用卡片",
+        "progress_flashcard": "{{current}} / {{total}}",
+        "imagePrompt": "这张图片代表什么词？",
+        "definitionPrompt": "这个词是什么意思？",
+        "answerLabel": "答案：",
+        "showAnswer": "显示答案",
+        "categories": {
+            "all": "全部",
+            "general": "通用",
+            "academic": "学术",
+            "business": "商务",
+            "travel": "旅游",
+            "technology": "科技"
+        },
+        "createTitle": "创建词汇卡",
+        "form": {
+            "word": "单词",
+            "wordPlaceholder": "输入单词",
+            "definition": "定义",
+            "definitionPlaceholder": "输入定义",
+            "image": "图像",
+            "addImage": "添加图像",
+            "difficulty": "难度",
+            "public": "公开",
+            "example": "例子",
+            "examplePlaceholder": "输入例句"
+        }
+    },
+    "listening": {
+        "title": "听力练习",
+        "welcomeTitle": "听力练习",
+        "welcomeSubtitle": "通过各种主题提高您的听力技能",
+        "chooseTopic": "选择一个主题"
+    },
+    "learn": {
+        "grammar": "语法",
+        "myCreatorCourses": "我创建的课程",
+        "myCourseManagement": "课程管理",
+        "title": "学习英语",
+        "courses": "课程",
+        "certPreparation": "证书备考",
+        "simulation": "1 对 1 模拟",
+        "subtitle": "您的每日英语学习伙伴",
+        "description": "通过互动课程和测验练习口语、听力、阅读和写作。",
+        "startNow": "立即开始",
+        "continue": "继续学习",
+        "dailyGoal": "每日目标",
+        "interactiveQuiz": "互动测验",
+        "vocabularyFlashcards": "词汇卡片",
+        "ipaPronunciation": "IPA 发音",
+        "quizLearning": "测验学习",
+        "notes": "笔记",
+        "listeningLessons": "听力课程",
+        "speakingLessons": "口语课程",
+        "readingLessons": "阅读课程",
+        "writingLessons": "写作课程",
+        "learningTools": "学习工具",
+        "dailyGoalDescription": "每天至少完成 1 节课并练习 15 分钟，以保持您的学习连胜。",
+        "dailyChallenge": "每日挑战",
+        "dailyChallengeDescription": "完成今天的挑战以获得额外的 XP 和奖励。",
+        "dailyStreak": "每日连胜",
+        "dailyStreakDescription": "通过每天完成课程来保持您的学习连胜。",
+        "welcomeMessage": "欢迎来到您的每日英语学习课程！",
+        "welcome": "你好，{{name}}！",
+        "defaultName": "学习者",
+        "level": "等级",
+        "dayStreak": "天连胜",
+        "selectLanguage": "选择语言",
+        "categories": {
+            "listening": "听力",
+            "speaking": "口语",
+            "reading": "阅读",
+            "writing": "写作",
+            "advancedListening": "高级听力",
+            "ipa": "IPA",
+            "certification": "认证",
+            "quiz": "测验",
+            "vocabulary": "词汇",
+            "grammar": "语法"
+        },
+        "listening": "听力",
+        "speaking": "口语",
+        "reading": "阅读",
+        "writing": "写作",
+        "soloQuiz": "个人测验",
+        "teamQuiz": "团队测验",
+        "bilingual": "双语视频",
+        "certifications": "认证",
+        "lessonsCount": "{{count}} 节课",
+        "lessonsCount_plural": "{{count}} 节课",
+        "noContent": "无可用课程",
+        "noContentMessage": "让我们从一些免费课程开始，建立您的技能。",
+        "bilingualVideos": "双语视频",
+        "myCourses": "我的课程",
+        "freeCourses": "免费课程",
+        "recommendedCourses": "推荐课程",
+        "viewAllCourses": "查看所有课程"
+    },
+    "all": "全部",
+    "learning": "学习",
+    "lessons": {
+        "title": "免费课程",
+        "chooseChapter": "选择章节",
+        "lessonCompleted": "课程完成！",
+        "quizScore": "您的得分：{{score}}%",
+        "submitQuiz": "提交测验",
+        "tryAgain": "重试",
+        "difficulty": {
+            "beginner": "入门",
+            "intermediate": "中级",
+            "advanced": "高级"
+        },
+        "types": {
+            "video": "视频",
+            "article": "文章",
+            "quiz": "测验",
+            "image": "图像",
+            "audio": "音频"
+        }
+    },
+    "grammar": {
+        "title": "语法学习",
+        "topics": "语法主题",
+        "subtitle": "一步步掌握英语语法",
+        "rules": "语法规则",
+        "explanation": "解释",
+        "examples": "例子",
+        "exercises": "练习题",
+        "checkAnswers": "检查答案",
+        "correct": "✓ 正确！",
+        "incorrect": "✗ 错误。答案：{{answer}}",
+        "score": "您的得分：{{score}}%",
+        "retryExercises": "重试"
+    },
+    "videos": {
+        "categories": "类别",
+        "subtitles": "字幕",
+        "speed": "速度",
+        "language": {
+            "original": "原文",
+            "translated": "译文",
+            "both": "双语"
+        },
+        "title": "视频",
+        "vocabulary": "词汇",
+        "levels": {
+            "beginner": "入门",
+            "intermediate": "中级",
+            "advanced": "高级"
+        },
+        "controls": {
+            "subtitles": "字幕"
+        },
+        "subtitleModes": {
+            "original": "原文",
+            "translated": "译文",
+            "both": "双语"
+        }
+    },
+    "notes": {
+        "title": "我的笔记",
+        "topics": "主题",
+        "addNote": "添加新笔记",
+        "addTopic": "添加新主题",
+        "searchPlaceholder": "搜索笔记...",
+        "typeHint": "AI 将自动生成音标和翻译",
+        "types": {
+            "word": "单词",
+            "phrase": "短语",
+            "sentence": "句子"
+        },
+        "empty": {
+            "title": "暂无笔记",
+            "description": "开始添加词汇笔记以建立您的个人词典"
+        }
+    },
+    "course": {
+        "totalLessons": "{{count}} 节课",
+        "progress": "进度：{{progress}}%",
+        "continue": "继续",
+        "courseNotFoundOrNotPublic": "课程未找到或未公开",
+        "free": "免费",
+        "description": "描述",
+        "curriculum": "课程大纲",
+        "courseContent": "课程内容"
+    },
+    "topics": {
+        "introduction": "介绍",
+        "introductionPrompt": "向他人介绍你自己。",
+        "jobInterview": "求职面试",
+        "jobInterviewPrompt": "练习回答求职面试问题。",
+        "dailyRoutine": "日常生活",
+        "dailyRoutinePrompt": "谈谈你的日常生活。",
+        "hobbies": "爱好",
+        "hobbiesPrompt": "分享你的爱好和兴趣。",
+        "travelPlanning": "旅行计划",
+        "travelPlanningPrompt": "与你的团队计划一次旅行。",
+        "foodCulture": "美食与文化",
+        "foodCulturePrompt": "讨论你最喜欢的食物和文化。",
+        "technology": "科技",
+        "technologyPrompt": "谈论最新的科技趋势。",
+        "environment": "环境",
+        "environmentPrompt": "讨论环境问题和解决方案。"
+    },
+    "certifications": {
+        "title": "认证测试",
+        "loadingCertifications": "正在加载认证...",
+        "loadingQuestions": "正在加载问题...",
+        "noCertificationsAvailable": "无可用认证",
+        "noQuestionsAvailable": "无可用问题",
+        "checkBackLater": "请稍后查看新认证",
+        "practiceTest": "模拟测试",
+        "fullExam": "正式考试",
+        "exam": "考试",
+        "practice": "练习",
+        "questions": "问题",
+        "pass": "通过",
+        "attempts": "尝试次数",
+        "bestScore": "最高分",
+        "question": "问题",
+        "of": "/",
+        "submitTest": "提交测试",
+        "testResults": "测试结果",
+        "passed": "通过",
+        "failed": "未通过",
+        "outOf": "/",
+        "correct": "正确",
+        "completedOn": "完成于",
+        "skillBreakdown": "技能细分",
+        "improvementSuggestions": "改进建议",
+        "takeAnotherTest": "参加另一个测试",
+        "timeUp": "时间到！",
+        "timeUpMessage": "您的考试时间已到。正在提交您的答案。",
+        "testPassed": "测试通过！",
+        "congratulations": "恭喜您通过测试！",
+        "testFailed": "测试未通过",
+        "tryAgain": "不要放弃！重试以提高您的分数。",
+        "skills": {
+            "reading": "阅读",
+            "listening": "听力",
+            "grammar": "语法",
+            "vocabulary": "词汇"
+        }
+    },
+    "courses": {
+        "title": "课程",
+        "searchPlaceholder": "搜索课程...",
+        "myPurchasedCourses": "📚 我已购买的课程",
+        "recommendedForYou": "💡 为您推荐",
+        "allCourses": "🌟 所有课程",
+        "purchased": "已购买",
+        "free": "免费",
+        "progress": "进度",
+        "lessons": "节课",
+        "continueLearning": "继续学习",
+        "enrollNow": "立即注册",
+        "startLearning": "开始学习",
+        "noCoursesFound": "未找到课程",
+        "tryDifferentSearch": "尝试不同的搜索或筛选",
+        "courseNotFound": "课程未找到",
+        "purchaseRequired": "需要购买",
+        "purchaseModalText": "此内容已锁定。购买完整课程以访问所有课程并开始您的学习旅程！",
+        "purchase": "购买",
+        "preview": "预览",
+        "writeReview": "撰写评价",
+        "helpful": "有帮助",
+        "noReviewsYet": "暂无评价",
+        "noLessonsAvailable": "无可用课时",
+        "reviews": "评价",
+        "rating": "评分",
+        "students": "学生",
+        "courses": "课程",
+        "level": "等级",
+        "defaultDescription": "通过这门专为希望卓越的学习者设计的综合课程掌握基本技能。",
+        "whatYouWillLearn": "您将学到什么",
+        "requirements": "要求",
+        "courseContent": "课程内容",
+        "defaultFeature1": "全面的学习材料",
+        "defaultFeature2": "专家指导和指引",
+        "defaultRequirement1": "对主题的基本了解",
+        "defaultRequirement2": "愿意练习和学习",
+        "defaultInstructorTitle": "专家讲师",
+        "defaultInstructorBio": "{{instructor}} 是一位在该领域拥有专业知识的经验丰富的教育家。",
+        "categories": {
+            "all": "全部",
+            "business": "商务",
+            "conversation": "会话",
+            "grammar": "语法",
+            "vocabulary": "词汇",
+            "pronunciation": "发音",
+            "technology": "科技"
+        },
+        "sortBy": {
+            "title": "排序方式",
+            "popular": "最热门",
+            "newest": "最新",
+            "priceLow": "价格：从低到高",
+            "priceHigh": "价格：从高到低",
+            "rating": "评分最高"
+        },
+        "tabs": {
+            "overview": "概览",
+            "curriculum": "大纲",
+            "reviews": "评价",
+            "instructor": "讲师"
+        }
+    },
+    "roadmap": {
+        "title": "学习路线图",
+        "chooseRoadmap": "选择路线图",
+        "noActiveRoadmap": "目前没有活跃的路线图！",
+        "suggestedAction": "建议行动",
+        "browsePublic": "浏览公开",
+        "loadingRoadmap": "正在加载您的个性化路线图...",
+        "overallProgress": "总体进度",
+        "itemsCompleted": "项目已完成",
+        "estimatedTime": "预计完成时间",
+        "level": "等级",
+        "completedOn": "完成于",
+        "milestones": "里程碑",
+        "noItemsFound": "未找到项目",
+        "tryDifferentFilter": "尝试不同的筛选器",
+        "itemDetail": "项目详情",
+        "itemNotFound": "未找到项目",
+        "lockedItem": "锁定项目",
+        "lockedItemMessage": "完成之前的项目以解锁此项目",
+        "startItem": "开始项目",
+        "startItemConfirmation": "准备好开始'{{title}}'了吗？",
+        "itemStarted": "项目已成功开始！",
+        "completeItem": "完成项目",
+        "completeItemConfirmation": "将'{{title}}'标记为已完成？",
+        "itemCompleted": "项目已成功完成！",
+        "markComplete": "标记完成",
+        "progress": "进度",
+        "skillsYouWillLearn": "您将学到的技能",
+        "prerequisites": "先决条件",
+        "nextItems": "下一个项目",
+        "relatedItems": "相关项目",
+        "tips": "提示",
+        "noGuidanceAvailable": "此项目无可用指导",
+        "noResourcesAvailable": "此项目无可用资源",
+        "filters": {
+            "all": "全部",
+            "available": "可用",
+            "completed": "已完成"
+        },
+        "types": {
+            "lesson": "课程",
+            "course": "课程",
+            "series": "系列",
+            "milestone": "里程碑",
+            "assessment": "评估"
+        },
+        "status": {
+            "locked": "已锁定",
+            "available": "可用",
+            "in_progress": "进行中",
+            "completed": "已完成"
+        },
+        "difficulty": {
+            "beginner": "入门",
+            "intermediate": "中级",
+            "advanced": "高级"
+        },
+        "tabs": {
+            "overview": "概览",
+            "guidance": "指导",
+            "resources": "资源"
+        },
+        "publicRoadmaps": "公开路线图",
+        "suggest": "建议",
+        "addSuggestion": "添加您的建议",
+        "suggestionPlaceholder": "分享您的想法以改进此路线图..."
+    },
+    "quiz": {
+        "title": "测验",
+        "start": "开始测验",
+        "question": "问题",
+        "explanation": "解释",
+        "next": "下一题",
+        "finish": "结束测验",
+        "complete": "测验完成！",
+        "greatJob": "大家做得好！"
+    },
+    "proficiencyTest": {
+        "title": "熟练度测试",
+        "description": "开始添加词汇笔记以建立您的个人词典",
+        "selectTest": "选择测试",
+        "noTestsAvailable": "目前没有可用的熟练度测试。",
+        "selectLanguage": "选择测试语言",
+        "startTest": "开始测试",
+        "noQuestionsAvailable": "此测试暂无问题。",
+        "titleWithLanguage": "熟练度测试 ({{language}})",
+        "questionProgress": "问题 {{current}} / {{total}}",
+        "completeTest": "完成测试",
+        "continueNext": "继续下一个测试",
+        "errors": {
+            "noInitialCategory": "无法找到语言 {{code}} 的 'initial' 类别",
+            "noLessonForInitial": "无法找到语言 {{code}} 'initial' 类别的课程",
+            "noQuestions": "此测试暂无问题。",
+            "loadFailed": "无法加载测试。请重试。",
+            "classifyLevelFailed": "更新熟练度等级失败。"
+        },
+        "alerts": {
+            "testCompleteTitle": "测试结束",
+            "nextLanguagePrompt": "您的得分为 {{percentage}}%。您想参加下一种语言 ({{language}}) 的测试吗？"
+        },
+        "results": {
+            "title": "测试完成！",
+            "subtitle": "您的得分：{{score}}%",
+            "overallScore": "总分"
+        }
+    },
+    "aiLearning": {
+        "title": "使用智能 AI 学习",
+        "subtitle": "您的 AI 助手将引导您的学习旅程"
+    },
+    "reminder": {
+        "doLessonToKeepStreak": "今天做一节课以保持您的连胜！"
+    },
+    "home": {
+        "promo": {
+            "title": "高级访问权限",
+            "subtitle": "升级以获得无限访问权限"
+        },
+        "challenge": {
+            "defaultDescShort": "完成此挑战以获得奖励。",
+            "xp": "+{{exp}} XP",
+            "currentTitle": "您的挑战",
+            "defaultDesc": "默认描述",
+            "exp": "EXP",
+            "title": "今日挑战",
+            "add": "获取更多",
+            "error": "加载挑战失败"
+        },
+        "title": "首页",
+        "dailyStreak": "每日连胜",
+        "subtitle": "您的每日英语学习中心",
+        "welcomeMessage": "欢迎回来，{{name}}！",
+        "dailyGoal": {
+            "title": "🎯 今日目标",
+            "completeLessons": "完成 {{total}} 节课",
+            "progress": "{{completed}}/{{total}} 节课",
+            "complete": "每日目标已完成",
+            "lesson": "每日目标课程"
+        },
+        "dailyGoalDescription": "每天至少完成 1 节课并练习 15 分钟，以保持您的学习连胜。",
+        "dailyChallenge": {
+            "title": "🎮 每日挑战",
+            "challenge": "挑战",
+            "completed": "（已完成）",
+            "getMore": "获取更多"
+        },
+        "student": {
+            "searchCoursesPlaceholder": "搜索课程...",
+            "enrolledCourses": "我的课程",
+            "allCourses": "所有课程",
+            "noCoursesFound": "未找到课程。",
+            "exploreCourses": "探索课程"
+        },
+        "days": "{{count}} 天",
+        "leaderboard": {
+            "title": "🏆 排行榜",
+            "error": "无法加载排行榜",
+            "viewMore": "查看完整排行榜"
+        },
+        "character": {
+            "message": "一起学习吧！🚀"
+        },
+        "progress": {
+            "title": "📊 学习进度",
+            "level": "等级",
+            "streak": "连胜",
+            "xp": "XP 点数"
+        },
+        "status": {
+            "default": "您进步很大！继续保持！🌟"
+        },
+        "roadmap": {
+            "browsePublic": "浏览公开路线图",
+            "title": "🗺️ 学习路线图",
+            "personal": "个人路线图",
+            "completed": "{{count}} 项目已完成",
+            "estimate": "预计：{{days}} 天",
+            "selectTitle": "🗺️ 选择一个学习路线图",
+            "noDefault": "未找到默认路线图。",
+            "noPersonal": "您没有 {{language}} 的个人路线图。请选择默认路线图或创建一个新路线图。",
+            "createCustom": "创建自定义路线图",
+            "dialogTitle": "输入信息以创建路线图",
+            "targetProficiency": "目标熟练度",
+            "targetDate": "目标日期",
+            "create": "创建",
+            "cancel": "取消",
+            "notFound": "未找到路线图",
+            "targetCertification": "目标认证",
+            "targetDateHint": "为您的认证设定目标日期"
+        },
+        "recentLessons": {
+            "title": "📚 继续学习",
+            "lesson": "第 {{number}} 课"
+        },
+        "roadmapLoading": "正在加载您的路线图...",
+        "roadmapError": "加载路线图失败",
+        "roadmapSelectDefault": "选择一个默认路线图以开始",
+        "roadmapBrowsePublic": "浏览公开路线图",
+        "dailyGoalComplete": "今天完成 {total} 节课"
+    },
+    "motivationSection": "励志信息",
+    "progressSection": "今日进度",
+    "achievementsSection": "近期成就",
+    "continueButton": "继续学习",
+    "quickActions": {
+        "flashcards": "词汇卡",
+        "karaoke": "卡拉OK",
+        "quiz": "测验"
+    },
+    "streakTitle": "{{count}} 天连胜！",
+    "streakMessage": {
+        "start": "开局不错！",
+        "momentum": "保持势头！",
+        "fire": "你太棒了！",
+        "unstoppable": "势不可挡！",
+        "legend": "传奇连胜！"
+    },
+    "translation": {
+        "selectTarget": "选择目标语言",
+        "targetLang": "目标语言",
+        "quiz": {
+            "solo": "个人测验",
+            "loading": "正在加载测验...",
+            "error": {
+                "load": "加载测验失败。请重试。",
+                "startTeam": "启动团队测验失败。请检查您的连接。"
+            },
+            "questionCounter": "问题 {{current}} / {{total}}",
+            "points": "{{count}} 分",
+            "pause": "暂停",
+            "resume": "继续",
+            "correct": "正确！",
+            "explanation": "解释",
+            "nextQuestion": "下一题",
+            "finishQuiz": "完成测验",
+            "timeUp": "时间到！",
+            "team": {
+                "waitingForHost": "等待主持人开始游戏...",
+                "startGame": "开始游戏",
+                "chat": "聊天",
+                "players": "玩家 ({{count}}/10)",
+                "chatPlaceholder": "发送消息...",
+                "playerJoined": "{{name}} 已加入房间！",
+                "playerLeft": "{{name}} 已离开房间。"
+            },
+            "results": {
+                "title": "测验完成！",
+                "score": "您的得分",
+                "correct": "{{correct}} / {{total}} 正确",
+                "points": "分数",
+                "xp": "XP",
+                "bestStreak": "最佳连胜",
+                "time": "时间",
+                "skills": "练习技能",
+                "home": "首页",
+                "retry": "重试",
+                "share": "分享"
+            }
+        }
+    },
+    "speaking": {
+        "select_lesson": "选择一节课",
+        "no_lessons_available": "无可用课程。请稍后再来。",
+        "practice": "口语练习",
+        "ready_title": "准备好",
+        "tap_hold_record": "按住录音",
+        "recording": "录音中..."
+    },
+    "reading": {
+        "screenTitle": "阅读练习",
+        "welcomeTitle": "提高您的阅读技能",
+        "welcomeText": "根据您的水平和兴趣生成自定义文章，或使用样本。",
+        "generateSample": "生成样本文章",
+        "generateButton": "生成文章",
+        "generatedContentTitle": "生成的内容",
+        "errorLoadingContent": "无法加载内容。请重试。",
+        "startReading": "开始阅读",
+        "select_lesson": "选择一节课",
+        "practice": "阅读练习",
+        "generating_content": "正在生成内容...",
+        "error_loading_content": "加载内容错误"
+    },
+    "stats": {
+        "lessons": "课程",
+        "words": "单词",
+        "time": "时间",
+        "xp": "XP",
+        "level": "等级"
+    },
+    "language": {
+        "vietnamese": "越南语",
+        "english": "英语",
+        "japanese": "日语",
+        "chinese": "中文"
+    },
+    "profile": {
+        "allUsers": "所有用户",
+        "myFriends": "我的朋友",
+        "suggestions": "建议",
+        "noFriends": "没有朋友",
+        "streak": "连胜",
+        "coins": "金币",
+        "dayOfBirth": "出生日期",
+        "joined": "加入时间",
+        "nickname": "昵称",
+        "deactivateWarning": "您确定吗？",
+        "accountActions": "账户操作",
+        "loadFailed": "加载个人资料失败",
+        "updateSuccess": "个人资料更新成功",
+        "personalInfo": "个人信息",
+        "ageRange": "年龄范围",
+        "account": "账户",
+        "deactivateAccount": "停用账户",
+        "notification": "通知",
+        "about": "关于",
+        "title": "个人资料",
+        "addFriend": "添加好友",
+        "message": "消息",
+        "requestSent": "请求已发送",
+        "languages": "语言",
+        "native": "母语：",
+        "learning": "学习中：",
+        "statistics": "学习统计",
+        "achievements": "成就",
+        "activity": "学习活动",
+        "viewAll": "查看全部",
+        "viewDetails": "查看详情",
+        "totalStudyTime": "总学习时间",
+        "lessonsCompleted": "完成课程",
+        "wordsLearned": "学习单词",
+        "averageScore": "平均分",
+        "fullname": "全名",
+        "recentActivity": "近期活动",
+        "saved": "已保存个人资料",
+        "savedSuccess": "保存个人资料成功",
+        "editProfile": "编辑个人资料",
+        "uploadAvatar": "上传头像",
+        "changeAvatar": "更改头像",
+        "removeAvatar": "移除头像",
+        "confirmChanges": "确认更改",
+        "vibrationOn": "震动开启",
+        "vibrationOff": "震动关闭",
+        "commitChanges": "提交",
+        "saveSuccess": "个人资料更新成功",
+        "saveFailed": "更新个人资料失败",
+        "viewRoadmap": "查看路线图",
+        "unlocked": "已解锁",
+        "currentLevel": "当前等级",
+        "myWallet": "我的钱包",
+        "menu": "菜单",
+        "noBio": "无简介",
+        "cancelRequest": "取消请求",
+        "gender": "性别",
+        "pace": "进度",
+        "chatAccess": "聊天权限",
+        "translationsUsed": "已用翻译",
+        "totalExp": "总 EXP",
+        "report": "举报用户",
+        "block": "屏蔽用户",
+        "deposit": "充值",
+        "history": "历史",
+        "aboutMe": "关于我",
+        "connect": "连接",
+        "stats": {
+            "title": "统计",
+            "currentLevel": "等级",
+            "totalXP": "总 XP",
+            "dayStreak": "天连胜",
+            "totalStudyTime": "学习时间",
+            "lessonsCompleted": "课程",
+            "wordsLearned": "单词",
+            "averageScore": "平均分",
+            "level": "等级",
+            "streak": "连胜",
+            "admires": "崇拜者"
+        },
+        "timeframes": {
+            "week": "周",
+            "month": "月",
+            "year": "年"
+        },
+        "country": "国家",
+        "settings": {
+            "studyReminders": "学习提醒",
+            "streakReminders": "连胜提醒",
+            "soundEnabled": "音效",
+            "vibrationEnabled": "震动",
+            "profileVisibility": "个人资料可见性",
+            "progressSharing": "进度分享",
+            "locationTracking": "位置跟踪",
+            "contactSync": "同步联系人",
+            "general": "通用",
+            "about": "关于",
+            "helpSupport": "帮助与支持",
+            "userManagement": "用户管理"
+        },
+        "privacySettings": "隐私设置",
+        "transactionHistory": "交易历史",
+        "notificationHistory": "通知历史",
+        "roadmap": "学习路线图",
+        "notes": "笔记",
+        "helpSupport": "帮助与支持",
+        "logout": "登出",
+        "logoutFailed": "登出失败，请重试。",
+        "logoutConfirmTitle": "登出",
+        "logoutConfirmMessage": "您确定要登出吗？",
+        "noName": "无名",
+        "noEmail": "无邮箱",
+        "details": "个人资料详情",
+        "email": "邮箱",
+        "phone": "电话",
+        "age": "年龄",
+        "nativeLanguage": "母语",
+        "level": "等级",
+        "exp": "EXP",
+        "learningPace": "学习进度",
+        "proficiency": "熟练度",
+        "bio": "简介",
+        "noLanguages": "未选择语言",
+        "modelPreview": "3D 角色预览",
+        "noModel": "无可用模型",
+        "badges": "徽章",
+        "noBadges": "未获得徽章",
+        "streakDays": "连胜天数",
+        "dailyGoal": "每日目标",
+        "settingsSummary": "设置摘要",
+        "notifications": "通知",
+        "enabled": "开启",
+        "disabled": "关闭",
+        "studyReminders": "学习提醒",
+        "privacy": "隐私",
+        "public": "公开",
+        "private": "私密",
+        "actions": "操作",
+        "updateFailed": "更新个人资料失败",
+        "cancelChanges": "取消更改",
+        "confirmCancel": "您确定要取消未保存的更改吗？",
+        "continueEditing": "继续编辑",
+        "cancel": "取消",
+        "save": "保存",
+        "firstName": "名",
+        "lastName": "姓",
+        "enterFirstName": "输入您的名字",
+        "enterLastName": "输入您的姓氏",
+        "enterEmail": "输入您的邮箱",
+        "enterPhone": "输入您的电话号码",
+        "enterDateOfBirth": "输入您的出生日期 (DD/MM/YYYY)",
+        "enterCountry": "输入您的国家",
+        "enterNativeLanguage": "输入您的母语",
+        "enterAgeRange": "输入您的年龄范围",
+        "enterLearningPace": "输入您的学习进度",
+        "enterProficiency": "输入您的熟练程度",
+        "enterBio": "写几句关于您自己的话...",
+        "changePassword": "更改密码",
+        "verifyEmail": "验证邮箱",
+        "verified": "已验证",
+        "authProvider": "认证提供商",
+        "createdAt": "账户创建于",
+        "updatedAt": "最后更新于",
+        "progress": "进度",
+        "certifications": "认证",
+        "interests": "兴趣",
+        "goals": "目标",
+        "profileVisibility": "个人资料可见性",
+        "progressSharing": "进度分享",
+        "dataCollection": "数据收集",
+        "personalization": "个性化",
+        "analytics": "分析",
+        "crashReports": "崩溃报告",
+        "locationTracking": "位置跟踪",
+        "contactSync": "联系人同步",
+        "streakReminders": "连胜提醒",
+        "messageNotifications": "消息通知",
+        "achievementNotifications": "成就通知",
+        "quietHours": "静音时段",
+        "addABio": "添加简介",
+        "expShort": "EXP",
+        "toNextLevel": "距下一级：{{exp}} EXP",
+        "aboutYourAccount": "关于您的账户",
+        "privacyNotice": "您的信息受到保护，仅用于提升您的学习体验。",
+        "playStoreRating": "在 Google Play 上被用户评为 5★。",
+        "policySnippet": "查看我们的隐私政策和条款以了解我们如何处理您的数据。",
+        "quietHoursValue": "{{status}} ({{start}}-{{end}})",
+        "uploadingColor": "#9CA3AF"
+    },
+    "settings": {
+        "title": "设置",
+        "account": "账户",
+        "notifications": "通知",
+        "language": "语言",
+        "privacy": "隐私",
+        "security": "安全",
+        "logout": "登出",
+        "preferences": "偏好设置",
+        "auto_translate": "自动翻译",
+        "auto_translate_desc": "自动翻译消息",
+        "sound": "声音"
+    },
+    "notification": {
+        "settingsTitle": "通知设置",
+        "permissionsSection": "权限",
+        "enableNotifications": "启用通知",
+        "enableNotificationsDesc": "允许应用向您发送学习提醒和消息",
+        "permissionsSuccess": "成功",
+        "permissionsSuccessMessage": "通知权限已授予！",
+        "permissionsRequired": "需要权限",
+        "permissionsRequiredMessage": "请在设备设置中启用通知以接收提醒。",
+        "studyRemindersSection": "学习提醒",
+        "studyReminders": "每日学习提醒",
+        "studyRemindersDesc": "在您偏好的时间收到学习提醒",
+        "studyTime": "学习时间：{{time}}",
+        "reminderFrequency": "提醒频率",
+        "daily": "每天",
+        "default_title": "通知",
+        "channel_default_name": "一般通知",
+        "weekdays": "仅工作日",
+        "custom": "自定义天数",
+        "selectDays": "选择天数",
+        "streakReminders": "连胜警告",
+        "streakRemindersDesc": "在失去学习连胜前获得警告",
+        "messageNotificationsSection": "消息通知",
+        "chatMessages": "聊天消息",
+        "chatMessagesDesc": "新聊天消息的通知",
+        "coupleNotifications": "情侣通知",
+        "coupleNotificationsDesc": "来自学习伙伴的更新",
+        "groupInvitations": "群组邀请",
+        "groupInvitationsDesc": "小组学习课程的邀请",
+        "achievementNotifications": "成就通知",
+        "achievementNotificationsDesc": "庆祝您的学习里程碑",
+        "soundVibrationSection": "声音与震动",
+        "soundEffects": "音效",
+        "soundEffectsDesc": "通知时播放声音",
+        "vibration": "震动",
+        "vibrationDesc": "通知时震动设备",
+        "quietHoursSection": "静音时段",
+        "quietHours": "启用静音时段",
+        "quietHoursDesc": "在特定时间段内静音通知",
+        "quietHoursStart": "开始：{{time}}",
+        "quietHoursEnd": "结束：{{time}}",
+        "testNotificationsSection": "测试通知",
+        "sendTestNotification": "发送测试通知",
+        "testNotificationSent": "测试已发送！",
+        "errorSavingPreferences": "保存通知偏好设置失败",
+        "errorSendingTest": "发送测试通知失败",
+        "history": "通知历史"
+    },
+    "history": {
+        "noSessions": "无会话",
+        "test": {
+            "notImplemented": "未实施历史记录"
+        },
+        "title": "学习历史",
+        "export": "导出",
+        "noStats": "无统计数据",
+        "tabs": {
+            "sessions": "会话",
+            "tests": "测试",
+            "stats": "统计"
+        },
+        "filters": {
+            "week": "本周",
+            "month": "本月",
+            "year": "今年"
+        },
+        "stats": {
+            "sessions": "会话",
+            "studyTime": "学习时间",
+            "experience": "经验",
+            "avgScore": "平均分",
+            "progressChart": "进度图表"
+        },
+        "session": {
+            "score": "{{score}}/{{maxScore}}",
+            "exp": "+{{experience}} XP"
+        },
+        "types": {
+            "LESSON_COMPLETED": "课程",
+            "COURSE_COMPLETED": "课程",
+            "DAILY_CHALLENGE_COMPLETED": "每日挑战",
+            "FLASHCARD_REVIEWED": "词汇卡",
+            "EVENT_COMPLETED": "事件",
+            "QUIZ_COMPLETED": "测验",
+            "DEFAULT": "活动"
+        }
+    },
+    "privacy": {
+        "settingsTitle": "隐私设置",
+        "privacyNoticeTitle": "隐私承诺",
+        "privacyNoticeDesc": "我们致力于保护您的隐私。所有数据均已加密，仅用于提升您的学习体验。",
+        "privacySection": "隐私",
+        "privacySubtitle": "控制您的个人信息",
+        "profileVisibility": "公开个人资料可见性",
+        "profileVisibilityDesc": "允许他人查看您的个人资料",
+        "progressSharing": "进度分享",
+        "progressSharingDesc": "与朋友分享学习进度",
+        "locationTracking": "位置跟踪",
+        "locationTrackingDesc": "使用位置以改善体验",
+        "contactSync": "联系人同步",
+        "contactSyncDesc": "从手机通讯录查找朋友",
+        "dataAnalyticsSection": "数据与分析",
+        "dataAnalyticsSubtitle": "管理我们如何使用您的数据",
+        "dataCollection": "数据收集",
+        "dataCollectionDesc": "允许数据收集以改进应用",
+        "personalization": "个性化",
+        "personalizationDesc": "使用数据进行个性化体验",
+        "analytics": "使用分析",
+        "analyticsDesc": "发送匿名分析数据",
+        "crashReports": "崩溃报告",
+        "crashReportsDesc": "自动发送崩溃报告",
+        "dataManagementSection": "数据管理",
+        "dataManagementSubtitle": "导出或删除个人数据",
+        "exportData": "导出数据",
+        "exportDataDesc": "下载您的所有数据",
+        "exportDataMessage": "我们将在 24 小时内通过电子邮件发送包含您所有数据的文件。",
+        "deleteData": "删除所有数据",
+        "deleteDataDesc": "永久删除所有个人数据",
+        "deleteDataConfirmTitle": "删除数据",
+        "deleteDataConfirmMessage": "您确定要删除所有数据吗？此操作无法撤销。",
+        "legalSection": "法律文件",
+        "privacyPolicy": "隐私政策",
+        "termsOfUse": "使用条款",
+        "cookiePolicy": "Cookie 政策",
+        "contactSection": "需要帮助？",
+        "contactText": "如果您对隐私有任何疑问，请联系我们：privacy@MonkeyLingua.com"
+    },
+    "about": {
+        "title": "关于应用",
+        "tagline": "专为越南人设计的智能语言学习应用",
+        "version": "版本 {{version}}",
+        "latest": "最新",
+        "mission": {
+            "title": "我们的使命",
+            "content": "我们相信语言学习不仅仅是词汇和语法，更是文化的桥梁..."
+        },
+        "features": {
+            "title": "主要功能",
+            "smartLearning": {
+                "title": "智能学习",
+                "desc": "AI 个性化您的学习体验"
+            },
+            "aiChat": {
+                "title": "AI 对话",
+                "desc": "与智能助手练习口语"
+            },
+            "progress": {
+                "title": "跟踪进度",
+                "desc": "详细分析您的学习旅程"
+            },
+            "community": {
+                "title": "社区",
+                "desc": "与全球数百万学习者联系"
+            }
+        },
+        "team": {
+            "title": "开发团队",
+            "roles": {
+                "ceo": "CEO & 创始人",
+                "cto": "CTO",
+                "designer": "首席设计师",
+                "languageExpert": "语言专家"
+            }
+        },
+        "stats": {
+            "title": "统计",
+            "users": "用户",
+            "countries": "国家",
+            "lessons": "课程",
+            "reviews": "评论"
+        },
+        "social": {
+            "title": "关注我们"
+        },
+        "legal": {
+            "title": "法律与联系方式",
+            "terms": "使用条款",
+            "privacy": "隐私政策",
+            "contact": "联系方式：info@MonkeyLingua.com"
+        },
+        "copyright": "© 2025 MonkeyLingua. 保留所有权利。",
+        "madeWithLove": "由 NgocQuyen 在越南用心制作 ❤️"
+    },
+    "help": {
+        "title": "帮助与支持",
+        "welcome": {
+            "title": "我们能为您做些什么？",
+            "subtitle": "查找常见问题的答案或联系支持。"
+        },
+        "search": {
+            "placeholder": "搜索帮助文章..."
+        },
+        "faq": {
+            "title": "常见问题 (FAQs)",
+            "changeLanguage": {
+                "q": "我该如何更改学习语言？",
+                "a": "您可以在个人资料设置屏幕中更改目标语言。"
+            },
+            "streakLost": {
+                "q": "我的连胜丢失了。我可以恢复吗？",
+                "a": "连胜通常可以使用商店中提供的连胜冻结道具来恢复。检查您的库存！"
+            },
+            "changePassword": {
+                "q": "我该如何更改密码？",
+                "a": "您可以在个人资料的安全设置部分更改密码。"
+            },
+            "offlineSupport": {
+                "q": "应用支持离线学习吗？",
+                "a": "是的，您可以下载课程以便离线学习。"
+            },
+            "contactSupport": {
+                "q": "我该如何联系客户支持？",
+                "a": "向下滚动到下方的'支持渠道'部分以查看所有联系选项。"
+            }
+        },
+        "support": {
+            "title": "支持渠道",
+            "email": {
+                "title": "邮件支持",
+                "desc": "通过电子邮件获取个性化帮助。响应时间通常为 24-48 小时。"
+            },
+            "chat": {
+                "title": "实时聊天",
+                "desc": "在工作时间内即时与我们的支持团队聊天。"
+            },
+            "community": {
+                "title": "社区论坛",
+                "desc": "提问并从其他学习者和版主那里获得帮助。"
+            },
+            "video": {
+                "title": "视频教程",
+                "desc": "观看关于如何使用应用主要功能的快速视频指南。"
+            }
+        },
+        "feedback": {
+            "title": "发送反馈",
+            "label": "您的反馈有助于我们改进！",
+            "placeholder": "告诉我们您喜欢什么或我们可以在哪些方面做得更好...",
+            "submit": "提交反馈"
+        },
+        "appInfo": {
+            "title": "应用信息",
+            "version": "版本",
+            "lastUpdate": "最后更新",
+            "os": "操作系统"
+        }
+    },
+    "helpSupport": {
+        "title": "帮助与支持",
+        "welcomeTitle": "我们在这里提供帮助！",
+        "welcomeText": "查找问题的答案或联系支持",
+        "searchPlaceholder": "搜索问题...",
+        "faq": {
+            "title": "常见问题"
+        },
+        "support": {
+            "title": "联系支持"
+        },
+        "feedback": {
+            "title": "发送反馈",
+            "label": "分享您的意见以帮助我们改进应用",
+            "placeholder": "输入您的反馈...",
+            "button": "发送反馈",
+            "successTitle": "谢谢！",
+            "successMessage": "您的反馈已发送。"
+        },
+        "appInfo": {
+            "title": "应用信息",
+            "version": "版本：",
+            "lastUpdate": "最后更新：",
+            "os": "操作系统：",
+            "versionValue": "版本"
+        },
+        "faqData": {
+            "1q": "如何更改学习语言？",
+            "1a": "前往个人资料中的'学习语言'并选择...",
+            "2q": "为什么我失去了连胜？",
+            "2a": "如果未完成每日目标，连胜将重置...",
+            "3q": "如何更改密码？",
+            "3a": "前往'编辑个人资料'并选择'更改密码'...",
+            "4q": "应用可以离线使用吗？",
+            "4a": "部分功能可离线使用，但最佳体验需要互联网。",
+            "5q": "如何联系支持？",
+            "5a": "您可以发送电子邮件至 support@MonkeyLingua.com 或使用聊天功能。"
+        },
+        "supportOptions": {
+            "email": {
+                "title": "发送邮件",
+                "desc": "通过电子邮件联系我们以获得详细支持"
+            },
+            "chat": {
+                "title": "实时聊天",
+                "desc": "与支持团队聊天"
+            },
+            "community": {
+                "title": "社区",
+                "desc": "加入学习社区"
+            },
+            "video": {
+                "title": "教程视频",
+                "desc": "观看使用教程"
+            }
+        }
+    },
+    "permissions": {
+        "settingsTitle": "需要权限",
+        "settingsMessage": "此功能需要权限，但已被永久拒绝。请前往应用设置启用它。",
+        "goToSettings": "前往设置",
+        "cancel": "取消",
+        "unavailable": "此功能在您的设备上不可用",
+        "blocked_title": "权限 {{feature}} 被拒绝",
+        "enable_in_settings": "请前往设置并授予权限。",
+        "overlay": {
+            "title": "悬浮窗权限",
+            "message": "此应用需要权限以显示在其他应用之上（例如，用于聊天气泡或来电提醒）。"
+        },
+        "notifications": {
+            "title": "通知权限",
+            "message": "允许此应用向您发送更新和警报通知。"
+        },
+        "camera": {
+            "title": "相机权限",
+            "message": "此应用需要访问您的相机以拍照或扫描二维码。"
+        },
+        "storage": {
+            "title": "存储权限",
+            "message": "此应用需要访问您的存储以读取/保存照片和视频。"
+        },
+        "location": {
+            "title": "位置权限",
+            "message": "此应用需要访问您的位置以提供基于位置的服务。"
+        },
+        "microphone": {
+            "title": "需要麦克风权限",
+            "message": "我们需要访问您的麦克风以启用口语练习。"
+        }
+    },
+    "wallet": {
+        "title": "钱包",
+        "availableBalance": "可用余额",
+        "topup": "充值",
+        "withdraw": "提现",
+        "transfer": "转账",
+        "transactionHistory": "交易记录",
+        "noTransactions": "暂无交易",
+        "topupTitle": "充值钱包",
+        "quickAmount": "快速金额",
+        "customAmount": "自定义金额",
+        "enterAmount": "输入金额",
+        "minimumAmount": "最低金额",
+        "paymentMethod": "支付方式",
+        "totalAmount": "总金额",
+        "topupNote": "最低充值 10,000 越南盾",
+        "proceed": "进行支付"
+    },
+    "transaction": {
+        "type": {
+            "DEPOSIT": "存款",
+            "WITHDRAW": "提款",
+            "TRANSFER": "转账",
+            "REFUND": "退款",
+            "TRANSFER_RECEIVE": "收款"
+        },
+        "status": {
+            "PENDING": "待处理",
+            "SUCCESS": "成功",
+            "FAILED": "失败",
+            "PENDING_REFUND": "待退款",
+            "REFUNDED": "已退款"
+        }
+    },
+    "progress": {
+        "title": "追踪您的进度",
+        "subtitle": "查看您每天的进步",
+        "loading": "正在加载您的进度...",
+        "error": "加载进度失败",
+        "completed": "已完成",
+        "next": "下一步",
+        "retry": "重试",
+        "back": "返回",
+        "unit": "单元",
+        "lesson": "课程",
+        "continue": "继续学习",
+        "noData": "无进度数据",
+        "percentage": "{{value}}% 已完成",
+        "lessons": "课程",
+        "courses": "课程",
+        "quizzes": "测验",
+        "achievements": "徽章",
+        "weeklyActivity": "每周活动",
+        "badgesTitle": "您的徽章"
+    },
+    "interests": {
+        "travel": "旅游",
+        "food": "美食",
+        "music": "音乐",
+        "sports": "体育",
+        "movies": "电影",
+        "books": "书籍",
+        "technology": "科技",
+        "art": "艺术",
+        "business": "商业",
+        "culture": "文化"
+    },
+    "createRoom": {
+        "title": "创建新房间",
+        "roomNameLabel": "房间名称",
+        "roomNamePlaceholder": "输入房间名称...",
+        "descriptionLabel": "房间描述",
+        "descriptionPlaceholder": "描述房间的目的和内容...",
+        "purposeLabel": "房间目的",
+        "purposeLearning": "学习",
+        "purposeSocial": "社交",
+        "languageLabel": "主要语言",
+        "levelLabel": "等级",
+        "maxMembersLabel": "最大成员数",
+        "privacyLabel": "隐私设置",
+        "privacyPrivate": "私密房间",
+        "privacyPublic": "公开房间",
+        "passwordPlaceholder": "输入房间密码...",
+        "rulesTitle": "聊天室规则",
+        "rule1": "尊重所有成员",
+        "rule2": "禁止垃圾信息或广告",
+        "rule3": "使用恰当的语言",
+        "rule4": "互相帮助学习",
+        "createButton": "创建房间",
+        "errors": {
+            "nameRequired": "请输入房间名称",
+            "descriptionRequired": "请输入房间描述",
+            "passwordRequired": "请输入私密房间的密码",
+            "creationFailed": "创建房间失败。请重试。"
+        }
+    },
+    "social": "社交",
+    "join": "加入",
+    "chat": {
+        "sent_an_attachment": "发送了附件",
+        "no_active_chats": "离线",
+        "start_conversation_hint": "通过选择 AI 聊天或用户聊天开始对话",
+        "active_now": "在线",
+        "title": "聊天",
+        "aiChat": "与 AI 聊天",
+        "aiChatDescription": "与智能 AI 助手练习",
+        "userChat": "与用户聊天",
+        "userChatDescription": "与其他学习者联系",
+        "videoCall": "视频通话",
+        "joinRoom": "加入房间",
+        "callSetup": "通话设置",
+        "createRoom": "创建房间",
+        "settings": "聊天设置",
+        "welcome": "欢迎来到聊天！",
+        "welcomeDescription": "通过与 AI 对话练习语言或与其他学习者联系",
+        "chooseType": "选择对话类型",
+        "quickActions": "快速操作",
+        "recentActivity": "近期活动",
+        "noRecentActivity": "无近期活动",
+        "startChatting": "开始聊天以查看活动",
+        "yourStats": "您的统计",
+        "messages": "消息",
+        "translations": "翻译",
+        "videoCalls": "视频通话",
+        "tips": "💡 使用自动翻译理解其他用户的消息\n🎯 加入适合您等级的聊天室\n🤖 随时与 AI 聊天练习对话",
+        "online": "在线",
+        "offline": "离线",
+        "members": "成员",
+        "people": "人",
+        "inputPlaceholder": "输入您的消息...",
+        "roomSettings": "房间设置",
+        "roomName": "房间名称",
+        "roomId": "房间 ID",
+        "shareRoom": "分享房间",
+        "shareRoomTitle": "聊天室邀请",
+        "shareRoomMessage": "加入此聊天室并开始练习！",
+        "kickMember": "移除成员",
+        "leaveRoom": "离开房间",
+        "confirmKick": "移除成员",
+        "confirmKickMessage": "您确定要移除此成员吗？",
+        "memberKicked": "成员已被移除。",
+        "nameUpdated": "聊天名称更新成功。",
+        "nameUpdateError": "更新聊天名称失败。",
+        "sendMessageError": "发送消息失败。",
+        "translationError": "翻译失败。",
+        "autoTranslate": "自动翻译",
+        "autoTranslateDesc": "自动将消息翻译成您的首选语言。",
+        "showOriginal": "显示原文",
+        "showOriginalDesc": "在翻译旁边显示原始消息。",
+        "translateVietnamese": "翻译成越南语",
+        "translateVietnameseDesc": "启用专门翻译成越南语的功能。",
+        "saveHistory": "保存聊天记录",
+        "saveHistoryDesc": "保留您的对话记录以便稍后查看。",
+        "offlineTranslation": "离线翻译",
+        "offlineTranslationDesc": "无需互联网连接即可翻译消息。",
+        "soundNotifications": "声音通知",
+        "soundNotificationsDesc": "为新消息和事件播放声音。",
+        "vibrationNotifications": "震动通知",
+        "vibrationNotificationsDesc": "新消息到达时震动。",
+        "typingIndicator": "输入指示器",
+        "typingIndicatorDesc": "显示某人正在输入消息。",
+        "autoCorrectDesc": "自动更正消息中的拼写错误。",
+        "wordSuggestions": "单词建议",
+        "wordSuggestionsDesc": "输入时显示建议以加快消息发送。",
+        "clearHistory": "清除聊天记录",
+        "clearHistoryDesc": "永久删除所有保存的聊天记录。",
+        "resetSettings": "重置设置",
+        "resetSettingsDesc": "将所有设置恢复为默认值。",
+        "settingsTitle": "聊天设置",
+        "translationInfoTitle": "翻译信息",
+        "translationInfoDesc": "了解翻译的工作原理以及支持的语言。",
+        "translationSection": "翻译设置",
+        "translationSubtitle": "管理翻译的应用方式。",
+        "chatSection": "聊天选项",
+        "chatSubtitle": "自定义您的聊天体验。",
+        "actionSection": "操作",
+        "actionSubtitle": "聊天的快速操作和工具。",
+        "supportedLanguages": "支持的语言",
+        "supportedLanguagesDesc": "从多种语言中选择进行翻译。",
+        "tipsTitle": "聊天提示",
+        "tip1": "提示 1：启用自动翻译以获得更流畅的沟通。",
+        "tip2": "提示 2：保存历史记录以便稍后查看重要消息。",
+        "tip3": "提示 3：使用声音和震动通知以保持更新。",
+        "activeRooms": "活跃房间",
+        "inbox": "收件箱",
+        "no_messages": "无消息",
+        "ai_assistant": "AI 助手",
+        "click_to_view": "点击查看",
+        "room_settings": "房间设置",
+        "leave_room": "离开房间",
+        "change_nickname": "更改昵称",
+        "nickname_placeholder": "输入您的昵称"
+    },
+    "groupStudy": {
+        "title": "小组学习室",
+        "description": "加入或创建学习室与朋友一起学习并进行实时测验比赛"
+    },
+    "room": {
+        "title": "学习室",
+        "create": "创建房间",
+        "join": "加入房间",
+        "joinWithId": "通过 ID 加入",
+        "available": "可用房间",
+        "createdBy": "由 {{name}} 创建",
+        "topic": "主题",
+        "id": "房间 ID",
+        "maxParticipants": "最大参与者",
+        "titlePlaceholder": "输入房间标题",
+        "topicPlaceholder": "例如：语法、词汇、口语",
+        "enterIdDescription": "输入 6 位房间 ID 以加入学习会话",
+        "idPlaceholder": "输入房间 ID (6 位数)",
+        "leave": "离开房间",
+        "leaveConfirm": "您确定要离开吗？",
+        "created": "房间创建成功",
+        "joined": "加入房间成功",
+        "allMustBeReady": "所有参与者必须在开始前准备就绪",
+        "full": "房间已满",
+        "full.message": "此房间已达到最大成员数。",
+        "join.confirm": "您想加入这个房间吗？",
+        "not.found": "未找到房间",
+        "not.found.message": "您正在寻找的房间不存在或已被删除。",
+        "created.by": "创建者",
+        "list": "房间列表",
+        "search": "搜索房间",
+        "empty": "无可用房间",
+        "empty.subtext": "创建一个新房间并邀请您的朋友！",
+        "join.by.code": "通过代码加入",
+        "join.by.code.desc": "输入房间代码以加入",
+        "community_lobby": "社区大厅",
+        "search_public": "搜索公开房间",
+        "empty_public": "未找到公开房间",
+        "private": {
+            "title": "私密房间"
+        },
+        "enter": {
+            "password": "输入密码"
+        }
+    },
+    "reactions": {
+        "send": "发送反应"
+    },
+    "Calls": "通话",
+    "call": {
+        "call_history": "通话记录",
+        "full_call_history": "完整通话记录",
+        "setupTitle": "通话设置",
+        "findPartner": "寻找对话伙伴",
+        "setupDescription": "设置您的偏好以找到合适的视频通话对象",
+        "commonInterests": "共同兴趣",
+        "selectTopics": "选择您想谈论的话题（已选 {{count}}）",
+        "partnerGender": "伙伴性别",
+        "selectPartnerGender": "选择您对话伙伴的性别",
+        "partnerNativeLanguage": "伙伴母语",
+        "findNativeSpeaker": "寻找母语是您正在学习的语言的人",
+        "partnerLearningLanguage": "伙伴学习语言",
+        "findLearner": "寻找正在学习相同语言的人",
+        "ageRange": "年龄范围",
+        "selectAgeRange": "选择合适的年龄范围",
+        "duration": "通话时长",
+        "expectedDuration": "通话预计时长",
+        "searchSummary": "搜索摘要",
+        "interestsSelected": "已选 {{count}} 个兴趣",
+        "gender": "性别",
+        "nativeLanguage": "母语",
+        "learning": "学习中",
+        "time": "时间",
+        "startSearch": "开始搜索",
+        "selectInterests": "选择兴趣",
+        "selectInterestsMessage": "请选择至少一个兴趣以找到合适的伙伴。",
+        "savePreferencesError": "保存偏好失败",
+        "genderAny": "任意",
+        "genderMale": "男",
+        "genderFemale": "女",
+        "age18to25": "18-25 岁",
+        "age26to35": "26-35 岁",
+        "age36to45": "36-45 岁",
+        "age46plus": "46 岁以上",
+        "duration5min": "5 分钟",
+        "duration15min": "15 分钟",
+        "duration30min": "30 分钟",
+        "duration1hour": "1 小时",
+        "findingPartner": "正在寻找伙伴",
+        "matchFound": "找到匹配！",
+        "onlineUsers": "在线用户",
+        "elapsedTime": "已用时间",
+        "yourNativeLanguage": "您的母语",
+        "age": {
+            "AGE_13_17": "13-17",
+            "AGE_18_24": "18-24",
+            "AGE_25_34": "25-34",
+            "AGE_35_44": "35-44",
+            "AGE_45_54": "45-54",
+            "AGE_55_PLUS": "55+"
+        },
+        "languages": {
+            "vi": "越南语",
+            "en": "英语",
+            "zh": "中文",
+            "ja": "日语",
+            "ko": "韩语",
+            "fr": "法语",
+            "es": "西班牙语",
+            "de": "德语"
+        },
+        "searchTime": "搜索时间",
+        "findingMatch": "正在寻找完美匹配...",
+        "criteria": "匹配标准",
+        "minutes": "分钟",
+        "cancelSearch": "取消搜索",
+        "connecting": "连接中...",
+        "searchingTitle": "正在搜索伙伴"
+    },
+    "group": {
+        "share": {
+            "message": "加入我的小组一起练习吧！",
+            "title": "小组邀请"
+        },
+        "settings": "小组设置",
+        "name": "小组名称",
+        "members": "小组成员",
+        "id": "小组 ID",
+        "desc": "小组描述",
+        "notifications": "通知",
+        "leave": "离开小组",
+        "members.list": "成员列表",
+        "kick": {
+            "confirm": "移除成员",
+            "confirm.message": "您确定要移除此成员吗？",
+            "success": "成员已成功移除。"
+        },
+        "input": {
+            "placeholder": "在此输入您的消息..."
+        },
+        "members.online": "在线成员"
+    },
+    "greeting": {
+        "morning": "早上好",
+        "afternoon": "下午好",
+        "evening": "晚上好"
+    },
+    "leaderboard": {
+        "level": "等级",
+        "title": "排行榜",
+        "error": "加载排行榜失败。请重试。",
+        "noData": "排行榜无数据可用",
+        "noMoreEntries": "您已到达列表末尾",
+        "tabs": {
+            "top100": "前 100 名",
+            "thisWeek": "本周",
+            "events": "事件",
+            "seasons": "赛季",
+            "friends": "朋友",
+            "couples": "情侣",
+            "admire": "崇拜",
+            "global": "全球",
+            "country": "国家",
+            "coins": "金币",
+            "hours": "小时"
+        },
+        "sort": {
+            "highestScore": "最高分",
+            "lowestScore": "最低分",
+            "highestLevel": "最高等级",
+            "lowestLevel": "最低等级"
+        },
+        "periods": {
+            "allTime": "所有时间",
+            "thisMonth": "本月",
+            "thisWeek": "本周",
+            "today": "今天"
+        }
+    },
+    "statusConnected": "已连接",
+    "statusMuted": "已静音",
+    "statusLeft": "已离开",
+    "confirmPassword": "确认密码",
+    "videoCallManager": "视频通话管理器",
+    "enterCallerId": "请输入主叫 ID",
+    "groupCallCreated": "群组通话创建成功",
+    "groupCallError": "创建群组通话错误",
+    "oneToOneCallCreated": "1 对 1 通话创建成功",
+    "oneToOneCallError": "创建 1 对 1 通话错误",
+    "selectCallFirst": "请先选择一个视频通话",
+    "enterParticipantId": "请输入参与者用户 ID",
+    "addParticipant": "添加参与者",
+    "joinJitsi": "加入 Jitsi",
+    "participants": "参与者",
+    "participantsError": "无法获取参与者",
+    "noParticipants": "无参与者",
+    "callInfo": "通话信息",
+    "callError": "无法获取通话信息",
+    "noCallSelected": "未选择通话",
+    "id": "ID",
+    "role": "角色",
+    "type": "类型",
+    "historyUser": "历史（用户）",
+    "enterUserIdHistory": "输入用户 ID 以查看历史",
+    "view": "查看",
+    "historyError": "无法获取历史",
+    "noHistory": "无历史",
+    "filterCallerId": "按主叫 ID 筛选",
+    "filterStatus": "按状态筛选",
+    "callerId": "主叫 ID",
+    "participantId": "参与者 ID",
+    "createGroupCall": "创建群组通话",
+    "createOneToOne": "创建 1 对 1 通话",
+    "removeUser": "移除用户",
+    "status": {
+        "online": "在线"
+    },
+    "people": "人",
+    "filter": {
+        "all": "全部",
+        "ai": "AI",
+        "friend": "朋友",
+        "stranger": "陌生人",
+        "couple": "情侣"
+    },
+    "assistant": {
+        "name": "AI 助手"
+    },
+    "gender": {
+        "MALE": "男",
+        "FEMALE": "女",
+        "OTHER": "其他",
+        "ANY": "任意"
+    },
+    "challenge": {
+        "tab": {
+            "daily": "每日",
+            "weekly": "每周",
+            "badge": "徽章"
+        }
+    },
+    "payment": {
+        "selectMethod": "选择方式",
+        "myWallet": "我的钱包",
+        "available": "可用",
+        "externalGateway": "支付网关",
+        "continueToGateway": "继续前往网关",
+        "total": "总计：",
+        "insufficientWarning": "余额不足",
+        "payNow": "立即支付",
+        "method": "支付方式",
+        "wallet": "钱包",
+        "card": "卡"
+    },
+    "reviews": {
+        "title": "评论 & 评价"
     }
 }

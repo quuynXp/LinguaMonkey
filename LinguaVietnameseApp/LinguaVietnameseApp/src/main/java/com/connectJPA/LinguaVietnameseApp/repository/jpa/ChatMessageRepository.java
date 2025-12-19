@@ -10,8 +10,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMessagesId> {
     @Query(value = "SELECT * FROM chat_messages WHERE (room_id = :roomId OR :roomId IS NULL) AND (sender_id = :senderId OR :senderId IS NULL) AND is_deleted = false",
@@ -19,8 +23,23 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
             nativeQuery = true)
     Page<ChatMessage> findByRoomIdAndSenderIdAndIsDeletedFalse(@Param("roomId") UUID roomId, @Param("senderId") UUID senderId, Pageable pageable);
 
+    @Query("SELECT m FROM ChatMessage m WHERE m.roomId IN :roomIds " +
+       "AND m.isDeleted = false " +
+       "AND m.id.sentAt = (" +
+       "  SELECT MAX(m2.id.sentAt) FROM ChatMessage m2 " +
+       "  WHERE m2.roomId = m.roomId AND m2.isDeleted = false" +
+       ")")
+        List<ChatMessage> findLastMessagesByRoomIdsRaw(@Param("roomIds") List<UUID> roomIds);
+
     @Query(value = "SELECT * FROM chat_messages WHERE chat_message_id = :id AND is_deleted = false", nativeQuery = true)
     Optional<ChatMessage> findByChatMessageIdAndIsDeletedFalse(@Param("id") UUID id);
+
+    default Map<UUID, ChatMessage> findLastMessagesByRoomIds(List<UUID> roomIds) {
+        if (roomIds.isEmpty()) return Collections.emptyMap();
+        List<ChatMessage> messages = findLastMessagesByRoomIdsRaw(roomIds);
+        return messages.stream()
+                .collect(Collectors.toMap(ChatMessage::getRoomId, m -> m, (a, b) -> a));
+        }
 
     long  countBySenderIdAndIsDeletedFalse(UUID senderId);
 
@@ -39,20 +58,16 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE (cm.senderId = :userId OR cm.receiverId = :userId) AND cm.isDeleted = false")
     long countMessagesForUser(@Param("userId") UUID userId);
 
-    // CHANGED: Query count logic might need adjustment if you want to count total translated messages, 
-    // but typically counting non-null translations field is enough.
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.senderId = :userId AND cm.translations IS NOT NULL AND cm.isDeleted = false")
     long countTranslationsForUser(@Param("userId") UUID userId);
 
 
-    // For Daily Challenge (Today - Chat with X people)
     @Query("SELECT COUNT(DISTINCT cm.receiverId) FROM ChatMessage cm " +
            "WHERE cm.senderId = :senderId AND cm.id.sentAt BETWEEN :start AND :end AND cm.isDeleted = false")
     long countDistinctReceiversBySenderIdAndSentAtBetween(@Param("senderId") UUID senderId, 
                                                           @Param("start") OffsetDateTime start, 
                                                           @Param("end") OffsetDateTime end);
 
-    // For Badge (Lifetime - Chat with X people)
     @Query("SELECT COUNT(DISTINCT cm.receiverId) FROM ChatMessage cm " +
            "WHERE cm.senderId = :senderId AND cm.isDeleted = false")
     long countDistinctReceiversBySenderId(@Param("senderId") UUID senderId);

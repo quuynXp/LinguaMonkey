@@ -37,6 +37,7 @@ const onboardingData = [
 
 const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
   const { t } = useTranslation();
+
   const setFinishedOnboarding = async () => {
     try {
       await AsyncStorage.setItem("hasFinishedOnboarding", "true");
@@ -46,21 +47,36 @@ const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
     }
   };
 
-  const skipToAuth = route?.params?.skipToAuth === true;
+  const skipToAuthParam = route?.params?.skipToAuth === true;
 
   const [currentIndex, setCurrentIndex] = useState(
-    skipToAuth ? onboardingData.length : 0
+    skipToAuthParam ? onboardingData.length : 0
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedOption, setSelectedOption] = useState<"new" | "existing" | "quick" | null>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
+  // Effect kiểm tra AsyncStorage nếu params chưa được truyền đúng
   useEffect(() => {
-    if (skipToAuth) {
-      setFinishedOnboarding();
-    }
-  }, [skipToAuth]);
+    const checkLocalOnboarding = async () => {
+      if (!skipToAuthParam) {
+        try {
+          const hasFinished = await AsyncStorage.getItem("hasFinishedOnboarding");
+          if (hasFinished === "true") {
+            // Nếu đã finished, cập nhật index để nhảy thẳng tới Auth options
+            setCurrentIndex(onboardingData.length);
+          }
+        } catch (error) {
+          console.error("Error reading onboarding status", error);
+        }
+      } else {
+        // Nếu đã có params skipToAuth, đảm bảo lưu lại status này
+        setFinishedOnboarding();
+      }
+    };
+    checkLocalOnboarding();
+  }, [skipToAuthParam]);
 
   useEffect(() => {
     Animated.parallel([
@@ -122,6 +138,9 @@ const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
   };
 
   const handleOptionSelect = async (option: "new" | "existing" | "quick") => {
+    // Đảm bảo lưu flag khi user bắt đầu tương tác với auth
+    await setFinishedOnboarding();
+
     setSelectedOption(option);
     setTimeout(async () => {
       if (option === "new") {

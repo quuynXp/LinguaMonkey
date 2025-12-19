@@ -74,12 +74,21 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         response.setTranslations(entity.getTranslations());
         response.setPurpose(purpose);
         response.setMediaUrl(entity.getMediaUrl());
+        
+        // E2EE Fields - Explicitly setting them to ensure they are not lost in mapping
+        // Ciphertext for Receiver
+        response.setContent(entity.getContent());
+        // Keys for Receiver
         response.setSenderEphemeralKey(entity.getSenderEphemeralKey());
-        response.setUsedPreKeyId(entity.getUsedPreKeyId());
         response.setInitializationVector(entity.getInitializationVector());
+        response.setUsedPreKeyId(entity.getUsedPreKeyId());
+        
+        // Ciphertext & Keys for Sender (Self)
         response.setSelfContent(entity.getSelfContent());
         response.setSelfEphemeralKey(entity.getSelfEphemeralKey());
         response.setSelfInitializationVector(entity.getSelfInitializationVector());
+        
+        response.setRead(entity.isRead());
         return response;
     }
 
@@ -110,6 +119,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         ChatMessage message = chatMessageMapper.toEntity(request);
+        // Explicitly set E2EE fields from Request
         message.setSenderEphemeralKey(request.getSenderEphemeralKey());
         message.setUsedPreKeyId(request.getUsedPreKeyId());
         message.setInitializationVector(request.getInitializationVector());
@@ -136,9 +146,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         if (message.getTranslations() == null) {
             message.setTranslations(new HashMap<>());
         }
+        
         message.setRead(false);
 
         ChatMessage savedMessage = chatMessageRepository.save(message);
+        
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);
 
@@ -154,6 +166,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         else response.setSenderProfile(userService.getUserProfile(null, savedMessage.getSenderId()));
 
         try {
+            // BROADCAST: This sends the object containing BOTH keys to everyone in the room
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
             
             if (room.getPurpose() != RoomPurpose.PRIVATE_CHAT && message.getMessageType() == MessageType.TEXT) {
@@ -185,15 +198,29 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         
         try {
             stringRedisTemplate.opsForList().leftPush(TRANSLATION_QUEUE_KEY, jsonTask);
-            log.info(">>> [Java] Pushed to Queue: MsgId={}", message.getId().getChatMessageId());
         } catch (Exception e) {
             log.error("Failed to push translation task to Redis", e);
         }
     }
 
     private void notifyMembers(ChatMessage savedMessage, Room room, ChatMessageResponse response, UUID senderId) {
-         List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId())
+        List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId())
             .stream().map(rm -> rm.getId().getUserId()).filter(u -> !u.equals(senderId)).toList();
+
+        String senderName = "Anonymous";
+        try {
+            User sender = userRepository.findByUserIdAndIsDeletedFalse(senderId).orElse(null);
+            if (sender != null && sender.getFullname() != null) {
+                senderName = sender.getFullname();
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch sender name for notification");
+        }
+
+        String roomName = room.getRoomName();
+        if (roomName == null || roomName.isBlank()) {
+            roomName = "Chat";
+        }
 
         Map<String, Object> event = new HashMap<>();
         event.put("type", "NEW_MESSAGE_EVENT");
@@ -201,6 +228,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         event.put("roomId", room.getRoomId().toString());
         event.put("content", savedMessage.getContent());
         event.put("senderId", savedMessage.getSenderId().toString());
+        event.put("senderName", senderName);
+        event.put("roomName", roomName);
         
         try {
             redisTemplate.convertAndSend("chat_events", event);
@@ -220,26 +249,29 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 dataPayload.put("roomId", room.getRoomId().toString());
                 dataPayload.put("initialFocusMessageId", response.getChatMessageId().toString());
                 dataPayload.put("senderId", savedMessage.getSenderId().toString());
-                dataPayload.put("isEncrypted", "true"); 
+                dataPayload.put("isEncrypted", "true");
                 
-                // CRITICAL FIX: Send the ciphertext (content) to client for decryption
+                dataPayload.put("roomName", roomName);
+                dataPayload.put("senderName", senderName);
+                
+                // For receiver, the content IS the ciphertext
                 dataPayload.put("ciphertext", savedMessage.getContent()); 
 
                 if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
-                    dataPayload.put("encryptionType", "PRIVATE"); // Signal Protocol
+                    dataPayload.put("encryptionType", "PRIVATE"); 
                     if (savedMessage.getSenderEphemeralKey() != null) {
                         dataPayload.put("senderEphemeralKey", savedMessage.getSenderEphemeralKey());
                         dataPayload.put("initializationVector", savedMessage.getInitializationVector());
                     }
                 } else {
-                    dataPayload.put("encryptionType", "GROUP"); // Room Key
+                    dataPayload.put("encryptionType", "GROUP"); 
                 }
                 
                 String payloadJson = gson.toJson(dataPayload);
                 NotificationRequest nreq = NotificationRequest.builder()
                     .userId(uId)
-                    .title("MonkeyLingua") 
-                    .content("Bạn có tin nhắn mới") // Fallback content if decrypt fails or background processing off
+                    .title(roomName) 
+                    .content("Bạn có tin nhắn mới") 
                     .type("CHAT_MESSAGE")
                     .payload(payloadJson)
                     .build();
@@ -346,12 +378,17 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
             roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(message.getRoomId(), userId)
                     .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
-            if (!message.isRead()) {
-                message.setRead(true);
-                message = chatMessageRepository.save(message);
+            
+            if (message.isRead()) {
+                return null;
             }
+
+            message.setRead(true);
+            message = chatMessageRepository.save(message);
+            
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+            
             return mapToResponse(message, room.getPurpose());
         } catch (Exception e) { throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION); }
     }

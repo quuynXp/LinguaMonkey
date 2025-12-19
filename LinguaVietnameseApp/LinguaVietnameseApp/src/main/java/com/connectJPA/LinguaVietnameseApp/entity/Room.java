@@ -35,6 +35,12 @@ public class Room extends BaseEntity {
     @Column(name = "max_members", nullable = false)
     private int maxMembers;
 
+    @Transient
+    private Long memberCount;
+
+    @Transient
+    private Boolean isCurrentUserMember;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "purpose")
     private RoomPurpose purpose;

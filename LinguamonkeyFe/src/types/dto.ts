@@ -1025,8 +1025,8 @@ export interface ChatMessageResponse {
     translatedText: string;
     translatedLang: string;
     purpose: Enums.RoomPurpose;
-    isRead: boolean;
-    isDeleted: boolean;
+    read: boolean;
+    deleted: boolean;
     senderProfile: UserProfileResponse;
     sentAt: string;
     updatedAt: string;
@@ -1200,7 +1200,16 @@ export interface DashboardStatisticsResponse {
     revenueChange: number;
     usersChange: number;
     coursesChange: number;
+    totalExperience: number;
+    averageAccuracy: number;
+    totalLessonsCompleted: number;
+    totalCoursesEnrolled: number;
+    totalQuizzesCompleted: number;
     signupsChange: number;
+    totalTransactionAmount: number;
+    totalTransactions: number;
+    activityBreakdown: Record<string, number>;
+    timeSeries: TimeSeriesPoint[];
     chartData: TimeSeriesPoint[];
     overview: OverviewMetricsDto;
     learningTimeChart: TimeSeriesPoint[];
@@ -1388,6 +1397,7 @@ export interface LeaderboardEntryResponse {
     level: number;
     exp: number;
     rank?: number;
+    admire?: number;
     score?: number;
     streak?: number;
     change?: number;
@@ -1899,7 +1909,7 @@ export interface RoomResponse {
     description: string;
     avatarUrl: string;
     memberCount: number;
-    read: boolean;
+    isRead: boolean;
     maxMembers: number;
     lastMessageSenderId: string;
     lastMessageSenderEphemeralKey: string;
@@ -1913,9 +1923,11 @@ export interface RoomResponse {
     partnerLastActiveText: string;
     members?: UserProfileResponse[];
     lastMessage: string;
+    lastMessageType: string;
     roomType: Enums.RoomType;
     status: Enums.RoomStatus;
     createdAt: string;
+    secretKey?: string;
     participants: any[];
     updatedAt: string;
 }
@@ -1950,7 +1962,7 @@ export interface StatisticsOverviewResponse {
     totalLessons: number;
     totalRevenue: number;
     totalTransactions: number;
-    timeSeries: TimeSeriesPoint[];
+    timeSeries?: TimeSeriesPoint[];
 }
 
 export interface StatisticsResponse {
@@ -2148,6 +2160,10 @@ export interface UserCountResponse {
     newUsers: number;
     totalUsers: number;
 }
+export interface DepositRevenueResponse {
+    totalRevenue: number;
+    timeSeries: TimeSeriesPoint[];
+}
 
 export interface UserGoalResponse {
     goalId: string;
@@ -2335,11 +2351,10 @@ export interface UserResponse {
     country?: Enums.Country;
 
     certificationIds?: string[] | null;
-    interestIds?: string[] | null;     // Note: "interestest" appears to be a typo in backend → consider renaming to interestIds
+    interestIds?: string[] | null;
     goalIds?: string[] | null;
     vip?: boolean;
 
-    // Synced Enum Fields
     ageRange?: Enums.AgeRange;
     proficiency?: Enums.ProficiencyLevel;
     learningPace?: Enums.LearningPace;
@@ -2354,10 +2369,8 @@ export interface UserResponse {
     updatedAt: string;
     languages?: string[];
 
-    // Added gender field
     gender?: string;
 
-    // Added coupleProfile to support profile screen using UserResponse
     coupleProfile?: CoupleProfileSummary;
 }
 
@@ -2476,7 +2489,6 @@ export interface VideoSubtitleResponse {
 export interface WalletResponse {
     walletId: string;
     userId: string;
-    // fullname: string;
     balance: number;
 }
 
@@ -2485,7 +2497,6 @@ export interface WritingResponseBody {
     score: number;
 }
 
-// --- Other DTOs ---
 
 export interface AnswerDTO {
     questionId: string;
@@ -2535,6 +2546,10 @@ export interface OverviewMetricsDto {
     averageAccuracy: number;
     totalExperience: number;
     totalCoins: number;
+    totalXP: number;
+    totalLearningTime: number;
+    currentStreak: number;
+    wordsLearned: number;
     streakDays: number;
 }
 
@@ -2560,9 +2575,9 @@ export interface SubtitleItem {
 
 export interface TimeSeriesPoint {
     label: string;
+    date: string;
     revenue: number;
     value: number;
-    timestamp?: string;
     transactions: number;
 }
 

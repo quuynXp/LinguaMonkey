@@ -2,7 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.connectJPA.LinguaVietnameseApp.dto.TimeSeriesPoint;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.*;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
@@ -12,6 +12,7 @@ import java.util.Map;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 public class StatisticsResponse {
     private int totalLessonsCompleted;
     private int totalCoursesEnrolled;
@@ -21,10 +22,12 @@ public class StatisticsResponse {
     private int totalDailyChallengesCompleted;
     private int totalEventsParticipated;
     private int totalVideoCallsJoined;
+    private int totalExperience;
+    private double averageAccuracy;
 
     private BigDecimal totalTransactionAmount;
     private long totalTransactions;
-    private Map<String, Long> activityBreakdown; // đếm theo ActivityType
+    private Map<String, Long> activityBreakdown;
     private List<TimeSeriesPoint> timeSeries;
 
 }

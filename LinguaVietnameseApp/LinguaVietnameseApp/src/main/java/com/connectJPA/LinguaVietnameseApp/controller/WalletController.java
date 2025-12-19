@@ -12,11 +12,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -108,9 +106,13 @@ public class WalletController {
 
     @PostMapping("/webhook")
     public AppApiResponse<String> handleWebhook(
-            @RequestBody WebhookRequest request,
+            @RequestBody String payload,
+            @RequestHeader(value = "Stripe-Signature", required = false) String signatureHeader,
             Locale locale) {
-        String result = transactionService.handleWebhook(request);
+        
+        String sig = signatureHeader != null ? signatureHeader : "";
+        String result = transactionService.handleWebhook(payload, sig);
+        
         return AppApiResponse.<String>builder()
                 .code(200)
                 .message("Webhook processed")

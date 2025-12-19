@@ -7,6 +7,7 @@ import { decodeToken, getRolesFromToken } from '../utils/decodeToken';
 import eventBus from '../events/appEvents';
 import { AxiosRequestConfig } from 'axios';
 import NotificationService from './notificationService';
+import mmkvStorage from '../utils/storage';
 
 export const authService = {
 
@@ -52,7 +53,11 @@ export const authService = {
       useUserStore.getState().setUser(normalizedUser);
       useUserStore.getState().setAuthenticated(true);
 
-      NotificationService.registerTokenToBackend();
+      try {
+        await NotificationService.registerTokenToBackend();
+      } catch (fcmError) {
+        console.warn('[AuthService] FCM Registration failed, ignoring to keep session alive:', fcmError);
+      }
 
       eventBus.emit('logged_in', { userId: normalizedUser.userId, token: accessToken });
 
@@ -220,6 +225,7 @@ export const authService = {
     try {
       await publicClient.post('/api/v1/auth/logout').catch(() => { });
     } finally {
+      mmkvStorage.clearChatCache();
       await useTokenStore.getState().clearTokens();
       useUserStore.getState().logout();
       await AsyncStorage.removeItem('hasLoggedIn');

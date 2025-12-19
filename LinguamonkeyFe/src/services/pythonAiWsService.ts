@@ -37,6 +37,8 @@ export class PythonAiWsService {
   private shouldReconnect: boolean = true;
   private appStateSubscription: any;
   private messageQueue: AiChatMessage[] = [];
+  // Track if we are waiting for a response to determine if we should show a disconnect error
+  private pendingRequestRoomId: string | null = null;
 
   constructor() {
     this.url = `${KONG_WS_URL}/ws/py/chat-stream`;
@@ -81,6 +83,12 @@ export class PythonAiWsService {
       if (this.onMessageCallback && e.data) {
         try {
           const msg = JSON.parse(e.data) as AiChatMessage;
+
+          // Clear pending request flag when we get a completion signal
+          if (msg.type === 'chat_response_complete') {
+            this.pendingRequestRoomId = null;
+          }
+
           this.onMessageCallback(msg);
         } catch (err) {
           console.error('🤖 AI WS Parse Error:', err);
@@ -91,11 +99,16 @@ export class PythonAiWsService {
     this.ws.onerror = (e: any) => {
       console.log('❌ AI WS Error:', e?.message || JSON.stringify(e));
       this.isConnecting = false;
+      this.handleConnectionDrop("connection_error");
     };
 
     this.ws.onclose = (e) => {
       this.isConnecting = false;
       console.log(`⚠️ AI WS Closed. Code: ${e.code}, Reason: ${e.reason}`);
+
+      if (e.code !== 1000) {
+        this.handleConnectionDrop("closed_unexpectedly");
+      }
 
       if (e.code === 1008) {
         this.shouldReconnect = false;
@@ -103,6 +116,31 @@ export class PythonAiWsService {
         this.reconnect();
       }
     };
+  }
+
+  private handleConnectionDrop(reason: string): void {
+    // If we were waiting for a response and the connection died, inject a local error message
+    // This simulates the "local welcome" style but for errors
+    if (this.pendingRequestRoomId && this.onMessageCallback) {
+      console.log(`🤖 Injecting local error message due to: ${reason}`);
+
+      const errorMessage = "⚠️ Connection to the AI server was lost. Please check your internet connection and try again.";
+
+      this.onMessageCallback({
+        type: 'chat_response_chunk',
+        content: errorMessage,
+        roomId: this.pendingRequestRoomId,
+        is_final: true
+      });
+
+      // Send complete signal to stop loading spinners
+      this.onMessageCallback({
+        type: 'chat_response_complete',
+        roomId: this.pendingRequestRoomId
+      });
+
+      this.pendingRequestRoomId = null;
+    }
   }
 
   private reconnect(): void {
@@ -132,6 +170,10 @@ export class PythonAiWsService {
   }
 
   public sendMessage(msg: AiChatMessage): void {
+    if (msg.type === 'chat_request' && msg.roomId) {
+      this.pendingRequestRoomId = msg.roomId;
+    }
+
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     } else {
@@ -143,18 +185,20 @@ export class PythonAiWsService {
     }
   }
 
-  public sendTranslationRequest(messageId: string, text: string, targetLang: string): void {
+  public sendTranslationRequest(messageId: string, text: string, targetLang: string, roomId?: string): void {
     this.sendMessage({
       type: 'translate_request',
       messageId,
       text,
       targetLang,
-      sourceLang: 'auto'
+      sourceLang: 'auto',
+      roomId
     });
   }
 
   public disconnect(): void {
     this.shouldReconnect = false;
+    this.pendingRequestRoomId = null;
     if (this.reconnectInterval) clearTimeout(this.reconnectInterval);
     this.ws?.close();
     this.ws = null;

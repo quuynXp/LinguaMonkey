@@ -10,6 +10,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.LeaderboardEntryMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.AdmirationRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LeaderboardEntryRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LeaderboardRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
@@ -39,6 +40,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
     private final LeaderboardEntryMapper leaderboardEntryMapper;
     private final UserRepository userRepository;
     private final LeaderboardRepository leaderboardRepository;
+    private final AdmirationRepository admirationRepository;
     private final PlatformTransactionManager transactionManager;
 
     private LeaderboardEntryResponse mapToResponseWithUserInfo(LeaderboardEntry entry) {
@@ -52,6 +54,9 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             dto.setGender(u.getGender());
             dto.setExp(u.getExp());
             dto.setCountry(u.getCountry());
+            
+            long admireCount = admirationRepository.countByUserId(u.getUserId());
+            dto.setAdmire((int) admireCount);
         }
         return dto;
     }

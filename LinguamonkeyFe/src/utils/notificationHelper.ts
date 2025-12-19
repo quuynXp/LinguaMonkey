@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { e2eeService } from '../services/E2EEService';
 import { gotoTab } from "./navigationRef";
 import * as Localization from 'expo-localization';
+import { roomSecurityService } from '../services/RoomSecurityService';
 
 const USER_STORAGE_KEY = 'user-storage';
 
@@ -11,6 +12,8 @@ interface NotificationPayload {
     roomId?: string;
     ciphertext?: string;
     senderId?: string;
+    senderName?: string;
+    roomName?: string;
     encryptionType?: 'PRIVATE' | 'GROUP';
     senderEphemeralKey?: string;
     initializationVector?: string;
@@ -24,6 +27,7 @@ const translations = {
         encrypted_preview: '🔒 Mở ứng dụng để xem tin nhắn',
         decryption_failed: '⚠️ Không thể giải mã tin nhắn này',
         room_key_missing: '⚠️ Đang cập nhật khóa phòng...',
+        anonymous: 'Ẩn danh',
     },
     en: {
         new_msg: 'You have a new message',
@@ -31,6 +35,7 @@ const translations = {
         encrypted_preview: '🔒 Open app to view message',
         decryption_failed: '⚠️ Cannot decrypt this message',
         room_key_missing: '⚠️ Fetching room key...',
+        anonymous: 'Anonymous',
     },
     zh: {
         new_msg: '你有一条新消息',
@@ -38,6 +43,7 @@ const translations = {
         encrypted_preview: '🔒 打开应用程序查看消息',
         decryption_failed: '⚠️ 无法解密此消息',
         room_key_missing: '⚠️ 正在获取房间密钥...',
+        anonymous: '匿名',
     }
 };
 
@@ -81,17 +87,18 @@ export const handleNotificationNavigation = (remoteMessage: any) => {
 
 export const decryptNotificationContent = async (remoteMessage: any) => {
     const { data, notification } = remoteMessage;
+    const payload = data as NotificationPayload;
 
-    // 1. Initialize Fallback Title/Body
-    let title = notification?.title || 'MonkeyLingua';
+    let title = payload.roomName || notification?.title || 'MonkeyLingua';
     let body = await getLocalizedText('new_msg');
 
-    // 2. Check for Encryption
+    const anonymousLabel = await getLocalizedText('anonymous');
+    const senderName = payload.senderName || anonymousLabel;
+
     if (data?.isEncrypted === 'true' && data?.ciphertext) {
         try {
             console.log('[NotiHelper] Detected Encrypted Push. Attempting decrypt...');
 
-            // 3. Hydrate User ID (Background context check)
             let currentUserId = e2eeService['userId'];
             if (!currentUserId) {
                 const userJson = await AsyncStorage.getItem(USER_STORAGE_KEY);
@@ -101,6 +108,7 @@ export const decryptNotificationContent = async (remoteMessage: any) => {
                     if (userIdFromStorage) {
                         currentUserId = userIdFromStorage;
                         e2eeService.setUserId(userIdFromStorage);
+                        roomSecurityService.preloadKeys();
                     }
                 }
             }
@@ -111,44 +119,33 @@ export const decryptNotificationContent = async (remoteMessage: any) => {
                 return { title, body, data };
             }
 
-            // 4. Initialize Crypto
             await e2eeService.initAndCheckUpload(currentUserId);
 
-            // 5. Decrypt based on Type
             let decryptedText = '';
-            const encryptionType = data.encryptionType || 'PRIVATE'; // Default to Private if missing
 
-            if (encryptionType === 'PRIVATE') {
-                // --- 1-on-1 Chat (Double Ratchet) ---
-                if (data.senderEphemeralKey && data.initializationVector) {
+            if (payload.encryptionType === 'GROUP') {
+                if (payload.roomId) {
+                    decryptedText = await roomSecurityService.decryptMessage(payload.roomId, payload.ciphertext);
+                }
+            }
+            else if (payload.encryptionType === 'PRIVATE') {
+                if (payload.senderEphemeralKey && payload.initializationVector && payload.senderId) {
                     const msgStruct = {
-                        senderId: data.senderId,
-                        content: data.ciphertext,
-                        senderEphemeralKey: data.senderEphemeralKey,
-                        initializationVector: data.initializationVector,
+                        senderId: payload.senderId,
+                        content: payload.ciphertext,
+                        senderEphemeralKey: payload.senderEphemeralKey,
+                        initializationVector: payload.initializationVector,
                     };
                     decryptedText = await e2eeService.decrypt(msgStruct);
                 } else {
-                    decryptedText = await getLocalizedText('decryption_failed');
-                }
-
-            } else if (encryptionType === 'GROUP') {
-                // --- Group Chat (Room Key) ---
-                if (data.roomId) {
-                    decryptedText = await e2eeService.decryptGroupMessage(data.roomId, data.ciphertext);
-
-                    if (decryptedText.includes('Room Key Missing')) {
-                        decryptedText = await getLocalizedText('room_key_missing');
-                    }
-                } else {
+                    console.warn('[NotiHelper] Missing keys for PRIVATE decryption', payload);
                     decryptedText = await getLocalizedText('decryption_failed');
                 }
             }
 
-            // 6. Validate Result
             if (decryptedText && !decryptedText.includes('!!') && !decryptedText.includes('🔒')) {
                 console.log('[NotiHelper] Decrypt Success!');
-                body = decryptedText;
+                body = `${senderName}: ${decryptedText}`;
             } else {
                 console.log('[NotiHelper] Decrypt returned error flag:', decryptedText);
                 body = await getLocalizedText('encrypted_msg');
@@ -160,7 +157,7 @@ export const decryptNotificationContent = async (remoteMessage: any) => {
         }
     } else {
         if (data?.content && data?.isEncrypted !== 'true') {
-            body = data.content;
+            body = `${senderName}: ${data.content}`;
         } else if (notification?.body) {
             body = notification.body;
         }

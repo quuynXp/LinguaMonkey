@@ -308,10 +308,7 @@ const CallSetupScreen = ({ navigation }: any) => {
   }, [isSearching, preferences, findMatch, handleMatchSuccess, user, connectSocket])
 
   const handleStartSearch = () => {
-    if (preferences.interests.length === 0) {
-      Alert.alert(t("call.selectInterests"), t("call.selectInterestsMessage"))
-      return
-    }
+    // Removed the interest length check to allow searching with just one option (or defaults)
     setCallPreferences(preferences as any)
     setIsSearching(true)
     setStartTime(Date.now())
@@ -535,9 +532,8 @@ const CallSetupScreen = ({ navigation }: any) => {
           </View>
 
           <TouchableOpacity
-            style={[styles.startButton, preferences.interests.length === 0 && styles.startButtonDisabled]}
+            style={styles.startButton}
             onPress={handleStartSearch}
-            disabled={preferences.interests.length === 0}
           >
             <Icon name="search" size={24} color="#FFFFFF" />
             <Text style={styles.startButtonText}>{t("call.startSearch")}</Text>

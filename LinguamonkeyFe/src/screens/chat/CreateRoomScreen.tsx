@@ -20,7 +20,6 @@ import { useNavigation } from '@react-navigation/native';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useUserStore } from '../../stores/UserStore';
-// FIX: Import trực tiếp useCreateRoom thay vì useRoom
 import { useCreateRoom } from '../../hooks/useRoom';
 import { useUsers } from '../../hooks/useUsers';
 import { RoomPurpose, RoomType } from '../../types/enums';
@@ -32,13 +31,15 @@ const CreateRoomScreen = () => {
   const navigation = useNavigation<any>();
   const { user } = useUserStore();
 
-  // FIX: Gọi hook trực tiếp
   const { mutate: createRoom, isPending: isCreating } = useCreateRoom();
   const { useSearchPublicUsers } = useUsers();
 
   const [roomName, setRoomName] = useState('');
   const [description, setDescription] = useState('');
+
+  // FIX: Mặc định là GROUP_CHAT (Tương ứng với Learning/General)
   const [roomPurpose, setRoomPurpose] = useState<RoomPurpose>(RoomPurpose.GROUP_CHAT);
+
   const [maxMembers, setMaxMembers] = useState('20');
   const [isPrivate, setIsPrivate] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
@@ -99,15 +100,26 @@ const CreateRoomScreen = () => {
       return;
     }
 
-    // FIX: Ensure payload is strictly typed and clean
+    // Validation: Mật khẩu phòng private bắt buộc 6 số
+    if (isPrivate) {
+      if (!roomPassword.trim()) {
+        Alert.alert(t('common.error'), "Vui lòng nhập mật khẩu cho phòng riêng tư");
+        return;
+      }
+      if (roomPassword.length !== 6) {
+        Alert.alert(t('common.error'), "Mật khẩu phòng phải gồm 6 chữ số");
+        return;
+      }
+    }
+
     const roomPayload: RoomRequest = {
       roomName: roomName.trim(),
       creatorId: user.userId,
-      description: description.trim(),
+      content: description.trim(), // FIX: Changed key from 'description' to 'content' to match Backend DTO
       maxMembers: parseInt(maxMembers, 10) || 20,
       purpose: roomPurpose,
       roomType: isPrivate ? RoomType.PRIVATE : RoomType.PUBLIC,
-      password: (isPrivate && roomPassword.trim()) ? roomPassword.trim() : null,
+      password: (isPrivate && roomPassword) ? roomPassword : null,
       roomCode: null,
       isDeleted: false,
       memberIds: Array.from(selectedUsers)
@@ -115,15 +127,16 @@ const CreateRoomScreen = () => {
 
     createRoom(roomPayload, {
       onSuccess: (newRoom) => {
-        // Validation: Ensure we got a valid room with a UUID before navigating
         if (newRoom && newRoom.roomId) {
-            navigation.replace('GroupChatScreen', {
-                roomId: newRoom.roomId,
-                roomName: newRoom.roomName
-            });
+          // Thay thế replace bằng navigate hoặc reset tùy luồng, 
+          // ở đây dùng replace để user không back lại form tạo
+          navigation.replace('GroupChatScreen', {
+            roomId: newRoom.roomId,
+            roomName: newRoom.roomName
+          });
         } else {
-            console.error("Created room but received invalid response:", newRoom);
-            Alert.alert(t('common.error'), "Room created but ID is missing.");
+          console.error("Created room but received invalid response:", newRoom);
+          Alert.alert(t('common.error'), "Room created but ID is missing.");
         }
       },
       onError: (error: any) => {
@@ -218,34 +231,13 @@ const CreateRoomScreen = () => {
               <Text style={styles.characterCount}>{description.length}/255</Text>
             </View>
 
-            {/* Room Purpose */}
+            {/* Room Purpose Selection */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>
                 {t('createRoom.purposeLabel')}
               </Text>
               <View style={styles.purposeContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.purposeButton,
-                    roomPurpose === RoomPurpose.QUIZ_TEAM && styles.selectedPurpose,
-                  ]}
-                  onPress={() => setRoomPurpose(RoomPurpose.QUIZ_TEAM)}
-                  disabled={isCreating}
-                >
-                  <Icon
-                    name="school"
-                    size={20}
-                    color={roomPurpose === RoomPurpose.QUIZ_TEAM ? '#FFFFFF' : '#4F46E5'}
-                  />
-                  <Text
-                    style={[
-                      styles.purposeText,
-                      roomPurpose === RoomPurpose.QUIZ_TEAM && styles.selectedPurposeText,
-                    ]}
-                  >
-                    {t('createRoom.purposeLearning')}
-                  </Text>
-                </TouchableOpacity>
+                {/* Button 1: General Learning -> GROUP_CHAT */}
                 <TouchableOpacity
                   style={[
                     styles.purposeButton,
@@ -257,7 +249,7 @@ const CreateRoomScreen = () => {
                   <Icon
                     name="group"
                     size={20}
-                    color={roomPurpose === RoomPurpose.GROUP_CHAT ? '#FFFFFF' : '#10B981'}
+                    color={roomPurpose === RoomPurpose.GROUP_CHAT ? '#FFFFFF' : '#4F46E5'}
                   />
                   <Text
                     style={[
@@ -265,7 +257,31 @@ const CreateRoomScreen = () => {
                       roomPurpose === RoomPurpose.GROUP_CHAT && styles.selectedPurposeText,
                     ]}
                   >
-                    {t('createRoom.purposeSocial')}
+                    {t('purpose.learning')}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Button 2: Quiz/Team -> QUIZ_TEAM */}
+                <TouchableOpacity
+                  style={[
+                    styles.purposeButton,
+                    roomPurpose === RoomPurpose.QUIZ_TEAM && styles.selectedPurpose,
+                  ]}
+                  onPress={() => setRoomPurpose(RoomPurpose.QUIZ_TEAM)}
+                  disabled={isCreating}
+                >
+                  <Icon
+                    name="school"
+                    size={20}
+                    color={roomPurpose === RoomPurpose.QUIZ_TEAM ? '#FFFFFF' : '#10B981'}
+                  />
+                  <Text
+                    style={[
+                      styles.purposeText,
+                      roomPurpose === RoomPurpose.QUIZ_TEAM && styles.selectedPurposeText,
+                    ]}
+                  >
+                    {t('purpose.quiz')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -322,16 +338,20 @@ const CreateRoomScreen = () => {
 
               {/* Password Input - Only show if private */}
               {isPrivate && (
-                <TextInput
-                  style={[styles.textInput, styles.passwordInput]}
-                  value={roomPassword}
-                  onChangeText={setRoomPassword}
-                  placeholder={t('createRoom.passwordPlaceholder')}
-                  placeholderTextColor="#9CA3AF"
-                  secureTextEntry
-                  maxLength={20}
-                  editable={!isCreating}
-                />
+                <View>
+                  <TextInput
+                    style={[styles.textInput, styles.passwordInput]}
+                    value={roomPassword}
+                    onChangeText={(text) => setRoomPassword(text.replace(/[^0-9]/g, ''))}
+                    placeholder="000000"
+                    placeholderTextColor="#9CA3AF"
+                    secureTextEntry
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    editable={!isCreating}
+                  />
+                  <Text style={styles.helperText}>Mật khẩu gồm 6 chữ số</Text>
+                </View>
               )}
             </View>
 
@@ -451,6 +471,12 @@ const styles = createScaledSheet({
   },
   passwordInput: {
     marginTop: 12,
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+    marginLeft: 4,
   },
   characterCount: {
     fontSize: 12,
@@ -623,7 +649,7 @@ const styles = createScaledSheet({
   },
   userItemSelectedCheckbox: {
     opacity: 1
-  }, 
+  },
   emptyText: {
     textAlign: 'center',
     padding: 20,

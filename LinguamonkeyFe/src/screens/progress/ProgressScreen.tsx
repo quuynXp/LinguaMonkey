@@ -38,6 +38,10 @@ const ProgressScreen = () => {
     const [timeFilter, setTimeFilter] = useState<Period>("week")
     const fadeAnim = useRef(new Animated.Value(1)).current
 
+    // 1. ADD: Ref cho ScrollView của biểu đồ để tự động scroll
+    const timeChartScrollRef = useRef<ScrollView>(null)
+    const accuracyChartScrollRef = useRef<ScrollView>(null)
+
     const {
         data: studyHistory,
         isLoading,
@@ -71,6 +75,17 @@ const ProgressScreen = () => {
             useNativeDriver: true,
         }).start()
     }, [currentTab, timeFilter])
+
+    // 2. ADD: Effect để tự động scroll tới cuối biểu đồ khi đổi Filter hoặc có Data mới
+    useEffect(() => {
+        if (!isLoading && stats) {
+            // Dùng timeout nhỏ để đảm bảo Layout đã render xong trước khi scroll
+            setTimeout(() => {
+                timeChartScrollRef.current?.scrollToEnd({ animated: true });
+                accuracyChartScrollRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+        }
+    }, [isLoading, timeFilter, stats]);
 
     const formatStudyTime = (seconds: number) => {
         if (seconds < 60 && seconds > 0) {
@@ -113,23 +128,50 @@ const ProgressScreen = () => {
 
     const renderTimeChart = () => {
         const data = stats.timeChartData || []
-        const maxVal = Math.max(...data.map(d => d.value), 1)
+
+        if (data.length === 0) {
+            return (
+                <View style={styles.chartContainer}>
+                    <Text style={styles.chartTitle}>{t("history.stats.studyTime")}</Text>
+                    <Text style={{ textAlign: 'center', color: '#9CA3AF', padding: 20 }}>
+                        No data available for this period
+                    </Text>
+                </View>
+            )
+        }
+
+        // 3. FIX: Logic tính Max Scale
+        // Mốc chuẩn: 30 phút. 
+        // Nếu học 2 phút -> Cột cao 2/30 (thấp). 
+        // Nếu học 60 phút -> Cột cao 60/60 (max).
+        const TARGET_MINUTES = 30;
+        const maxDataVal = Math.max(...data.map(d => d.value), 0);
+        // Lấy số lớn hơn giữa Max Data và Mốc chuẩn (30p)
+        const maxVal = Math.max(maxDataVal, TARGET_MINUTES);
 
         return (
             <View style={styles.chartContainer}>
-                <Text style={styles.chartTitle}>{t("history.stats.studyTime")}</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartBody}>
-                    {data.map((item, index) => (
-                        <View key={index} style={styles.chartColumn}>
-                            <View style={styles.barContainer}>
-                                <View style={[styles.bar, {
-                                    height: `${(item.value / maxVal) * 100}%`,
-                                    backgroundColor: item.value > 0 ? '#4F46E5' : '#E5E7EB'
-                                }]} />
+                <Text style={styles.chartTitle}>{t("history.stats.studyTime")} (mins)</Text>
+                <ScrollView
+                    ref={timeChartScrollRef} // Gắn ref để auto scroll
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.chartBody}
+                >
+                    {data.map((item, index) => {
+                        const barHeightPercent = (item.value / maxVal) * 100;
+                        return (
+                            <View key={`${item.fullDate}-${index}`} style={styles.chartColumn}>
+                                <View style={styles.barContainer}>
+                                    <View style={[styles.bar, {
+                                        height: `${barHeightPercent}%`,
+                                        backgroundColor: item.value > 0 ? '#4F46E5' : '#E5E7EB'
+                                    }]} />
+                                </View>
+                                <Text style={styles.axisLabel}>{item.label}</Text>
                             </View>
-                            <Text style={styles.axisLabel}>{item.label}</Text>
-                        </View>
-                    ))}
+                        )
+                    })}
                 </ScrollView>
             </View>
         )
@@ -137,7 +179,20 @@ const ProgressScreen = () => {
 
     const renderAccuracyChart = () => {
         const data = stats.accuracyChartData || []
+
+        if (data.length === 0) {
+            return (
+                <View style={styles.chartContainer}>
+                    <Text style={styles.chartTitle}>{t("history.stats.accuracyProgress")}</Text>
+                    <Text style={{ textAlign: 'center', color: '#9CA3AF', padding: 20 }}>
+                        No data available for this period
+                    </Text>
+                </View>
+            )
+        }
+
         const ACCURACY_COLOR = '#10B981'
+        // 4. FIX: Accuracy luôn luôn max là 100
         const maxVal = 100
 
         return (
@@ -149,18 +204,27 @@ const ProgressScreen = () => {
                         <Text style={styles.legendText}>Avg Score %</Text>
                     </View>
                 </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartBody}>
-                    {data.map((item, index) => (
-                        <View key={index} style={styles.chartColumn}>
-                            <View style={styles.barContainer}>
-                                <View style={[styles.bar, {
-                                    height: `${(item.value / maxVal) * 100}%`,
-                                    backgroundColor: item.value > 0 ? ACCURACY_COLOR : '#E5E7EB'
-                                }]} />
+                <ScrollView
+                    ref={accuracyChartScrollRef} // Gắn ref để auto scroll
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.chartBody}
+                >
+                    {data.map((item, index) => {
+                        // Value accuracy từ 0-100, chia cho 100 rồi nhân 100%
+                        const barHeightPercent = (item.value / maxVal) * 100;
+                        return (
+                            <View key={`${item.fullDate}-${index}`} style={styles.chartColumn}>
+                                <View style={styles.barContainer}>
+                                    <View style={[styles.bar, {
+                                        height: `${barHeightPercent}%`,
+                                        backgroundColor: item.value > 0 ? ACCURACY_COLOR : '#E5E7EB'
+                                    }]} />
+                                </View>
+                                <Text style={styles.axisLabel}>{item.label}</Text>
                             </View>
-                            <Text style={styles.axisLabel}>{item.label}</Text>
-                        </View>
-                    ))}
+                        )
+                    })}
                 </ScrollView>
                 <View style={styles.chartFooter}>
                     <Text style={styles.footerText}>
@@ -171,9 +235,11 @@ const ProgressScreen = () => {
         )
     }
 
+    // ... (Giữ nguyên phần renderAiSuggestion, renderStatsTab, renderSessionCard, return) ...
+    // Code dưới đây giữ nguyên như cũ của bạn
+
     const safeParseSuggestion = (raw: string): AiSuggestionData | string => {
         try {
-            // Remove markdown code blocks if present
             const clean = raw.replace(/```json/g, '').replace(/```/g, '').trim();
             const parsed = JSON.parse(clean);
             if (typeof parsed === 'object') return parsed;
@@ -381,7 +447,6 @@ const styles = createScaledSheet({
     statLabel: { fontSize: 12, color: "#6B7280", marginTop: 4 },
     statSubLabel: { fontSize: 10, color: "#9CA3AF", marginTop: 2 },
 
-    // AI Card Styles - Updated
     aiCard: { backgroundColor: "#4338ca", borderRadius: 16, padding: 20, elevation: 4, shadowColor: "#4338ca", shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
     aiHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
     aiIconContainer: { backgroundColor: "rgba(255,255,255,0.2)", padding: 6, borderRadius: 20 },

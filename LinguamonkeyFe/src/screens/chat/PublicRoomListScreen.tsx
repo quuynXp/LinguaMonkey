@@ -237,6 +237,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                             {t('common.all')}
                         </Text>
                     </TouchableOpacity>
+                    {/* Maps to GROUP_CHAT */}
                     <TouchableOpacity
                         style={[styles.filterButton, selectedFilter === RoomPurpose.GROUP_CHAT && styles.activeFilterButton]}
                         onPress={() => setSelectedFilter(RoomPurpose.GROUP_CHAT)}
@@ -245,6 +246,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                             {t('purpose.learning')}
                         </Text>
                     </TouchableOpacity>
+                    {/* Maps to QUIZ_TEAM */}
                     <TouchableOpacity
                         style={[styles.filterButton, selectedFilter === RoomPurpose.QUIZ_TEAM && styles.activeFilterButton]}
                         onPress={() => setSelectedFilter(RoomPurpose.QUIZ_TEAM)}

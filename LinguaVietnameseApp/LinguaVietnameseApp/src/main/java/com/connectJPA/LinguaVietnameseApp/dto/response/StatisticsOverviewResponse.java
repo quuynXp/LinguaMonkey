@@ -1,14 +1,15 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
-// StatisticsOverviewResponse.java
 import com.connectJPA.LinguaVietnameseApp.dto.TimeSeriesPoint;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.*;
 import java.math.BigDecimal;
 import java.util.List;
 
 @Data
 @AllArgsConstructor
+@Builder
+@NoArgsConstructor
 public class StatisticsOverviewResponse {
     private long totalUsers;
     private int totalCourses;
@@ -16,8 +17,6 @@ public class StatisticsOverviewResponse {
     private BigDecimal totalRevenue;
     private long totalTransactions;
 
-    // thêm timeSeries để FE vẽ chart
-    // có thể null nếu không cần
     private List<TimeSeriesPoint> timeSeries;
 
 }

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.datatype.jsr310.ser.OffsetDateTimeSerializer;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
@@ -39,7 +40,9 @@ public class RoomResponse {
     private String partnerLastActiveText;
     
     private String lastMessage;
+    private String lastMessageType;
     
+    @JsonProperty("isRead")
     private boolean isRead; 
 
     @JsonSerialize(using = OffsetDateTimeSerializer.class)

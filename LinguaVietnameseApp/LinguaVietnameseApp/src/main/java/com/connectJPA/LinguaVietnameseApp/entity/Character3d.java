@@ -25,6 +25,6 @@ public class Character3d extends BaseEntity {
     @Column(name = "description")
     private String description;
 
-    @Column(name = "model_url")
+    @Column(name = "model_url", columnDefinition = "TEXT")
     private String modelUrl;
 }

@@ -65,7 +65,7 @@ const TransactionHistoryScreen = ({ navigation }) => {
 
     return (
       <TouchableOpacity
-        onPress={() => navigation.navigate("TransactionDetailsScreen", { id: item.transactionId })}
+        onPress={() => navigation.navigate("TransactionDetailsScreen", { transactionId: item.transactionId })}
         key={item.transactionId}
         style={styles.itemCard}
       >

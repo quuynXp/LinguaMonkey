@@ -10,6 +10,8 @@ import {
 } from "../types/dto";
 import { RoomPurpose, RoomType } from "../types/enums";
 
+const BASE = "/api/v1/rooms";
+
 export const roomKeys = {
     all: ["rooms"] as const,
     publicLists: (params: any) => [...roomKeys.all, "public", params] as const,
@@ -19,8 +21,6 @@ export const roomKeys = {
     ai: () => [...roomKeys.all, "aiRoom"] as const,
     courseRoom: (courseId: string) => [...roomKeys.all, "courseRoom", courseId] as const,
 };
-
-const BASE = "/api/v1/rooms";
 
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
     data: (result?.content as T[]) || [],
@@ -41,17 +41,15 @@ export const usePublicRooms = (params?: {
     page?: number;
     size?: number;
 }) => {
-    // Ổn định params: Đảm bảo default value được tính vào key
-    const finalParams = { page: 0, size: 10, ...params };
-
+    const { page = 0, size = 10 } = params || {};
     return useQuery({
-        queryKey: roomKeys.publicLists(finalParams),
+        queryKey: roomKeys.publicLists(params),
         queryFn: async () => {
             const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
                 BASE,
-                { params: finalParams }
+                { params: { ...params, page, size } }
             );
-            return mapPageResponse(data.result, finalParams.page, finalParams.size);
+            return mapPageResponse(data.result, page, size);
         },
         staleTime: 5 * 60 * 1000,
     });
@@ -63,25 +61,23 @@ export const useJoinedRooms = (params?: {
     size?: number;
     userId: string;
 }) => {
-    const finalParams = { page: 0, size: 20, ...params };
-
+    const { page = 0, size = 20 } = params || {};
     return useQuery({
-        queryKey: roomKeys.joinedLists(finalParams),
+        queryKey: roomKeys.joinedLists(params),
         queryFn: async () => {
             const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
                 `${BASE}/joined`,
-                { params: finalParams }
+                { params: { ...params, page, size } }
             );
-            return mapPageResponse(data.result, finalParams.page, finalParams.size);
+            return mapPageResponse(data.result, page, size);
         },
-        refetchInterval: 10000, // Lưu ý: Cái này sẽ trigger re-render mỗi 10s
+        refetchInterval: 10000,
     });
 };
 
 export const useRoom = (id?: string | null) => {
     return useQuery({
-        // Sử dụng id || "" để key luôn valid string, tránh null crash key
-        queryKey: roomKeys.detail(id || ""),
+        queryKey: roomKeys.detail(id!),
         queryFn: async () => {
             if (!id) throw new Error("Room ID required");
             const { data } = await instance.get<AppApiResponse<RoomResponse>>(`${BASE}/${id}`);
@@ -93,7 +89,7 @@ export const useRoom = (id?: string | null) => {
 
 export const useCourseRoom = (courseId: string | null) => {
     return useQuery({
-        queryKey: roomKeys.courseRoom(courseId || ""),
+        queryKey: roomKeys.courseRoom(courseId!),
         queryFn: async () => {
             if (!courseId) return null;
             const { data } = await instance.get<AppApiResponse<RoomResponse>>(
@@ -108,7 +104,7 @@ export const useCourseRoom = (courseId: string | null) => {
 
 export const useRoomMembers = (roomId?: string | null) => {
     return useQuery({
-        queryKey: roomKeys.members(roomId || ""),
+        queryKey: roomKeys.members(roomId!),
         queryFn: async () => {
             if (!roomId) throw new Error("Room ID required");
             const { data } = await instance.get<AppApiResponse<MemberResponse[]>>(

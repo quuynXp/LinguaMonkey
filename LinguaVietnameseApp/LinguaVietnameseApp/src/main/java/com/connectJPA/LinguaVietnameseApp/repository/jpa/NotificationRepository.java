@@ -29,12 +29,12 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Query("SELECT n FROM Notification n WHERE " +
             "n.userId = :userId AND " +
             "(LOWER(n.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-            "LOWER(n.content) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND " +
+            "LOWER(CAST(n.content AS string)) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND " +
             "n.isDeleted = false " +
             "ORDER BY n.createdAt DESC")
     Page<Notification> searchNotificationsByKeyword(
-            @Param("userId") UUID userId, 
-            @Param("keyword") String keyword, 
+            @Param("userId") UUID userId,
+            @Param("keyword") String keyword,
             Pageable pageable);
 
     long countByUserIdAndReadFalseAndIsDeletedFalse(UUID userId);

@@ -1,5 +1,5 @@
 import instance from "../api/axiosClient";
-import { StudyHistoryResponse } from "../types/dto";
+import { DepositRevenueResponse, StudyHistoryResponse, TransactionStatsResponse, UserCountResponse } from "../types/dto";
 
 const formatDateParam = (date?: Date): string | undefined => {
   if (date instanceof Date && !isNaN(date.getTime())) {
@@ -50,11 +50,11 @@ export const getStatisticsOverview = async (
   );
 
   try {
-    const res = await instance.get(`/api/v1/statistics/overview`, {
+    const res = await instance.get<any>(`/api/v1/statistics/overview`, {
       params: filteredParams,
     });
 
-    const result = res.data.result || res.data || {};
+    const result = res.data.result || {};
 
     return {
       users: result.totalUsers || 0,
@@ -69,7 +69,14 @@ export const getStatisticsOverview = async (
       "Error fetching statistics overview:",
       error?.response?.data || error.message
     );
-    throw error;
+    return {
+      users: 0,
+      courses: 0,
+      lessons: 0,
+      revenue: 0,
+      transactions: 0,
+      raw: {}
+    };
   }
 };
 
@@ -117,7 +124,7 @@ export const getUserStatistics = async (
 
 export const getUserCounts = async (
   params: { period: "day" | "month" | "year" } & Omit<DateRangeParams, 'aggregate'>
-) => {
+): Promise<UserCountResponse[]> => {
   const formattedParams: any = {
     period: params.period,
     startDate: formatDateParam(params.startDate),
@@ -176,7 +183,7 @@ export const getActivityStatistics = async (
 
 export const getTransactionStatistics = async (
   params: DateRangeParams & { status?: string; provider?: string } = {}
-) => {
+): Promise<TransactionStatsResponse[]> => {
   const formattedParams: any = {
     status: params.status,
     provider: params.provider,
@@ -262,7 +269,7 @@ export const getTeacherCourseLessonStats = async (
 
 export const getDepositRevenueStatistics = async (
   params: DateRangeParams = {}
-) => {
+): Promise<DepositRevenueResponse> => {
   const formattedParams: any = {
     period: params.period,
     aggregate: params.aggregate,
@@ -274,18 +281,10 @@ export const getDepositRevenueStatistics = async (
     Object.entries(formattedParams).filter(([, v]) => v !== undefined)
   );
 
-  try {
-    const res = await instance.get(`/api/v1/statistics/deposit-revenue`, {
-      params: filteredParams,
-    });
-    return res.data.result;
-  } catch (error: any) {
-    console.error(
-      "Error fetching deposit revenue statistics:",
-      error?.response?.data || error.message
-    );
-    throw error;
-  }
+  const res = await instance.get(`/api/v1/statistics/deposit-revenue`, {
+    params: filteredParams,
+  });
+  return res.data.result;
 }
 
 export const getTeacherCourseRevenue = async (

@@ -11,8 +11,8 @@
             "transactions": "Giao dịch"
         },
         "actions": {
-            "addUser": "Thêm Người dùng",
-            "addCourse": "Thêm Khóa học"
+            "addUser": "Thêm người dùng",
+            "addCourse": "Thêm khóa học"
         },
         "screens": {
             "users": "Người dùng",
@@ -23,61 +23,61 @@
             "transactions": "Giao dịch"
         },
         "desc": {
-            "createVideo": "Tải lên một bài học video mới",
+            "createVideo": "Tải lên bài học video mới",
             "analytics": "Xem phân tích và báo cáo hệ thống",
-            "transactions": "Giám sát các giao dịch hệ thống"
+            "transactions": "Theo dõi giao dịch hệ thống"
         },
         "transactions": {
             "title": "Giao dịch",
             "defaultTitle": "Giao dịch",
-            "noTransactions": "Không có giao dịch nào"
+            "noTransactions": "Không có giao dịch"
         },
         "lessons": {
-            "title": "Quản lý Bài học",
-            "completions": "Hoàn thành Bài học",
+            "title": "Quản lý bài học",
+            "completions": "Lượt hoàn thành bài học",
             "listTitle": "Bài học",
-            "noLessons": "Không có bài học nào"
+            "noLessons": "Không có bài học"
         },
         "courseDetail": {
-            "title": "Chi tiết Khóa học",
+            "title": "Chi tiết khóa học",
             "updateSuccess": "Cập nhật khóa học thành công.",
             "delete": {
-                "title": "Xóa Khóa học",
-                "message": "Bạn có chắc chắn muốn xóa khóa học này không? Hành động này không thể hoàn tác.",
-                "successTitle": "Đã Xóa",
-                "successMessage": "Khóa học đã được xóa."
+                "title": "Xóa khóa học",
+                "message": "Bạn có chắc chắn muốn xóa khóa học này? Hành động này không thể hoàn tác.",
+                "successTitle": "Đã xóa",
+                "successMessage": "Đã gỡ bỏ khóa học."
             },
             "form": {
-                "thumbnailUrl": "URL Ảnh thu nhỏ",
+                "thumbnailUrl": "URL hình thu nhỏ",
                 "title": "Tiêu đề",
                 "description": "Mô tả",
-                "difficultyLevel": "Mức độ Khó",
+                "difficultyLevel": "Độ khó",
                 "type": "Loại",
                 "price": "Giá",
-                "courseId": "ID Khóa học",
-                "creatorId": "ID Người tạo",
-                "createdAt": "Ngày tạo"
+                "courseId": "ID khóa học",
+                "creatorId": "ID người tạo",
+                "createdAt": "Được tạo lúc"
             }
         },
         "courses": {
-            "title": "Quản lý Khóa học",
+            "title": "Quản lý khóa học",
             "overview": {
-                "totalCourses": "Tổng số Khóa học",
+                "totalCourses": "Tổng số khóa học",
                 "lessons": "Bài học"
             },
             "listTitle": "Khóa học",
-            "noCourses": "Không có khóa học nào"
+            "noCourses": "Không có khóa học"
         },
         "menu": {
             "appInfo": "Thông tin ứng dụng"
         },
         "auth": {
-            "logout": "Đăng Xuất",
-            "logoutTitle": "Đăng Xuất",
+            "logout": "Đăng xuất",
+            "logoutTitle": "Đăng xuất",
             "logoutConfirm": "Bạn có chắc chắn muốn đăng xuất ngay bây giờ?"
         },
         "analytics": {
-            "title": "Phân tích Doanh thu",
+            "title": "Phân tích doanh thu",
             "logout": {
                 "title": "Đăng xuất",
                 "message": "Bạn có chắc chắn muốn đăng xuất?"
@@ -86,19 +86,19 @@
                 "week": "Tuần",
                 "month": "Tháng",
                 "year": "Năm",
-                "custom": "Khoảng thời gian Tùy chỉnh"
+                "custom": "Tùy chỉnh khoảng thời gian"
             },
             "errors": {
-                "invalidRangeTitle": "Khoảng thời gian Không hợp lệ",
-                "invalidRangeMessage": "Ngày kết thúc phải bằng hoặc sau ngày bắt đầu."
+                "invalidRangeTitle": "Khoảng thời gian không hợp lệ",
+                "invalidRangeMessage": "Ngày kết thúc phải sau hoặc bằng ngày bắt đầu."
             },
             "charts": {
                 "revenue": "Doanh thu",
                 "transactions": "Giao dịch",
-                "breakdown": "Phân tích chi tiết",
-                "notAvailable": "Không khả dụng",
+                "breakdown": "Chi tiết",
+                "notAvailable": "N/A",
                 "itemLabel": "Mục {{index}}",
-                "noBreakdown": "Không có dữ liệu phân tích chi tiết"
+                "noBreakdown": "Không có dữ liệu chi tiết"
             },
             "overview": {
                 "title": "Tổng quan",
@@ -107,20 +107,20 @@
             }
         },
         "dashboard": {
-            "loading": "Đang tải trang tổng quan...",
-            "totalUsers": "Tổng số Người dùng",
-            "totalCourses": "Tổng số Khóa học",
-            "totalLessons": "Tổng số Bài học",
-            "totalRevenue": "Tổng Doanh thu",
-            "revenueThisMonth": "Doanh thu Tháng này",
-            "quickActions": "Thao tác Nhanh",
+            "loading": "Đang tải bảng điều khiển...",
+            "totalUsers": "Tổng người dùng",
+            "totalCourses": "Tổng khóa học",
+            "totalLessons": "Tổng bài học",
+            "totalRevenue": "Tổng doanh thu",
+            "revenueThisMonth": "Doanh thu tháng này",
+            "quickActions": "Tác vụ nhanh",
             "periods": {
                 "week": "Tuần này",
                 "month": "Tháng này",
-                "year": "Năm nay"
+                "year": "Năm này"
             },
             "overview": "Tổng quan",
-            "totalTransactions": "Tổng số Giao dịch",
+            "totalTransactions": "Tổng giao dịch",
             "selectStart": "Chọn ngày bắt đầu",
             "selectEnd": "Chọn ngày kết thúc",
             "charts": {
@@ -132,7 +132,7 @@
             "lessons": "Bài học",
             "revenue": "Doanh thu",
             "transactions": "Giao dịch",
-            "title": "Bảng điều khiển Quản trị",
+            "title": "Bảng điều khiển Admin",
             "period": {
                 "week": "Tuần",
                 "month": "Tháng",
@@ -141,18 +141,2208 @@
             }
         },
         "users": {
-            "title": "Quản lý Người dùng",
-            "total": "Tổng số Người dùng",
-            "new": "Người dùng Mới",
-            "growthChart": "Biểu đồ Tăng trưởng",
+            "title": "Quản lý người dùng",
+            "total": "Tổng người dùng",
+            "new": "Người dùng mới",
+            "growthChart": "Biểu đồ tăng trưởng",
             "overview": {
-                "totalUsers": "Tổng số Người dùng",
+                "totalUsers": "Tổng người dùng",
                 "growth": "Tăng trưởng"
             },
             "listTitle": "Người dùng",
             "defaultfullname": "Người dùng",
             "noUsers": "Không có người dùng nào để hiển thị",
-            "searchPlaceholder": "Tìm kiếm người dùng bằng tên hoặc email..."
+            "searchPlaceholder": "Tìm kiếm người dùng theo tên hoặc email..."
         }
+    },
+    "login": {
+        "success": "Đăng nhập thành công",
+        "failed": "Đăng nhập thất bại"
+    },
+    "auth": {
+        "phoneNumber": "Số điện thoại",
+        "enterPhoneNumber": "Nhập số điện thoại của bạn",
+        "phoneHint": "Chúng tôi sẽ gửi mã xác minh đến số này.",
+        "emailAddress": "Địa chỉ email",
+        "password": "Mật khẩu",
+        "forgotPassword": "Quên mật khẩu?",
+        "signIn": "Đăng nhập",
+        "loginWithGoogle": "Đăng nhập bằng Google",
+        "loginWithFacebook": "Đăng nhập bằng Facebook",
+        "createAccount": "Tạo tài khoản",
+        "signUp": "Đăng ký",
+        "alreadyHaveAccount": "Đã có tài khoản?",
+        "createAccountDescription": "Tạo tài khoản miễn phí để truy cập tất cả tính năng",
+        "termsOfService": "Bằng cách đăng ký, bạn đồng ý với Điều khoản Dịch vụ và Chính sách Quyền riêng tư của chúng tôi",
+        "privacyPolicy": "Chính sách Quyền riêng tư",
+        "accountSetup": "Thiết lập tài khoản",
+        "choice": {
+            "subtitle": "Chọn cách bạn muốn bắt đầu",
+            "signInTitle": "Đăng nhập",
+            "signInDescription": "Đã có tài khoản? Chào mừng trở lại!",
+            "createAccountTitle": "Tạo tài khoản",
+            "createAccountDescription": "Thiết lập hồ sơ học tập cá nhân hóa của bạn",
+            "startNowTitle": "Bắt đầu ngay",
+            "startNowDescription": "Tham gia ngay với tài khoản tạm thời",
+            "termsAndPolicy": "Bằng cách tiếp tục, bạn đồng ý với <1>Điều khoản Dịch vụ</1> và <3>Chính sách Quyền riêng tư</3> của chúng tôi"
+        },
+        "fullName": "Họ và tên",
+        "enterName": "Nhập họ tên của bạn",
+        "email": "Địa chỉ email",
+        "enterEmail": "Nhập email của bạn",
+        "createPassword": "Tạo mật khẩu an toàn",
+        "welcomeBack": "Chào mừng trở lại MonkeyLingua",
+        "orContinueWith": "Hoặc tiếp tục với",
+        "orSignUpWith": "Hoặc đăng ký với",
+        "sendOtp": "Gửi OTP",
+        "signInContinue": "Đăng nhập để tiếp tục",
+        "dontHaveAccount": "Chưa có tài khoản?",
+        "agreeTo": "Bằng cách đăng ký, bạn đồng ý với ",
+        "and": " và ",
+        "google": "google",
+        "haveAccount": "Đã có tài khoản? ",
+        "facebook": "facebook"
+    },
+    "account": {
+        "startFresh": "Tạo tài khoản",
+        "startFreshDesc": "Thiết lập hồ sơ học tập cá nhân hóa của bạn",
+        "welcomeBack": "Đăng nhập",
+        "signInDesc": "Đã có tài khoản? Chào mừng trở lại!",
+        "choose": "Bạn muốn bắt đầu như thế nào?",
+        "quickStart": "Bắt đầu ngay",
+        "quickStartDesc": "Tham gia ngay với tài khoản tạm thời",
+        "disclaimer": "Tài khoản tạm thời sẽ tự động bị xóa sau 30 ngày không hoạt động. Nâng cấp để giữ tiến trình của bạn mãi mãi."
+    },
+    "terms": {
+        "byContinuing": "Bằng cách tiếp tục, bạn đồng ý với",
+        "termsOfService": "Điều khoản Dịch vụ",
+        "privacyPolicy": "Chính sách Quyền riêng tư",
+        "and": " và "
+    },
+    "setup": {
+        "title": "Thiết lập tài khoản",
+        "skip": "Bỏ qua",
+        "chooseCompanion": "Chọn bạn đồng hành học tập",
+        "chooseCompanion.desc": "Chọn một nhân vật 3D sẽ hướng dẫn bạn trong hành trình học tập",
+        "createAccount": "Tạo tài khoản của bạn",
+        "createAccount.desc": "Hãy bắt đầu với thông tin cơ bản của bạn",
+        "ageRange": "Độ tuổi",
+        "selected": "đã chọn",
+        "certificationGoals": "Mục tiêu chứng chỉ",
+        "certificationGoals.desc": "Bạn quan tâm đến chứng chỉ nào? (Tùy chọn)",
+        "interests": "Sở thích của bạn",
+        "interests.desc": "Bạn quan tâm đến chủ đề nào? Điều này giúp chúng tôi cá nhân hóa nội dung",
+        "learningGoals.desc": "Bạn muốn đạt được điều gì? (Chọn nhiều)",
+        "learningPace.desc": "Bạn có thể dành bao nhiêu thời gian để học?",
+        "setGoals": "Đặt mục tiêu học tập",
+        "setGoals.desc": "Xác định mục tiêu và lời nhắc của bạn",
+        "goalType": "Loại mục tiêu",
+        "goalType.placeholder": "ví dụ: Luyện thi",
+        "targetProficiency": "Trình độ mục tiêu",
+        "targetProficiency.placeholder": "ví dụ: Nâng cao",
+        "targetDate": "Ngày mục tiêu",
+        "targetDate.placeholder": "YYYY-MM-DD",
+        "customDescription": "Mô tả tùy chỉnh",
+        "customDescription.placeholder": "Chi tiết mục tiêu của bạn",
+        "reminderTime": "Thời gian nhắc nhở",
+        "reminderTime.placeholder": "HH:MM",
+        "repeatType": "Kiểu lặp lại",
+        "repeatType.placeholder": "ví dụ: hàng ngày",
+        "readyToStart": "Sẵn sàng để bắt đầu học!",
+        "readyToStart.desc": "Xem lại các lựa chọn của bạn trước khi làm bài kiểm tra trình độ",
+        "character": "Nhân vật",
+        "certifications": "Chứng chỉ",
+        "learningGoals": "Mục tiêu học tập",
+        "learningPace": "Tốc độ học tập",
+        "goal": "Mục tiêu",
+        "by": "trước",
+        "nextProficiencyTest": "Tiếp theo: Làm bài kiểm tra trình độ nhanh để xác định cấp độ bắt đầu của bạn",
+        "takeTest": "Làm bài kiểm tra trình độ",
+        "continue": "Tiếp tục",
+        "certificationsAndPace": "Chứng chỉ và Tốc độ học tập",
+        "certificationsAndPace.desc": "Chọn mục tiêu chứng chỉ và tốc độ học tập ưa thích của bạn",
+        "interestsAndGoals": "Sở thích và Mục tiêu",
+        "interestsAndGoals.desc": "Chọn sở thích và đặt mục tiêu học tập để cá nhân hóa",
+        "loadingModels": "Đang tải mô hình 3D..."
+    },
+    "onboarding": {
+        "skip": "Bỏ qua",
+        "next": "Tiếp theo",
+        "start": "Bắt đầu"
+    },
+    "enterEmailForReset": "Nhập email của bạn để nhận hướng dẫn đặt lại mật khẩu",
+    "enterEmailAddress": "Nhập địa chỉ email của bạn",
+    "sendResetLink": "Gửi liên kết đặt lại",
+    "rememberPassword": "Bạn đã nhớ mật khẩu? ",
+    "noAccount": "Chưa có tài khoản? ",
+    "joinLearners": "Tham gia cùng hàng triệu người học trên toàn thế giới",
+    "firstName": "Tên",
+    "lastName": "Họ",
+    "passwordLength": "Mật khẩu phải dài ít nhất 8 ký tự",
+    "passwordUppercase": "Mật khẩu phải chứa ít nhất một chữ cái viết hoa",
+    "verifyCode": "Xác minh mã",
+    "enterCodeSentTo": "Nhập mã đã được gửi đến {{email}}",
+    "enter6DigitCode": "Nhập mã 6 chữ số",
+    "verify": "Xác minh",
+    "resendCode": "Gửi lại mã",
+    "info": "Thông báo",
+    "verificationFailed": "Xác minh thất bại",
+    "codeResent": "Mã xác minh đã được gửi lại đến {{email}}",
+    "timeRemaining": "Thời gian còn lại {{time}}",
+    "youCanResend": "Bạn có thể gửi lại mã",
+    "Loading": "Đang tải...",
+    "anErrorOccurred": "Đã xảy ra lỗi",
+    "useOtpInstead": "Sử dụng OTP thay thế",
+    "overview": "Tổng quan",
+    "vip": {
+        "renewTitle": "Gia hạn VIP",
+        "monthly": "1 Tháng",
+        "yearly": "1 Năm",
+        "upgradeTitle": "Nâng cấp VIP",
+        "upgradeDesc": "Mở khóa toàn bộ bài thi thử TOEIC, IELTS, không giới hạn các kỹ năng Nghe, Nói, Đọc và Viết.",
+        "feature1": "Mô phỏng 1-kèm-1 không giới hạn",
+        "feature2": "Kho đề thi TOEIC & IELTS",
+        "feature3": "Chấm điểm AI chi tiết",
+        "price": "Chỉ",
+        "lifetime": "/ trọn đời",
+        "buyNow": "Đăng ký ngay"
+    },
+    "usePasswordInstead": "Sử dụng mật khẩu thay thế",
+    "error": {
+        "generic_internal": "Lỗi tải",
+        "general": "Lỗi",
+        "title": "Lỗi",
+        "loadCharacters": "Không thể tải nhân vật",
+        "loadLanguages": "Không thể tải ngôn ngữ",
+        "loadInterests": "Không thể tải sở thích",
+        "characterRequired": "Vui lòng chọn một nhân vật để tiếp tục.",
+        "infoRequired": "Vui lòng điền vào tất cả các trường bắt buộc.",
+        "certificationsRequired": "Vui lòng chọn ít nhất một chứng chỉ.",
+        "interestsRequired": "Vui lòng chọn ít nhất một sở thích.",
+        "learningGoalsRequired": "Vui lòng chọn ít nhất một mục tiêu học tập.",
+        "learningPaceRequired": "Vui lòng chọn tốc độ học tập của bạn.",
+        "goalRequired": "Vui lòng thiết lập mục tiêu học tập của bạn.",
+        "setupAccount": "Thiết lập tài khoản thất bại",
+        "classifyLevel": "Phân loại cấp độ người dùng thất bại",
+        "connection": "Xin lỗi, tôi đang gặp sự cố kết nối. Vui lòng thử lại sau.",
+        "sendMessage": "Gửi tin nhắn thất bại",
+        "translation": "Dịch thất bại",
+        "fillRequired": "Vui lòng điền vào tất cả các trường bắt buộc",
+        "enterRoomId": "Vui lòng nhập ID phòng",
+        "createRoom": "Tạo phòng thất bại",
+        "joinRoom": "Tham gia phòng thất bại",
+        "nameRequired": "Tên là bắt buộc",
+        "nameMin": "Tên phải có ít nhất 2 ký tự",
+        "connection_title": "Lỗi kết nối",
+        "connection_message": "Lỗi kết nối mạng hoặc timeout. Vui lòng thử lại.",
+        "info_title": "Thông báo",
+        "warning_title": "Cảnh báo",
+        "server_error_title": "Lỗi máy chủ",
+        "system_error_title": "Lỗi hệ thống",
+        "request_error_title": "Lỗi yêu cầu",
+        "generic_message": "Đã xảy ra lỗi. Vui lòng thử lại sau."
+    },
+    "common": {
+        "items": "Mục",
+        "connect": "Kết nối",
+        "connected": "Đã kết nối",
+        "seeAll": "Xem tất cả",
+        "searchByNameNickEmailPhone": "Tìm kiếm theo tên, biệt danh, email hoặc số điện thoại",
+        "filter": "Bộ lọc",
+        "apply": "Áp dụng",
+        "noResults": "Không có kết quả",
+        "claim": "Nhận",
+        "noData": "Không có dữ liệu",
+        "teacher": "Giáo viên",
+        "view": "Xem",
+        "buy": "Mua",
+        "coins": "Xu",
+        "webViewTitle": "Trang Web",
+        "overview": "Tổng quan",
+        "year": "Năm",
+        "skip": "Bỏ qua",
+        "hot": "Hot",
+        "server_maintenance": "Bảo trì máy chủ",
+        "please_wait_reconnecting": "Vui lòng đợi kết nối lại",
+        "server_unavailable_msg": "Máy chủ không khả dụng, vui lòng thử lại sau, chúng tôi xin lỗi vì trải nghiệm không mong muốn này.",
+        "reconnecting": "Đang kết nối lại",
+        "loading": "Đang tải...",
+        "appName": "MonkeyLingua",
+        "error": "Lỗi",
+        "success": "Thành công",
+        "cancel": "Hủy",
+        "create": "Tạo",
+        "authRequired": "Yêu cầu đăng nhập",
+        "open_settings": "Mở cài đặt",
+        "no_internet": "Không có kết nối internet. Vui lòng kiểm tra mạng của bạn.",
+        "save": "Lưu",
+        "delete": "Xóa",
+        "edit": "Sửa",
+        "add": "Thêm",
+        "search": "Tìm kiếm",
+        "retry": "Thử lại",
+        "back": "Quay lại",
+        "next": "Tiếp theo",
+        "previous": "Trước",
+        "close": "Đóng",
+        "confirm": "Xác nhận",
+        "yes": "Có",
+        "no": "Không",
+        "ok": "OK",
+        "done": "Xong",
+        "refresh": "Làm mới",
+        "viewAll": "Xem tất cả",
+        "all": "Tất cả",
+        "minutes": "phút",
+        "hours": "giờ",
+        "days": "ngày",
+        "weeks": "tuần",
+        "months": "tháng",
+        "years": "năm",
+        "starting": "Đang bắt đầu...",
+        "completing": "Đang hoàn thành...",
+        "submitting": "Đang gửi...",
+        "reset": "Đặt lại",
+        "optional": "Tùy chọn",
+        "viewAll_vn": "Xem tất cả",
+        "complete_vn": "Hoàn thành",
+        "create_vn": "Tạo",
+        "cancel_vn": "Hủy",
+        "select": "Chọn",
+        "complete": "Hoàn thành bài trắc nghiệm!",
+        "reload": "Tải lại",
+        "noDescription": "Không có mô tả",
+        "loadingData": "Đang tải dữ liệu...",
+        "period": {
+            "day": "Ngày",
+            "week": "Tuần",
+            "month": "Tháng",
+            "year": "Năm"
+        }
+    },
+    "upload": {
+        "inProgress": "Đang tải lên...",
+        "success": "Tải lên thành công",
+        "failed": "Tải lên thất bại",
+        "preview": "Xem trước",
+        "commit": "Xác nhận tải lên",
+        "cancel": "Hủy tải lên"
+    },
+    "dialogs": {
+        "confirmDelete": "Bạn có chắc chắn muốn xóa mục này?",
+        "confirmLogout": "Bạn có chắc chắn muốn đăng xuất?",
+        "unsavedChanges": "Bạn có thay đổi chưa lưu. Bạn có muốn hủy bỏ chúng không?"
+    },
+    "navigation": {
+        "home": "Trang chủ",
+        "lessons": "Bài học",
+        "grammar": "Ngữ pháp",
+        "videos": "Video",
+        "notes": "Ghi chú",
+        "profile": "Hồ sơ"
+    },
+    "validation": {
+        "note": {
+            "content": {
+                "required": "Nội dung ghi chú là bắt buộc",
+                "min": "Nội dung ghi chú không được để trống",
+                "max": "Nội dung ghi chú không được vượt quá 500 ký tự"
+            },
+            "type": {
+                "required": "Loại ghi chú là bắt buộc",
+                "invalid": "Loại ghi chú không hợp lệ"
+            },
+            "topic": {
+                "required": "Chủ đề là bắt buộc"
+            },
+            "language": {
+                "required": "Ngôn ngữ là bắt buộc"
+            }
+        },
+        "topic": {
+            "name": {
+                "required": "Tên chủ đề là bắt buộc",
+                "min": "Tên chủ đề phải có ít nhất 2 ký tự",
+                "max": "Tên chủ đề không được vượt quá 50 ký tự"
+            },
+            "color": {
+                "required": "Màu sắc là bắt buộc",
+                "invalid": "Định dạng màu không hợp lệ"
+            },
+            "icon": {
+                "required": "Biểu tượng là bắt buộc"
+            }
+        },
+        "quiz": {
+            "lesson": {
+                "required": "ID bài học là bắt buộc"
+            },
+            "answers": {
+                "required": "Câu trả lời là bắt buộc",
+                "empty": "Vui lòng trả lời tất cả các câu hỏi"
+            }
+        },
+        "grammar": {
+            "rule": {
+                "required": "ID quy tắc ngữ pháp là bắt buộc"
+            },
+            "answers": {
+                "required": "Câu trả lời là bắt buộc",
+                "empty": "Vui lòng trả lời tất cả các bài tập"
+            }
+        },
+        "search": {
+            "query": {
+                "min": "Từ khóa tìm kiếm phải có ít nhất 2 ký tự",
+                "max": "Từ khóa tìm kiếm không được vượt quá 50 ký tự"
+            }
+        },
+        "friend": {
+            "userId": {
+                "required": "ID người dùng là bắt buộc"
+            }
+        }
+    },
+    "errors": {
+        "webview_load_failed": "Không thể tải trang. Vui lòng kiểm tra kết nối mạng.",
+        "network": "Lỗi mạng. Vui lòng kiểm tra kết nối của bạn.",
+        "server": "Lỗi máy chủ",
+        "loading": "Đang tải...",
+        "loadTestsFailed": "Tải bài kiểm tra thất bại",
+        "unauthorized": "Bạn không được ủy quyền để thực hiện hành động này.",
+        "notFound": "Tài nguyên yêu cầu không được tìm thấy.",
+        "validation": "Vui lòng kiểm tra đầu vào của bạn và thử lại.",
+        "unknown": "Đã xảy ra lỗi không mong muốn.",
+        "networkError": "Đã xảy ra lỗi mạng",
+        "loadRoadmapFailed": "Tải lộ trình thất bại",
+        "loadItemFailed": "Tải chi tiết mục thất bại",
+        "loadLearnDataFailed": "Tải dữ liệu học tập thất bại",
+        "loadCourseDetailsFailed": "Tải chi tiết khóa học thất bại",
+        "purchaseFailed": "Giao dịch thất bại. Vui lòng thử lại.",
+        "loadCertificationsFailed": "Tải chứng chỉ thất bại",
+        "uploadFailed": "Tải lên thất bại",
+        "aiRoomNotFound": "Không thể tạo phòng chat AI. Vui lòng thử lại.",
+        "roomNotReady": "Phòng chat chưa sẵn sàng.",
+        "userNotFound": "Người dùng không tồn tại"
+    },
+    "user": {
+        "proficiency": "Trình độ thành thạo của bạn",
+        "learningPace": "Tốc độ học tập của bạn"
+    },
+    "success": {
+        "noteCreated": "Tạo ghi chú thành công",
+        "noteUpdated": "Cập nhật ghi chú thành công",
+        "noteDeleted": "Xóa ghi chú thành công",
+        "topicCreated": "Tạo chủ đề thành công",
+        "lessonCompleted": "Hoàn thành bài học thành công",
+        "quizSubmitted": "Nộp bài trắc nghiệm thành công",
+        "exerciseCompleted": "Hoàn thành bài tập thành công",
+        "friendRequestSent": "Đã gửi lời mời kết bạn",
+        "friendRequestAccepted": "Đã chấp nhận lời mời kết bạn"
+    },
+    "loadingGeneric": "Đang tải...",
+    "loading": {
+        "ai": "AI đang phản hồi...",
+        "room": "Đang tải phòng chat...",
+        "aiRoom": "Đang tải phòng AI..."
+    },
+    "input": {
+        "placeholder": "Nhập tin nhắn..."
+    },
+    "modal": {
+        "environment": {
+            "title": "Chọn môi trường"
+        },
+        "topics": {
+            "title": "Chọn chủ đề"
+        }
+    },
+    "action": {
+        "retry": "Thử lại",
+        "reload": "Tải lại"
+    },
+    "days": {
+        "mon": "T2",
+        "tue": "T3",
+        "wed": "T4",
+        "thu": "T5",
+        "fri": "T6",
+        "sat": "T7",
+        "sun": "CN"
+    },
+    "welcome": {
+        "title": "Chào mừng đến với MonkeyLingua",
+        "subtitle": "Người bạn đồng hành học tiếng Anh được hỗ trợ bởi AI"
+    },
+    "password": {
+        "optional": "Mật khẩu (Tùy chọn)"
+    },
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "tabbar": {
+        "home": "Trang chủ",
+        "learn": "Học tập",
+        "progress": "Tiến độ",
+        "chat_ai": "Chat AI",
+        "profile": "Hồ sơ"
+    },
+    "Unknown error": "Đã xảy ra lỗi không mong muốn",
+    "Target Language": "Ngôn ngữ mục tiêu",
+    "Target Proficiency": "Trình độ mục tiêu",
+    "Target Completion Date": "Ngày hoàn thành mục tiêu",
+    "Focus Areas": "Lĩnh vực tập trung",
+    "Study Time (minutes/day)": "Thời gian học (phút/ngày)",
+    "Additional Requirements": "Yêu cầu bổ sung",
+    "Any specific goals or interests?": "Mục tiêu hoặc sở thích cụ thể nào không?",
+    "errorLabel": "Lỗi",
+    "auto_detect": "Tự động phát hiện",
+    "public": "Công khai",
+    "close": "Đóng",
+    "last_months": "Những tháng qua",
+    "less": "Ít hơn",
+    "more": "Nhiều hơn",
+    "viewAll": "Xem tất cả",
+    "hot": "Hot",
+    "items": "mục",
+    "no": "Không",
+    "currency": {
+        "title": "Tiền tệ",
+        "select": "Chọn tiền tệ",
+        "convert": "Chuyển đổi",
+        "rate": "Tỷ giá",
+        "updatedAt": "Cập nhật lần cuối",
+        "VND": "Việt Nam Đồng",
+        "USD": "Đô la Mỹ",
+        "CNY": "Nhân dân tệ",
+        "JPY": "Yên Nhật",
+        "KRW": "Won Hàn Quốc",
+        "EUR": "Euro"
+    },
+    "language": {
+        "chooseLanguages": "Chọn ngôn ngữ mẹ đẻ và ngôn ngữ cần học",
+        "nativeLanguage": "Ngôn ngữ mẹ đẻ",
+        "learningLanguage": "Ngôn ngữ cần học",
+        "selectLanguages": "Chọn ngôn ngữ",
+        "changed": "Thay đổi ngôn ngữ thành công",
+        "vietnamese": "Tiếng Việt",
+        "english": "Tiếng Anh",
+        "chinese": "Tiếng Trung"
+    },
+    "languageSelection": {
+        "title": "Chọn ngôn ngữ của bạn",
+        "nativeLanguage": "Ngôn ngữ mẹ đẻ",
+        "learningLanguage": "Ngôn ngữ cần học",
+        "selectNative": "Chọn ngôn ngữ mẹ đẻ của bạn",
+        "selectLearning": "Chọn ngôn ngữ bạn muốn học"
+    },
+    "environment": {
+        "general": "Chung",
+        "generalDesc": "Thực hành hội thoại hàng ngày.",
+        "business": "Kinh doanh",
+        "businessDesc": "Cải thiện kỹ năng giao tiếp kinh doanh.",
+        "casual": "Thông thường",
+        "casualDesc": "Trò chuyện thoải mái với bạn bè.",
+        "academic": "Học thuật",
+        "academicDesc": "Học trong môi trường học thuật.",
+        "travel": "Du lịch",
+        "travelDesc": "Hội thoại khi đi du lịch nước ngoài.",
+        "restaurant": "Nhà hàng",
+        "restaurantDesc": "Thực hành gọi món và ăn uống.",
+        "switch": "Chuyển đổi môi trường"
+    },
+    "categories": {
+        "all": "Tất cả danh mục",
+        "free": "Miễn phí",
+        "paid": "Trả phí",
+        "purchased": "Đã mua"
+    },
+    "enums": {
+        "proficiency": {
+            "A1": "A1 (Mới bắt đầu)",
+            "A2": "A2 (Sơ cấp)",
+            "B1": "B1 (Trung cấp)",
+            "B2": "B2 (Trung cao cấp)",
+            "C1": "C1 (Cao cấp)",
+            "C2": "C2 (Thành thạo)",
+            "NATIVE": "Bản ngữ",
+            "BEGINER": "Mới bắt đầu",
+            "INTERMEDIATE": "Trung cấp"
+        },
+        "pace": {
+            "NORMAL": "Bình thường",
+            "SLOW": "Chậm",
+            "MAINTAIN": "Duy trì",
+            "FAST": "Nhanh",
+            "ACCELERATED": "Tăng tốc"
+        },
+        "level": "Cấp độ",
+        "country": {
+            "VIETNAM": "Việt Nam",
+            "CHINA": "Trung Quốc",
+            "JAPAN": "Nhật Bản",
+            "KOREAN": "Hàn Quốc",
+            "FRANCE": "Pháp"
+        },
+        "ageRange": {
+            "AGE_18_24": "18 - 24 Tuổi"
+        },
+        "learningPace": {
+            "SLOW": "Chậm (20 phút/ngày)"
+        }
+    },
+    "proficiency": {
+        "A1": "A1",
+        "A2": "A2",
+        "B1": "B1",
+        "B2": "B2",
+        "C1": "C1",
+        "C2": "C2",
+        "NATIVE": "Người bản ngữ",
+        "BEGINER": "Mới bắt đầu"
+    },
+    "difficulty": {
+        "title": "Độ khó",
+        "easy": "Dễ",
+        "medium": "Trung bình",
+        "hard": "Khó"
+    },
+    "tips": {
+        "title": "Mẹo"
+    },
+    "appSubtitle": {
+        "feature": {
+            "aiLearning": "Học tập cùng AI",
+            "socialLearning": "Học tập xã hội",
+            "gamified": "Trải nghiệm Gamified"
+        }
+    },
+    "levels": {
+        "beginner": "Mới bắt đầu",
+        "intermediate": "Trung cấp",
+        "advanced": "Nâng cao"
+    },
+    "level": {
+        "beginner": "Mới bắt đầu",
+        "intermediate": "Trung cấp",
+        "advanced": "Nâng cao"
+    },
+    "purpose": {
+        "learning": "Học tập",
+        "social": "Xã hội",
+        "quiz": "Trắc nghiệm"
+    },
+    "flashcards": {
+        "title": "Thẻ từ vựng",
+        "searchPlaceholder": "Tìm kiếm thẻ...",
+        "studyModes": "Chế độ học",
+        "definitionStudy": "Học định nghĩa",
+        "imageStudy": "Học qua hình ảnh",
+        "loadError": "Lỗi tải thẻ từ vựng",
+        "noCardsTitle": "Không có thẻ",
+        "noCardsMessage": "Không có thẻ từ vựng nào để học",
+        "studyCompleteTitle": "Hoàn thành bài học",
+        "studyCompleteMessage": "Bạn đã ôn tập hết các thẻ!",
+        "fillWordAndDefinition": "Vui lòng điền từ và định nghĩa",
+        "createLocalSuccess": "Đã tạo thẻ cục bộ thành công.",
+        "permissionDenied": "Quyền bị từ chối",
+        "reviewDoneTitle": "Xong",
+        "reviewDoneMessage": "Đã hoàn thành ôn tập các thẻ có sẵn.",
+        "reviewFailed": "Ôn tập thất bại. Thử lại.",
+        "favorite": "Yêu thích",
+        "implementFavorite": "Triển khai API yêu thích nếu cần",
+        "like": "Thích",
+        "implementLike": "Triển khai API thích nếu cần",
+        "exampleLabel": "Ví dụ:",
+        "noCardsAvailable": "Không có thẻ khả dụng",
+        "progress_flashcard": "{{current}} / {{total}}",
+        "imagePrompt": "Hình ảnh này đại diện cho từ gì?",
+        "definitionPrompt": "Từ này có nghĩa là gì?",
+        "answerLabel": "Đáp án:",
+        "showAnswer": "Hiện đáp án",
+        "categories": {
+            "all": "Tất cả",
+            "general": "Chung",
+            "academic": "Học thuật",
+            "business": "Kinh doanh",
+            "travel": "Du lịch",
+            "technology": "Công nghệ"
+        },
+        "createTitle": "Tạo thẻ từ vựng",
+        "form": {
+            "word": "Từ",
+            "wordPlaceholder": "Nhập từ",
+            "definition": "Định nghĩa",
+            "definitionPlaceholder": "Nhập định nghĩa",
+            "image": "Hình ảnh",
+            "addImage": "Thêm hình ảnh",
+            "difficulty": "Độ khó",
+            "public": "Công khai",
+            "example": "Ví dụ",
+            "examplePlaceholder": "Nhập câu ví dụ"
+        }
+    },
+    "listening": {
+        "title": "Luyện nghe",
+        "welcomeTitle": "Bài tập luyện nghe",
+        "welcomeSubtitle": "Cải thiện kỹ năng nghe của bạn với các chủ đề đa dạng",
+        "chooseTopic": "Chọn một chủ đề"
+    },
+    "learn": {
+        "grammar": "Ngữ pháp",
+        "myCreatorCourses": "Khóa học tôi tạo",
+        "myCourseManagement": "Quản lý khóa học",
+        "title": "Học tiếng Anh",
+        "courses": "Khóa học",
+        "certPreparation": "Luyện thi chứng chỉ",
+        "simulation": "Mô phỏng 1-kèm-1",
+        "subtitle": "Người bạn đồng hành học tiếng Anh hàng ngày của bạn",
+        "description": "Luyện nói, nghe, đọc và viết với các bài học tương tác và trắc nghiệm.",
+        "startNow": "Bắt đầu ngay",
+        "continue": "Tiếp tục học",
+        "dailyGoal": "Mục tiêu hàng ngày",
+        "interactiveQuiz": "Trắc nghiệm tương tác",
+        "vocabularyFlashcards": "Thẻ từ vựng",
+        "ipaPronunciation": "Phát âm IPA",
+        "quizLearning": "Học qua trắc nghiệm",
+        "notes": "Ghi chú",
+        "listeningLessons": "Bài học nghe",
+        "speakingLessons": "Bài học nói",
+        "readingLessons": "Bài học đọc",
+        "writingLessons": "Bài học viết",
+        "learningTools": "Công cụ học tập",
+        "dailyGoalDescription": "Hoàn thành ít nhất 1 bài học và luyện tập trong 15 phút mỗi ngày để duy trì chuỗi học tập của bạn.",
+        "dailyChallenge": "Thử thách hàng ngày",
+        "dailyChallengeDescription": "Hoàn thành thử thách hôm nay để nhận thêm XP và phần thưởng.",
+        "dailyStreak": "Chuỗi ngày",
+        "dailyStreakDescription": "Duy trì chuỗi học tập của bạn bằng cách hoàn thành bài học mỗi ngày.",
+        "welcomeMessage": "Chào mừng đến với phiên học tiếng Anh hàng ngày của bạn!",
+        "welcome": "Xin chào, {{name}}!",
+        "defaultName": "Người học",
+        "level": "Cấp độ",
+        "dayStreak": "ngày liên tiếp",
+        "selectLanguage": "Chọn ngôn ngữ",
+        "categories": {
+            "listening": "Nghe",
+            "speaking": "Nói",
+            "reading": "Đọc",
+            "writing": "Viết",
+            "advancedListening": "Nghe nâng cao",
+            "ipa": "IPA",
+            "certification": "Chứng chỉ",
+            "quiz": "Trắc nghiệm",
+            "vocabulary": "Từ vựng",
+            "grammar": "Ngữ pháp"
+        },
+        "listening": "Nghe",
+        "speaking": "Nói",
+        "reading": "Đọc",
+        "writing": "Viết",
+        "soloQuiz": "Trắc nghiệm cá nhân",
+        "teamQuiz": "Trắc nghiệm đồng đội",
+        "bilingual": "Video song ngữ",
+        "certifications": "Chứng chỉ",
+        "lessonsCount": "{{count}} bài học",
+        "lessonsCount_plural": "{{count}} bài học",
+        "noContent": "Không có khóa học nào",
+        "noContentMessage": "Hãy bắt đầu với một số khóa học miễn phí để xây dựng kỹ năng của bạn.",
+        "bilingualVideos": "Video song ngữ",
+        "myCourses": "Khóa học của tôi",
+        "freeCourses": "Khóa học miễn phí",
+        "recommendedCourses": "Khóa học đề xuất",
+        "viewAllCourses": "Xem tất cả khóa học"
+    },
+    "all": "Tất cả",
+    "learning": "Học tập",
+    "lessons": {
+        "title": "Bài học miễn phí",
+        "chooseChapter": "Chọn chương",
+        "lessonCompleted": "Hoàn thành bài học!",
+        "quizScore": "Điểm của bạn: {{score}}%",
+        "submitQuiz": "Nộp bài",
+        "tryAgain": "Thử lại",
+        "difficulty": {
+            "beginner": "Mới bắt đầu",
+            "intermediate": "Trung cấp",
+            "advanced": "Nâng cao"
+        },
+        "types": {
+            "video": "Video",
+            "article": "Bài viết",
+            "quiz": "Trắc nghiệm",
+            "image": "Hình ảnh",
+            "audio": "Âm thanh"
+        }
+    },
+    "grammar": {
+        "title": "Học ngữ pháp",
+        "topics": "Chủ đề ngữ pháp",
+        "subtitle": "Nắm vững ngữ pháp tiếng Anh từng bước một",
+        "rules": "Quy tắc ngữ pháp",
+        "explanation": "Giải thích",
+        "examples": "Ví dụ",
+        "exercises": "Bài tập thực hành",
+        "checkAnswers": "Kiểm tra đáp án",
+        "correct": "✓ Chính xác!",
+        "incorrect": "✗ Sai rồi. Đáp án: {{answer}}",
+        "score": "Điểm của bạn: {{score}}%",
+        "retryExercises": "Thử lại"
+    },
+    "videos": {
+        "categories": "Danh mục",
+        "subtitles": "Phụ đề",
+        "speed": "Tốc độ",
+        "language": {
+            "original": "Gốc",
+            "translated": "Đã dịch",
+            "both": "Cả hai"
+        },
+        "title": "Video",
+        "vocabulary": "Từ vựng",
+        "levels": {
+            "beginner": "Mới bắt đầu",
+            "intermediate": "Trung cấp",
+            "advanced": "Nâng cao"
+        },
+        "controls": {
+            "subtitles": "Phụ đề"
+        },
+        "subtitleModes": {
+            "original": "Gốc",
+            "translated": "Đã dịch",
+            "both": "Cả hai"
+        }
+    },
+    "notes": {
+        "title": "Ghi chú của tôi",
+        "topics": "Chủ đề",
+        "addNote": "Thêm ghi chú mới",
+        "addTopic": "Thêm chủ đề mới",
+        "searchPlaceholder": "Tìm kiếm ghi chú...",
+        "typeHint": "AI sẽ tự động tạo phiên âm và bản dịch",
+        "types": {
+            "word": "Từ",
+            "phrase": "Cụm từ",
+            "sentence": "Câu"
+        },
+        "empty": {
+            "title": "Chưa có ghi chú",
+            "description": "Bắt đầu thêm ghi chú từ vựng để xây dựng từ điển cá nhân của bạn"
+        }
+    },
+    "course": {
+        "totalLessons": "{{count}} Bài học",
+        "progress": "Tiến độ: {{progress}}%",
+        "continue": "Tiếp tục",
+        "courseNotFoundOrNotPublic": "Khóa học không tìm thấy hoặc không công khai",
+        "free": "Miễn phí",
+        "description": "Mô tả",
+        "curriculum": "Chương trình học",
+        "courseContent": "Nội dung khóa học"
+    },
+    "topics": {
+        "introduction": "Giới thiệu",
+        "introductionPrompt": "Giới thiệu bản thân với người khác.",
+        "jobInterview": "Phỏng vấn xin việc",
+        "jobInterviewPrompt": "Thực hành trả lời câu hỏi phỏng vấn xin việc.",
+        "dailyRoutine": "Thói quen hàng ngày",
+        "dailyRoutinePrompt": "Nói về thói quen hàng ngày của bạn.",
+        "hobbies": "Sở thích",
+        "hobbiesPrompt": "Chia sẻ sở thích và mối quan tâm của bạn.",
+        "travelPlanning": "Lên kế hoạch du lịch",
+        "travelPlanningPrompt": "Lên kế hoạch chuyến đi với nhóm của bạn.",
+        "foodCulture": "Ẩm thực & Văn hóa",
+        "foodCulturePrompt": "Thảo luận về các món ăn và nền văn hóa yêu thích của bạn.",
+        "technology": "Công nghệ",
+        "technologyPrompt": "Nói về các xu hướng công nghệ mới nhất.",
+        "environment": "Môi trường",
+        "environmentPrompt": "Thảo luận về các vấn đề môi trường và giải pháp."
+    },
+    "certifications": {
+        "title": "Bài thi chứng chỉ",
+        "loadingCertifications": "Đang tải chứng chỉ...",
+        "loadingQuestions": "Đang tải câu hỏi...",
+        "noCertificationsAvailable": "Không có chứng chỉ nào khả dụng",
+        "noQuestionsAvailable": "Không có câu hỏi nào khả dụng",
+        "checkBackLater": "Vui lòng kiểm tra lại sau để xem chứng chỉ mới",
+        "practiceTest": "Thi thử",
+        "fullExam": "Thi thật",
+        "exam": "Bài thi",
+        "practice": "Thực hành",
+        "questions": "câu hỏi",
+        "pass": "Đậu",
+        "attempts": "Số lần thử",
+        "bestScore": "Điểm cao nhất",
+        "question": "Câu hỏi",
+        "of": "trong số",
+        "submitTest": "Nộp bài",
+        "testResults": "Kết quả bài thi",
+        "passed": "ĐẬU",
+        "failed": "RỚT",
+        "outOf": "trên",
+        "correct": "đúng",
+        "completedOn": "Hoàn thành vào",
+        "skillBreakdown": "Phân tích kỹ năng",
+        "improvementSuggestions": "Gợi ý cải thiện",
+        "takeAnotherTest": "Làm bài thi khác",
+        "timeUp": "Hết giờ!",
+        "timeUpMessage": "Thời gian làm bài đã hết. Đang nộp câu trả lời của bạn.",
+        "testPassed": "Đậu bài thi!",
+        "congratulations": "Chúc mừng bạn đã vượt qua bài thi!",
+        "testFailed": "Rớt bài thi",
+        "tryAgain": "Đừng bỏ cuộc! Hãy thử lại để cải thiện điểm số.",
+        "skills": {
+            "reading": "Đọc",
+            "listening": "Nghe",
+            "grammar": "Ngữ pháp",
+            "vocabulary": "Từ vựng"
+        }
+    },
+    "courses": {
+        "title": "Khóa học",
+        "searchPlaceholder": "Tìm kiếm khóa học...",
+        "myPurchasedCourses": "📚 Khóa học đã mua",
+        "recommendedForYou": "💡 Đề xuất cho bạn",
+        "allCourses": "🌟 Tất cả khóa học",
+        "purchased": "Đã mua",
+        "free": "Miễn phí",
+        "progress": "Tiến độ",
+        "lessons": "bài học",
+        "continueLearning": "Tiếp tục học",
+        "enrollNow": "Ghi danh ngay",
+        "startLearning": "Bắt đầu học",
+        "noCoursesFound": "Không tìm thấy khóa học",
+        "tryDifferentSearch": "Thử tìm kiếm hoặc bộ lọc khác",
+        "courseNotFound": "Không tìm thấy khóa học",
+        "purchaseRequired": "Yêu cầu mua",
+        "purchaseModalText": "Nội dung này bị khóa. Mua toàn bộ khóa học để truy cập tất cả bài học và bắt đầu hành trình học tập của bạn!",
+        "purchase": "Mua",
+        "preview": "Xem trước",
+        "writeReview": "Viết đánh giá",
+        "helpful": "Hữu ích",
+        "noReviewsYet": "Chưa có đánh giá",
+        "noLessonsAvailable": "Không có bài học",
+        "reviews": "đánh giá",
+        "rating": "Xếp hạng",
+        "students": "Học viên",
+        "courses": "Khóa học",
+        "level": "Cấp độ",
+        "defaultDescription": "Nắm vững các kỹ năng thiết yếu với khóa học toàn diện này được thiết kế cho người học muốn xuất sắc.",
+        "whatYouWillLearn": "Bạn sẽ học được gì",
+        "requirements": "Yêu cầu",
+        "courseContent": "Nội dung khóa học",
+        "defaultFeature1": "Tài liệu học tập toàn diện",
+        "defaultFeature2": "Hướng dẫn và chỉ dẫn từ chuyên gia",
+        "defaultRequirement1": "Hiểu biết cơ bản về chủ đề",
+        "defaultRequirement2": "Sẵn sàng thực hành và học hỏi",
+        "defaultInstructorTitle": "Giảng viên chuyên gia",
+        "defaultInstructorBio": "{{instructor}} là một nhà giáo dục giàu kinh nghiệm với chuyên môn trong lĩnh vực này.",
+        "categories": {
+            "all": "Tất cả",
+            "business": "Kinh doanh",
+            "conversation": "Hội thoại",
+            "grammar": "Ngữ pháp",
+            "vocabulary": "Từ vựng",
+            "pronunciation": "Phát âm",
+            "technology": "Công nghệ"
+        },
+        "sortBy": {
+            "title": "Sắp xếp theo",
+            "popular": "Phổ biến nhất",
+            "newest": "Mới nhất",
+            "priceLow": "Giá: Thấp đến Cao",
+            "priceHigh": "Giá: Cao đến Thấp",
+            "rating": "Đánh giá cao nhất"
+        },
+        "tabs": {
+            "overview": "Tổng quan",
+            "curriculum": "Chương trình học",
+            "reviews": "Đánh giá",
+            "instructor": "Giảng viên"
+        }
+    },
+    "roadmap": {
+        "title": "Lộ trình học tập",
+        "chooseRoadmap": "Chọn lộ trình",
+        "noActiveRoadmap": "Hiện không có lộ trình hoạt động!",
+        "suggestedAction": "Hành động đề xuất",
+        "browsePublic": "Duyệt công khai",
+        "loadingRoadmap": "Đang tải lộ trình cá nhân hóa của bạn...",
+        "overallProgress": "Tiến độ tổng thể",
+        "itemsCompleted": "mục đã hoàn thành",
+        "estimatedTime": "Thời gian hoàn thành dự kiến",
+        "level": "Cấp độ",
+        "completedOn": "Hoàn thành vào",
+        "milestones": "Cột mốc",
+        "noItemsFound": "Không tìm thấy mục nào",
+        "tryDifferentFilter": "Thử bộ lọc khác",
+        "itemDetail": "Chi tiết mục",
+        "itemNotFound": "Không tìm thấy mục",
+        "lockedItem": "Mục bị khóa",
+        "lockedItemMessage": "Hoàn thành các mục trước để mở khóa mục này",
+        "startItem": "Bắt đầu mục",
+        "startItemConfirmation": "Sẵn sàng bắt đầu '{{title}}'?",
+        "itemStarted": "Mục đã bắt đầu thành công!",
+        "completeItem": "Hoàn thành mục",
+        "completeItemConfirmation": "Đánh dấu '{{title}}' là đã hoàn thành?",
+        "itemCompleted": "Mục đã hoàn thành thành công!",
+        "markComplete": "Đánh dấu hoàn thành",
+        "progress": "Tiến độ",
+        "skillsYouWillLearn": "Kỹ năng bạn sẽ học",
+        "prerequisites": "Điều kiện tiên quyết",
+        "nextItems": "Mục tiếp theo",
+        "relatedItems": "Mục liên quan",
+        "tips": "Mẹo",
+        "noGuidanceAvailable": "Không có hướng dẫn cho mục này",
+        "noResourcesAvailable": "Không có tài nguyên cho mục này",
+        "filters": {
+            "all": "Tất cả",
+            "available": "Có sẵn",
+            "completed": "Đã hoàn thành"
+        },
+        "types": {
+            "lesson": "Bài học",
+            "course": "Khóa học",
+            "series": "Chuỗi bài",
+            "milestone": "Cột mốc",
+            "assessment": "Đánh giá"
+        },
+        "status": {
+            "locked": "Đã khóa",
+            "available": "Có sẵn",
+            "in_progress": "Đang thực hiện",
+            "completed": "Đã hoàn thành"
+        },
+        "difficulty": {
+            "beginner": "Mới bắt đầu",
+            "intermediate": "Trung cấp",
+            "advanced": "Nâng cao"
+        },
+        "tabs": {
+            "overview": "Tổng quan",
+            "guidance": "Hướng dẫn",
+            "resources": "Tài nguyên"
+        },
+        "publicRoadmaps": "Lộ trình công khai",
+        "suggest": "Đề xuất",
+        "addSuggestion": "Thêm đề xuất của bạn",
+        "suggestionPlaceholder": "Chia sẻ ý tưởng của bạn để cải thiện lộ trình này..."
+    },
+    "quiz": {
+        "title": "Trắc nghiệm",
+        "start": "Bắt đầu trắc nghiệm",
+        "question": "Câu hỏi",
+        "explanation": "Giải thích",
+        "next": "Câu hỏi tiếp theo",
+        "finish": "Kết thúc trắc nghiệm",
+        "complete": "Hoàn thành trắc nghiệm!",
+        "greatJob": "Làm tốt lắm mọi người!"
+    },
+    "proficiencyTest": {
+        "title": "Kiểm tra trình độ",
+        "description": "Bắt đầu thêm ghi chú từ vựng để xây dựng từ điển cá nhân của bạn",
+        "selectTest": "Chọn bài kiểm tra",
+        "noTestsAvailable": "Hiện không có bài kiểm tra trình độ nào.",
+        "selectLanguage": "Chọn ngôn ngữ cho bài kiểm tra",
+        "startTest": "Bắt đầu kiểm tra",
+        "noQuestionsAvailable": "Không có câu hỏi nào cho bài kiểm tra này.",
+        "titleWithLanguage": "Kiểm tra trình độ ({{language}})",
+        "questionProgress": "Câu hỏi {{current}} trên {{total}}",
+        "completeTest": "Hoàn thành kiểm tra",
+        "continueNext": "Tiếp tục bài kiểm tra tiếp theo",
+        "errors": {
+            "noInitialCategory": "Không thể tìm thấy danh mục 'initial' cho ngôn ngữ {{code}}",
+            "noLessonForInitial": "Không thể tìm thấy bài học cho danh mục 'initial' và ngôn ngữ {{code}}",
+            "noQuestions": "Bài kiểm tra này chưa có câu hỏi nào.",
+            "loadFailed": "Không thể tải bài kiểm tra. Vui lòng thử lại.",
+            "classifyLevelFailed": "Cập nhật trình độ thất bại."
+        },
+        "alerts": {
+            "testCompleteTitle": "Đã hoàn thành bài kiểm tra",
+            "nextLanguagePrompt": "Bạn đạt {{percentage}}%. Bạn có muốn làm bài kiểm tra cho ngôn ngữ tiếp theo ({{language}}) không?"
+        },
+        "results": {
+            "title": "Hoàn thành bài kiểm tra!",
+            "subtitle": "Điểm của bạn: {{score}}%",
+            "overallScore": "Điểm tổng thể"
+        }
+    },
+    "aiLearning": {
+        "title": "Học với AI Thông minh",
+        "subtitle": "Trợ lý AI sẽ hướng dẫn bạn trong hành trình học tập"
+    },
+    "reminder": {
+        "doLessonToKeepStreak": "Làm một bài học hôm nay để giữ chuỗi ngày của bạn!"
+    },
+    "home": {
+        "promo": {
+            "title": "Truy cập Premium",
+            "subtitle": "Nâng cấp để truy cập không giới hạn"
+        },
+        "challenge": {
+            "defaultDescShort": "Hoàn thành thử thách này để nhận thưởng.",
+            "xp": "+{{exp}} XP",
+            "currentTitle": "Thử thách của bạn",
+            "defaultDesc": "Mô tả mặc định",
+            "exp": "EXP",
+            "title": "Thử thách hôm nay dành cho bạn",
+            "add": "Xem thêm",
+            "error": "Tải thử thách thất bại"
+        },
+        "title": "Trang chủ",
+        "dailyStreak": "Chuỗi ngày",
+        "subtitle": "Trung tâm học tiếng Anh hàng ngày của bạn",
+        "welcomeMessage": "Chào mừng trở lại, {{name}}!",
+        "dailyGoal": {
+            "title": "🎯 Mục tiêu hôm nay",
+            "completeLessons": "Hoàn thành {{total}} bài học",
+            "progress": "{{completed}}/{{total}} bài học",
+            "complete": "Đã hoàn thành mục tiêu hàng ngày",
+            "lesson": "Bài học mục tiêu hàng ngày"
+        },
+        "dailyGoalDescription": "Hoàn thành ít nhất 1 bài học và luyện tập trong 15 phút mỗi ngày để duy trì chuỗi học tập của bạn.",
+        "dailyChallenge": {
+            "title": "🎮 Thử thách hàng ngày",
+            "challenge": "Thử thách",
+            "completed": "(Đã hoàn thành)",
+            "getMore": "Xem thêm"
+        },
+        "student": {
+            "searchCoursesPlaceholder": "Tìm kiếm khóa học...",
+            "enrolledCourses": "Khóa học của tôi",
+            "allCourses": "Tất cả khóa học",
+            "noCoursesFound": "Không tìm thấy khóa học nào.",
+            "exploreCourses": "Khám phá khóa học"
+        },
+        "days": "{{count}} ngày",
+        "leaderboard": {
+            "title": "🏆 Bảng xếp hạng",
+            "error": "Không thể tải bảng xếp hạng",
+            "viewMore": "Xem đầy đủ bảng xếp hạng"
+        },
+        "character": {
+            "message": "Cùng học nhé! 🚀"
+        },
+        "progress": {
+            "title": "📊 Tiến độ học tập",
+            "level": "Cấp độ",
+            "streak": "Chuỗi",
+            "xp": "Điểm XP"
+        },
+        "status": {
+            "default": "Bạn đang tiến bộ tốt! Cố lên nhé! 🌟"
+        },
+        "roadmap": {
+            "browsePublic": "Duyệt lộ trình công khai",
+            "title": "🗺️ Lộ trình học tập",
+            "personal": "Lộ trình cá nhân",
+            "completed": "{{count}} mục đã hoàn thành",
+            "estimate": "Dự kiến: {{days}} ngày",
+            "selectTitle": "🗺️ Chọn một lộ trình học tập",
+            "noDefault": "Không tìm thấy lộ trình mặc định.",
+            "noPersonal": "Bạn chưa có lộ trình cá nhân cho {{language}}. Vui lòng chọn lộ trình mặc định hoặc tạo mới.",
+            "createCustom": "Tạo lộ trình tùy chỉnh",
+            "dialogTitle": "Nhập thông tin để tạo lộ trình",
+            "targetProficiency": "Trình độ mục tiêu",
+            "targetDate": "Ngày mục tiêu",
+            "create": "Tạo",
+            "cancel": "Hủy",
+            "notFound": "Không tìm thấy lộ trình",
+            "targetCertification": "Chứng chỉ mục tiêu",
+            "targetDateHint": "Đặt ngày mục tiêu cho chứng chỉ của bạn"
+        },
+        "recentLessons": {
+            "title": "📚 Tiếp tục học",
+            "lesson": "Bài học {{number}}"
+        },
+        "roadmapLoading": "Đang tải lộ trình của bạn...",
+        "roadmapError": "Tải lộ trình thất bại",
+        "roadmapSelectDefault": "Chọn một lộ trình mặc định để bắt đầu",
+        "roadmapBrowsePublic": "Duyệt lộ trình công khai",
+        "dailyGoalComplete": "Hoàn thành {total} bài học hôm nay"
+    },
+    "motivationSection": "Thông điệp động lực",
+    "progressSection": "Tiến độ hôm nay",
+    "achievementsSection": "Thành tựu gần đây",
+    "continueButton": "Tiếp tục học",
+    "quickActions": {
+        "flashcards": "Thẻ từ vựng",
+        "karaoke": "Karaoke",
+        "quiz": "Trắc nghiệm"
+    },
+    "streakTitle": "Chuỗi {{count}} ngày!",
+    "streakMessage": {
+        "start": "Khởi đầu tuyệt vời!",
+        "momentum": "Giữ vững đà phát triển!",
+        "fire": "Bạn đang rất sung sức!",
+        "unstoppable": "Tiến bộ không ngừng!",
+        "legend": "Chuỗi ngày huyền thoại!"
+    },
+    "translation": {
+        "selectTarget": "Chọn ngôn ngữ mục tiêu",
+        "targetLang": "Ngôn ngữ mục tiêu",
+        "quiz": {
+            "solo": "Trắc nghiệm cá nhân",
+            "loading": "Đang tải trắc nghiệm...",
+            "error": {
+                "load": "Tải trắc nghiệm thất bại. Vui lòng thử lại.",
+                "startTeam": "Bắt đầu trắc nghiệm đồng đội thất bại. Vui lòng kiểm tra kết nối."
+            },
+            "questionCounter": "Câu hỏi {{current}} trên {{total}}",
+            "points": "{{count}} điểm",
+            "pause": "Tạm dừng",
+            "resume": "Tiếp tục",
+            "correct": "Chính xác!",
+            "explanation": "Giải thích",
+            "nextQuestion": "Câu hỏi tiếp theo",
+            "finishQuiz": "Kết thúc trắc nghiệm",
+            "timeUp": "Hết giờ!",
+            "team": {
+                "waitingForHost": "Đang đợi chủ phòng bắt đầu trò chơi...",
+                "startGame": "Bắt đầu trò chơi",
+                "chat": "Chat",
+                "players": "Người chơi ({{count}}/10)",
+                "chatPlaceholder": "Gửi tin nhắn...",
+                "playerJoined": "{{name}} đã tham gia phòng!",
+                "playerLeft": "{{name}} đã rời phòng."
+            },
+            "results": {
+                "title": "Hoàn thành trắc nghiệm!",
+                "score": "Điểm của bạn",
+                "correct": "{{correct}} / {{total}} Đúng",
+                "points": "Điểm",
+                "xp": "XP",
+                "bestStreak": "Chuỗi tốt nhất",
+                "time": "Thời gian",
+                "skills": "Kỹ năng đã luyện",
+                "home": "Trang chủ",
+                "retry": "Thử lại",
+                "share": "Chia sẻ"
+            }
+        }
+    },
+    "speaking": {
+        "select_lesson": "Chọn bài học",
+        "no_lessons_available": "Không có bài học nào. Vui lòng quay lại sau.",
+        "practice": "Luyện nói",
+        "ready_title": "Sẵn sàng",
+        "tap_hold_record": "Nhấn và giữ để ghi âm",
+        "recording": "Đang ghi âm..."
+    },
+    "reading": {
+        "screenTitle": "Luyện đọc",
+        "welcomeTitle": "Cải thiện kỹ năng đọc của bạn",
+        "welcomeText": "Tạo bài viết tùy chỉnh dựa trên cấp độ và sở thích của bạn, hoặc sử dụng bài mẫu.",
+        "generateSample": "Tạo bài viết mẫu",
+        "generateButton": "Tạo bài viết",
+        "generatedContentTitle": "Nội dung đã tạo",
+        "errorLoadingContent": "Không thể tải nội dung. Vui lòng thử lại.",
+        "startReading": "Bắt đầu đọc",
+        "select_lesson": "Chọn bài học",
+        "practice": "Luyện đọc",
+        "generating_content": "Đang tạo nội dung...",
+        "error_loading_content": "Lỗi tải nội dung"
+    },
+    "stats": {
+        "lessons": "Bài học",
+        "words": "Từ vựng",
+        "time": "Thời gian",
+        "xp": "XP",
+        "level": "Cấp độ"
+    },
+    "language": {
+        "vietnamese": "Tiếng Việt",
+        "english": "Tiếng Anh",
+        "japanese": "Tiếng Nhật",
+        "chinese": "Tiếng Trung"
+    },
+    "profile": {
+        "allUsers": "Tất cả người dùng",
+        "myFriends": "Bạn bè của tôi",
+        "suggestions": "Gợi ý",
+        "noFriends": "Không có bạn bè",
+        "streak": "Chuỗi",
+        "coins": "Xu",
+        "dayOfBirth": "Ngày sinh",
+        "joined": "Đã tham gia",
+        "nickname": "Biệt danh",
+        "deactivateWarning": "Bạn có chắc chắn không?",
+        "accountActions": "Hành động tài khoản",
+        "loadFailed": "Tải hồ sơ thất bại",
+        "updateSuccess": "Cập nhật hồ sơ thành công",
+        "personalInfo": "Thông tin cá nhân",
+        "ageRange": "Độ tuổi",
+        "account": "Tài khoản",
+        "deactivateAccount": "Vô hiệu hóa tài khoản",
+        "notification": "Thông báo",
+        "about": "Giới thiệu",
+        "title": "Hồ sơ",
+        "addFriend": "Thêm bạn",
+        "message": "Tin nhắn",
+        "requestSent": "Đã gửi yêu cầu",
+        "languages": "Ngôn ngữ",
+        "native": "Bản ngữ:",
+        "learning": "Đang học:",
+        "statistics": "Thống kê học tập",
+        "achievements": "Thành tựu",
+        "activity": "Hoạt động học tập",
+        "viewAll": "Xem tất cả",
+        "viewDetails": "Xem chi tiết",
+        "totalStudyTime": "Tổng thời gian học",
+        "lessonsCompleted": "Bài học đã hoàn thành",
+        "wordsLearned": "Từ vựng đã học",
+        "averageScore": "Điểm trung bình",
+        "fullname": "Họ tên",
+        "recentActivity": "Hoạt động gần đây",
+        "saved": "Đã lưu hồ sơ",
+        "savedSuccess": "Lưu hồ sơ thành công",
+        "editProfile": "Chỉnh sửa hồ sơ",
+        "uploadAvatar": "Tải ảnh đại diện",
+        "changeAvatar": "Đổi ảnh đại diện",
+        "removeAvatar": "Xóa ảnh đại diện",
+        "confirmChanges": "Xác nhận thay đổi",
+        "vibrationOn": "Rung Bật",
+        "vibrationOff": "Rung Tắt",
+        "commitChanges": "Thực hiện",
+        "saveSuccess": "Cập nhật hồ sơ thành công",
+        "saveFailed": "Cập nhật hồ sơ thất bại",
+        "viewRoadmap": "Xem lộ trình",
+        "unlocked": "Đã mở khóa",
+        "currentLevel": "Cấp độ hiện tại",
+        "myWallet": "Ví của tôi",
+        "menu": "Menu",
+        "noBio": "Chưa có tiểu sử",
+        "cancelRequest": "Hủy yêu cầu",
+        "gender": "Giới tính",
+        "pace": "Tốc độ",
+        "chatAccess": "Truy cập chat",
+        "translationsUsed": "Số lần dịch đã dùng",
+        "totalExp": "Tổng EXP",
+        "report": "Báo cáo người dùng",
+        "block": "Chặn người dùng",
+        "deposit": "Nạp tiền",
+        "history": "Lịch sử",
+        "aboutMe": "Giới thiệu bản thân",
+        "connect": "Kết nối",
+        "stats": {
+            "title": "Thống kê",
+            "currentLevel": "Cấp độ",
+            "totalXP": "Tổng XP",
+            "dayStreak": "Chuỗi ngày",
+            "totalStudyTime": "Thời gian học",
+            "lessonsCompleted": "Bài học",
+            "wordsLearned": "Từ vựng",
+            "averageScore": "Điểm TB",
+            "level": "Cấp độ",
+            "streak": "Chuỗi",
+            "admires": "Người hâm mộ"
+        },
+        "timeframes": {
+            "week": "Tuần",
+            "month": "Tháng",
+            "year": "Năm"
+        },
+        "country": "Quốc gia",
+        "settings": {
+            "studyReminders": "Nhắc nhở học tập",
+            "streakReminders": "Nhắc nhở chuỗi",
+            "soundEnabled": "Hiệu ứng âm thanh",
+            "vibrationEnabled": "Rung",
+            "profileVisibility": "Hiển thị hồ sơ",
+            "progressSharing": "Chia sẻ tiến độ",
+            "locationTracking": "Theo dõi vị trí",
+            "contactSync": "Đồng bộ danh bạ",
+            "general": "Chung",
+            "about": "Giới thiệu",
+            "helpSupport": "Trợ giúp & Hỗ trợ",
+            "userManagement": "Quản lý người dùng"
+        },
+        "privacySettings": "Cài đặt quyền riêng tư",
+        "transactionHistory": "Lịch sử giao dịch",
+        "notificationHistory": "Lịch sử thông báo",
+        "roadmap": "Lộ trình học tập",
+        "notes": "Ghi chú",
+        "helpSupport": "Trợ giúp & Hỗ trợ",
+        "logout": "Đăng xuất",
+        "logoutFailed": "Đăng xuất thất bại, vui lòng thử lại.",
+        "logoutConfirmTitle": "Đăng xuất",
+        "logoutConfirmMessage": "Bạn có chắc chắn muốn đăng xuất?",
+        "noName": "Không tên",
+        "noEmail": "Không có email",
+        "details": "Chi tiết hồ sơ",
+        "email": "Email",
+        "phone": "Số điện thoại",
+        "age": "Tuổi",
+        "nativeLanguage": "Ngôn ngữ mẹ đẻ",
+        "level": "Cấp độ",
+        "exp": "EXP",
+        "learningPace": "Tốc độ học tập",
+        "proficiency": "Trình độ",
+        "bio": "Tiểu sử",
+        "noLanguages": "Chưa chọn ngôn ngữ",
+        "modelPreview": "Xem trước nhân vật 3D",
+        "noModel": "Không có nhân vật",
+        "badges": "Huy hiệu",
+        "noBadges": "Chưa có huy hiệu",
+        "streakDays": "Số ngày chuỗi",
+        "dailyGoal": "Mục tiêu hàng ngày",
+        "settingsSummary": "Tóm tắt cài đặt",
+        "notifications": "Thông báo",
+        "enabled": "Bật",
+        "disabled": "Tắt",
+        "studyReminders": "Nhắc nhở học tập",
+        "privacy": "Quyền riêng tư",
+        "public": "Công khai",
+        "private": "Riêng tư",
+        "actions": "Hành động",
+        "updateFailed": "Cập nhật hồ sơ thất bại",
+        "cancelChanges": "Hủy thay đổi",
+        "confirmCancel": "Bạn có chắc chắn muốn hủy các thay đổi chưa lưu?",
+        "continueEditing": "Tiếp tục chỉnh sửa",
+        "cancel": "Hủy",
+        "save": "Lưu",
+        "firstName": "Tên",
+        "lastName": "Họ",
+        "enterFirstName": "Nhập tên của bạn",
+        "enterLastName": "Nhập họ của bạn",
+        "enterEmail": "Nhập email của bạn",
+        "enterPhone": "Nhập số điện thoại của bạn",
+        "enterDateOfBirth": "Nhập ngày sinh của bạn (DD/MM/YYYY)",
+        "enterCountry": "Nhập quốc gia của bạn",
+        "enterNativeLanguage": "Nhập ngôn ngữ mẹ đẻ của bạn",
+        "enterAgeRange": "Nhập độ tuổi của bạn",
+        "enterLearningPace": "Nhập tốc độ học tập của bạn",
+        "enterProficiency": "Nhập trình độ của bạn",
+        "enterBio": "Viết vài dòng về bản thân...",
+        "changePassword": "Đổi mật khẩu",
+        "verifyEmail": "Xác minh Email",
+        "verified": "Đã xác minh",
+        "authProvider": "Nhà cung cấp xác thực",
+        "createdAt": "Tài khoản được tạo lúc",
+        "updatedAt": "Cập nhật lần cuối lúc",
+        "progress": "Tiến độ",
+        "certifications": "Chứng chỉ",
+        "interests": "Sở thích",
+        "goals": "Mục tiêu",
+        "profileVisibility": "Hiển thị hồ sơ",
+        "progressSharing": "Chia sẻ tiến độ",
+        "dataCollection": "Thu thập dữ liệu",
+        "personalization": "Cá nhân hóa",
+        "analytics": "Phân tích",
+        "crashReports": "Báo cáo lỗi",
+        "locationTracking": "Theo dõi vị trí",
+        "contactSync": "Đồng bộ danh bạ",
+        "streakReminders": "Nhắc nhở chuỗi",
+        "messageNotifications": "Thông báo tin nhắn",
+        "achievementNotifications": "Thông báo thành tựu",
+        "quietHours": "Giờ yên tĩnh",
+        "addABio": "Thêm tiểu sử",
+        "expShort": "EXP",
+        "toNextLevel": "Đến cấp độ tiếp theo: {{exp}} EXP",
+        "aboutYourAccount": "Về tài khoản của bạn",
+        "privacyNotice": "Thông tin của bạn được bảo vệ và chỉ sử dụng để cải thiện trải nghiệm học tập của bạn.",
+        "playStoreRating": "Được đánh giá 5★ bởi người dùng trên Google Play.",
+        "policySnippet": "Xem Chính sách Quyền riêng tư và Điều khoản của chúng tôi để hiểu cách chúng tôi xử lý dữ liệu của bạn.",
+        "quietHoursValue": "{{status}} ({{start}}-{{end}})",
+        "uploadingColor": "#9CA3AF"
+    },
+    "settings": {
+        "title": "Cài đặt",
+        "account": "Tài khoản",
+        "notifications": "Thông báo",
+        "language": "Ngôn ngữ",
+        "privacy": "Quyền riêng tư",
+        "security": "Bảo mật",
+        "logout": "Đăng xuất",
+        "preferences": "Tùy chọn",
+        "auto_translate": "Tự động dịch",
+        "auto_translate_desc": "Tự động dịch tin nhắn",
+        "sound": "Âm thanh"
+    },
+    "notification": {
+        "settingsTitle": "Cài đặt thông báo",
+        "permissionsSection": "Quyền truy cập",
+        "enableNotifications": "Bật thông báo",
+        "enableNotificationsDesc": "Cho phép ứng dụng gửi nhắc nhở học tập và tin nhắn cho bạn",
+        "permissionsSuccess": "Thành công",
+        "permissionsSuccessMessage": "Đã cấp quyền thông báo!",
+        "permissionsRequired": "Yêu cầu quyền truy cập",
+        "permissionsRequiredMessage": "Vui lòng bật thông báo trong cài đặt thiết bị để nhận lời nhắc.",
+        "studyRemindersSection": "Nhắc nhở học tập",
+        "studyReminders": "Nhắc nhở học tập hàng ngày",
+        "studyRemindersDesc": "Được nhắc nhở học vào thời gian bạn muốn",
+        "studyTime": "Thời gian học: {{time}}",
+        "reminderFrequency": "Tần suất nhắc nhở",
+        "daily": "Hàng ngày",
+        "default_title": "Thông báo",
+        "channel_default_name": "Thông báo chung",
+        "weekdays": "Chỉ các ngày trong tuần",
+        "custom": "Ngày tùy chỉnh",
+        "selectDays": "Chọn ngày",
+        "streakReminders": "Cảnh báo chuỗi",
+        "streakRemindersDesc": "Nhận cảnh báo trước khi mất chuỗi học tập của bạn",
+        "messageNotificationsSection": "Thông báo tin nhắn",
+        "chatMessages": "Tin nhắn trò chuyện",
+        "chatMessagesDesc": "Thông báo cho tin nhắn trò chuyện mới",
+        "coupleNotifications": "Thông báo cặp đôi",
+        "coupleNotificationsDesc": "Cập nhật từ bạn học của bạn",
+        "groupInvitations": "Lời mời nhóm",
+        "groupInvitationsDesc": "Lời mời tham gia các buổi học nhóm",
+        "achievementNotifications": "Thông báo thành tựu",
+        "achievementNotificationsDesc": "Chúc mừng các cột mốc học tập của bạn",
+        "soundVibrationSection": "Âm thanh & Rung",
+        "soundEffects": "Hiệu ứng âm thanh",
+        "soundEffectsDesc": "Phát âm thanh khi có thông báo",
+        "vibration": "Rung",
+        "vibrationDesc": "Rung thiết bị khi có thông báo",
+        "quietHoursSection": "Giờ yên tĩnh",
+        "quietHours": "Bật giờ yên tĩnh",
+        "quietHoursDesc": "Tắt tiếng thông báo trong những giờ cụ thể",
+        "quietHoursStart": "Bắt đầu: {{time}}",
+        "quietHoursEnd": "Kết thúc: {{time}}",
+        "testNotificationsSection": "Thử thông báo",
+        "sendTestNotification": "Gửi thông báo thử nghiệm",
+        "testNotificationSent": "Đã gửi thử nghiệm!",
+        "errorSavingPreferences": "Lưu tùy chọn thông báo thất bại",
+        "errorSendingTest": "Gửi thông báo thử nghiệm thất bại",
+        "history": "Lịch sử thông báo"
+    },
+    "history": {
+        "noSessions": "Không có phiên học",
+        "test": {
+            "notImplemented": "Chưa triển khai lịch sử"
+        },
+        "title": "Lịch sử học tập",
+        "export": "Xuất",
+        "noStats": "Không có thống kê",
+        "tabs": {
+            "sessions": "Phiên học",
+            "tests": "Bài kiểm tra",
+            "stats": "Thống kê"
+        },
+        "filters": {
+            "week": "Tuần này",
+            "month": "Tháng này",
+            "year": "Năm này"
+        },
+        "stats": {
+            "sessions": "Phiên học",
+            "studyTime": "Thời gian học",
+            "experience": "Kinh nghiệm",
+            "avgScore": "Điểm TB",
+            "progressChart": "Biểu đồ tiến độ"
+        },
+        "session": {
+            "score": "{{score}}/{{maxScore}}",
+            "exp": "+{{experience}} XP"
+        },
+        "types": {
+            "LESSON_COMPLETED": "Bài học",
+            "COURSE_COMPLETED": "Khóa học",
+            "DAILY_CHALLENGE_COMPLETED": "Thử thách hàng ngày",
+            "FLASHCARD_REVIEWED": "Thẻ từ vựng",
+            "EVENT_COMPLETED": "Sự kiện",
+            "QUIZ_COMPLETED": "Trắc nghiệm",
+            "DEFAULT": "Hoạt động"
+        }
+    },
+    "privacy": {
+        "settingsTitle": "Cài đặt quyền riêng tư",
+        "privacyNoticeTitle": "Cam kết bảo mật",
+        "privacyNoticeDesc": "Chúng tôi cam kết bảo vệ quyền riêng tư của bạn. Tất cả dữ liệu được mã hóa và chỉ được sử dụng để nâng cao trải nghiệm học tập của bạn.",
+        "privacySection": "Quyền riêng tư",
+        "privacySubtitle": "Kiểm soát thông tin cá nhân của bạn",
+        "profileVisibility": "Hiển thị hồ sơ công khai",
+        "profileVisibilityDesc": "Cho phép người khác xem hồ sơ của bạn",
+        "progressSharing": "Chia sẻ tiến độ",
+        "progressSharingDesc": "Chia sẻ tiến độ học tập với bạn bè",
+        "locationTracking": "Theo dõi vị trí",
+        "locationTrackingDesc": "Sử dụng vị trí để cải thiện trải nghiệm",
+        "contactSync": "Đồng bộ danh bạ",
+        "contactSyncDesc": "Tìm bạn bè từ danh bạ điện thoại",
+        "dataAnalyticsSection": "Dữ liệu & Phân tích",
+        "dataAnalyticsSubtitle": "Quản lý cách chúng tôi sử dụng dữ liệu của bạn",
+        "dataCollection": "Thu thập dữ liệu",
+        "dataCollectionDesc": "Cho phép thu thập dữ liệu để cải thiện ứng dụng",
+        "personalization": "Cá nhân hóa",
+        "personalizationDesc": "Sử dụng dữ liệu để cá nhân hóa trải nghiệm",
+        "analytics": "Phân tích sử dụng",
+        "analyticsDesc": "Gửi dữ liệu phân tích ẩn danh",
+        "crashReports": "Báo cáo lỗi",
+        "crashReportsDesc": "Tự động gửi báo cáo lỗi",
+        "dataManagementSection": "Quản lý dữ liệu",
+        "dataManagementSubtitle": "Xuất hoặc xóa dữ liệu cá nhân",
+        "exportData": "Xuất dữ liệu",
+        "exportDataDesc": "Tải xuống tất cả dữ liệu của bạn",
+        "exportDataMessage": "Chúng tôi sẽ gửi tệp chứa tất cả dữ liệu của bạn qua email trong vòng 24 giờ.",
+        "deleteData": "Xóa tất cả dữ liệu",
+        "deleteDataDesc": "Xóa vĩnh viễn tất cả dữ liệu cá nhân",
+        "deleteDataConfirmTitle": "Xóa dữ liệu",
+        "deleteDataConfirmMessage": "Bạn có chắc chắn muốn xóa tất cả dữ liệu của mình? Hành động này không thể hoàn tác.",
+        "legalSection": "Tài liệu pháp lý",
+        "privacyPolicy": "Chính sách Quyền riêng tư",
+        "termsOfUse": "Điều khoản sử dụng",
+        "cookiePolicy": "Chính sách Cookie",
+        "contactSection": "Cần trợ giúp?",
+        "contactText": "Nếu bạn có thắc mắc về quyền riêng tư, hãy liên hệ với chúng tôi tại: privacy@MonkeyLingua.com"
+    },
+    "about": {
+        "title": "Giới thiệu",
+        "tagline": "Ứng dụng học ngôn ngữ thông minh cho người Việt",
+        "version": "Phiên bản {{version}}",
+        "latest": "Mới nhất",
+        "mission": {
+            "title": "Sứ mệnh của chúng tôi",
+            "content": "Chúng tôi tin rằng học ngôn ngữ không chỉ là từ vựng và ngữ pháp, mà là cầu nối văn hóa..."
+        },
+        "features": {
+            "title": "Tính năng chính",
+            "smartLearning": {
+                "title": "Học tập thông minh",
+                "desc": "AI cá nhân hóa trải nghiệm học tập của bạn"
+            },
+            "aiChat": {
+                "title": "Hội thoại AI",
+                "desc": "Luyện nói với trợ lý thông minh"
+            },
+            "progress": {
+                "title": "Theo dõi tiến độ",
+                "desc": "Phân tích chi tiết hành trình học tập của bạn"
+            },
+            "community": {
+                "title": "Cộng đồng",
+                "desc": "Kết nối với hàng triệu người học trên toàn thế giới"
+            }
+        },
+        "team": {
+            "title": "Đội ngũ phát triển",
+            "roles": {
+                "ceo": "CEO & Founder",
+                "cto": "CTO",
+                "designer": "Thiết kế chính",
+                "languageExpert": "Chuyên gia ngôn ngữ"
+            }
+        },
+        "stats": {
+            "title": "Thống kê",
+            "users": "Người dùng",
+            "countries": "Quốc gia",
+            "lessons": "Bài học",
+            "reviews": "Đánh giá"
+        },
+        "social": {
+            "title": "Theo dõi chúng tôi"
+        },
+        "legal": {
+            "title": "Pháp lý & Liên hệ",
+            "terms": "Điều khoản sử dụng",
+            "privacy": "Chính sách Quyền riêng tư",
+            "contact": "Liên hệ: info@MonkeyLingua.com"
+        },
+        "copyright": "© 2025 MonkeyLingua. Đã đăng ký bản quyền.",
+        "madeWithLove": "Được làm với ❤️ tại Việt Nam bởi NgocQuyen"
+    },
+    "help": {
+        "title": "Trợ giúp & Hỗ trợ",
+        "welcome": {
+            "title": "Chúng tôi có thể giúp gì cho bạn?",
+            "subtitle": "Tìm câu trả lời cho các câu hỏi thường gặp hoặc liên hệ hỗ trợ."
+        },
+        "search": {
+            "placeholder": "Tìm kiếm bài viết trợ giúp..."
+        },
+        "faq": {
+            "title": "Câu hỏi thường gặp (FAQs)",
+            "changeLanguage": {
+                "q": "Làm thế nào để thay đổi ngôn ngữ học?",
+                "a": "Bạn có thể thay đổi ngôn ngữ mục tiêu trong màn hình Cài đặt Hồ sơ."
+            },
+            "streakLost": {
+                "q": "Tôi bị mất chuỗi. Tôi có thể khôi phục lại không?",
+                "a": "Chuỗi thường có thể được khôi phục bằng cách sử dụng vật phẩm Streak Freeze có sẵn trong cửa hàng. Kiểm tra kho đồ của bạn!"
+            },
+            "changePassword": {
+                "q": "Làm thế nào tôi có thể thay đổi mật khẩu?",
+                "a": "Bạn có thể thay đổi mật khẩu trong phần Cài đặt Bảo mật của Hồ sơ."
+            },
+            "offlineSupport": {
+                "q": "Ứng dụng có hỗ trợ học ngoại tuyến không?",
+                "a": "Có, bạn có thể tải xuống các bài học và khóa học để học ngoại tuyến."
+            },
+            "contactSupport": {
+                "q": "Làm thế nào để liên hệ với bộ phận hỗ trợ khách hàng?",
+                "a": "Cuộn xuống phần 'Kênh hỗ trợ' bên dưới để xem tất cả các tùy chọn liên hệ."
+            }
+        },
+        "support": {
+            "title": "Kênh hỗ trợ",
+            "email": {
+                "title": "Hỗ trợ qua Email",
+                "desc": "Nhận trợ giúp cá nhân hóa qua email. Thời gian phản hồi thường là 24-48 giờ."
+            },
+            "chat": {
+                "title": "Chat trực tuyến",
+                "desc": "Chat ngay với đội ngũ hỗ trợ của chúng tôi trong giờ làm việc."
+            },
+            "community": {
+                "title": "Diễn đàn cộng đồng",
+                "desc": "Đặt câu hỏi và nhận trợ giúp từ những người học khác và quản trị viên."
+            },
+            "video": {
+                "title": "Video hướng dẫn",
+                "desc": "Xem các hướng dẫn video nhanh về cách sử dụng các tính năng chính của ứng dụng."
+            }
+        },
+        "feedback": {
+            "title": "Gửi phản hồi",
+            "label": "Phản hồi của bạn giúp chúng tôi cải thiện!",
+            "placeholder": "Hãy cho chúng tôi biết bạn thích gì hoặc chúng tôi có thể làm gì tốt hơn...",
+            "submit": "Gửi phản hồi"
+        },
+        "appInfo": {
+            "title": "Thông tin ứng dụng",
+            "version": "Phiên bản",
+            "lastUpdate": "Cập nhật lần cuối",
+            "os": "Hệ điều hành"
+        }
+    },
+    "helpSupport": {
+        "title": "Trợ giúp & Hỗ trợ",
+        "welcomeTitle": "Chúng tôi ở đây để giúp đỡ!",
+        "welcomeText": "Tìm câu trả lời cho câu hỏi của bạn hoặc liên hệ hỗ trợ",
+        "searchPlaceholder": "Tìm kiếm câu hỏi...",
+        "faq": {
+            "title": "Câu hỏi thường gặp"
+        },
+        "support": {
+            "title": "Liên hệ hỗ trợ"
+        },
+        "feedback": {
+            "title": "Gửi phản hồi",
+            "label": "Chia sẻ ý kiến của bạn để giúp chúng tôi cải thiện ứng dụng",
+            "placeholder": "Nhập phản hồi của bạn...",
+            "button": "Gửi phản hồi",
+            "successTitle": "Cảm ơn bạn!",
+            "successMessage": "Phản hồi của bạn đã được gửi."
+        },
+        "appInfo": {
+            "title": "Thông tin ứng dụng",
+            "version": "Phiên bản:",
+            "lastUpdate": "Cập nhật lần cuối:",
+            "os": "Hệ điều hành:",
+            "versionValue": "Phiên bản"
+        },
+        "faqData": {
+            "1q": "Làm thế nào để thay đổi ngôn ngữ học?",
+            "1a": "Vào 'Ngôn ngữ học' trong Hồ sơ và chọn...",
+            "2q": "Tại sao tôi bị mất chuỗi?",
+            "2a": "Chuỗi sẽ được đặt lại nếu mục tiêu hàng ngày không hoàn thành...",
+            "3q": "Làm thế nào để thay đổi mật khẩu?",
+            "3a": "Vào 'Chỉnh sửa hồ sơ' và chọn 'Đổi mật khẩu'...",
+            "4q": "Ứng dụng có hoạt động ngoại tuyến không?",
+            "4a": "Một số tính năng ngoại tuyến, nhưng trải nghiệm tốt nhất cần có internet.",
+            "5q": "Làm thế nào để liên hệ hỗ trợ?",
+            "5a": "Bạn có thể gửi email đến support@MonkeyLingua.com hoặc sử dụng chat."
+        },
+        "supportOptions": {
+            "email": {
+                "title": "Gửi Email",
+                "desc": "Liên hệ với chúng tôi qua email để được hỗ trợ chi tiết"
+            },
+            "chat": {
+                "title": "Chat trực tuyến",
+                "desc": "Chat với đội ngũ hỗ trợ"
+            },
+            "community": {
+                "title": "Cộng đồng",
+                "desc": "Tham gia cộng đồng học tập"
+            },
+            "video": {
+                "title": "Video hướng dẫn",
+                "desc": "Xem hướng dẫn sử dụng"
+            }
+        }
+    },
+    "permissions": {
+        "settingsTitle": "Yêu cầu quyền truy cập",
+        "settingsMessage": "Tính năng này yêu cầu quyền truy cập, nhưng đã bị từ chối vĩnh viễn. Vui lòng vào cài đặt ứng dụng để bật nó.",
+        "goToSettings": "Đi tới Cài đặt",
+        "cancel": "Hủy",
+        "unavailable": "Tính năng này không khả dụng trên thiết bị của bạn",
+        "blocked_title": "Quyền {{feature}} bị từ chối",
+        "enable_in_settings": "Vui lòng vào Cài đặt và cấp quyền.",
+        "overlay": {
+            "title": "Quyền lớp phủ",
+            "message": "Ứng dụng này cần quyền hiển thị trên các ứng dụng khác (ví dụ: cho bong bóng chat hoặc thông báo cuộc gọi đến)."
+        },
+        "notifications": {
+            "title": "Quyền thông báo",
+            "message": "Cho phép ứng dụng này gửi thông báo cập nhật và cảnh báo cho bạn."
+        },
+        "camera": {
+            "title": "Quyền máy ảnh",
+            "message": "Ứng dụng này cần truy cập vào máy ảnh của bạn để chụp ảnh hoặc quét mã QR."
+        },
+        "storage": {
+            "title": "Quyền lưu trữ",
+            "message": "Ứng dụng này cần truy cập vào bộ nhớ của bạn để đọc/lưu ảnh và video."
+        },
+        "location": {
+            "title": "Quyền vị trí",
+            "message": "Ứng dụng này cần truy cập vào vị trí của bạn để cung cấp các dịch vụ dựa trên vị trí."
+        },
+        "microphone": {
+            "title": "Yêu cầu quyền Micro",
+            "message": "Chúng tôi cần quyền truy cập vào micro của bạn để bật bài tập nói."
+        }
+    },
+    "wallet": {
+        "title": "Ví",
+        "availableBalance": "Số dư khả dụng",
+        "topup": "Nạp tiền",
+        "withdraw": "Rút tiền",
+        "transfer": "Chuyển tiền",
+        "transactionHistory": "Lịch sử giao dịch",
+        "noTransactions": "Chưa có giao dịch",
+        "topupTitle": "Nạp tiền vào ví",
+        "quickAmount": "Số tiền nhanh",
+        "customAmount": "Số tiền tùy chỉnh",
+        "enterAmount": "Nhập số tiền",
+        "minimumAmount": "Số tiền tối thiểu",
+        "paymentMethod": "Phương thức thanh toán",
+        "totalAmount": "Tổng số tiền",
+        "topupNote": "Nạp tối thiểu 10,000 VND",
+        "proceed": "Tiến hành thanh toán"
+    },
+    "transaction": {
+        "type": {
+            "DEPOSIT": "Nạp tiền",
+            "WITHDRAW": "Rút tiền",
+            "TRANSFER": "Chuyển tiền",
+            "REFUND": "Hoàn tiền",
+            "TRANSFER_RECEIVE": "Nhận tiền"
+        },
+        "status": {
+            "PENDING": "Đang chờ",
+            "SUCCESS": "Thành công",
+            "FAILED": "Thất bại",
+            "PENDING_REFUND": "Đang chờ hoàn tiền",
+            "REFUNDED": "Đã hoàn tiền"
+        }
+    },
+    "progress": {
+        "title": "Theo dõi tiến độ của bạn",
+        "subtitle": "Xem sự cải thiện của bạn từng ngày",
+        "loading": "Đang tải tiến độ của bạn...",
+        "error": "Tải tiến độ thất bại",
+        "completed": "Đã hoàn thành",
+        "next": "Tiếp theo",
+        "retry": "Thử lại",
+        "back": "Quay lại",
+        "unit": "Đơn vị",
+        "lesson": "Bài học",
+        "continue": "Tiếp tục học",
+        "noData": "Không có tiến độ",
+        "percentage": "Đã hoàn thành {{value}}%",
+        "lessons": "Bài học",
+        "courses": "Khóa học",
+        "quizzes": "Trắc nghiệm",
+        "achievements": "Huy hiệu",
+        "weeklyActivity": "Hoạt động hàng tuần",
+        "badgesTitle": "Huy hiệu của bạn"
+    },
+    "interests": {
+        "travel": "Du lịch",
+        "food": "Ẩm thực",
+        "music": "Âm nhạc",
+        "sports": "Thể thao",
+        "movies": "Phim ảnh",
+        "books": "Sách",
+        "technology": "Công nghệ",
+        "art": "Nghệ thuật",
+        "business": "Kinh doanh",
+        "culture": "Văn hóa"
+    },
+    "createRoom": {
+        "title": "Tạo phòng mới",
+        "roomNameLabel": "Tên phòng",
+        "roomNamePlaceholder": "Nhập tên phòng...",
+        "descriptionLabel": "Mô tả phòng",
+        "descriptionPlaceholder": "Mô tả mục đích và nội dung của phòng...",
+        "purposeLabel": "Mục đích phòng",
+        "purposeLearning": "Học tập",
+        "purposeSocial": "Giao lưu",
+        "languageLabel": "Ngôn ngữ chính",
+        "levelLabel": "Cấp độ",
+        "maxMembersLabel": "Thành viên tối đa",
+        "privacyLabel": "Cài đặt quyền riêng tư",
+        "privacyPrivate": "Phòng riêng tư",
+        "privacyPublic": "Phòng công khai",
+        "passwordPlaceholder": "Nhập mật khẩu phòng...",
+        "rulesTitle": "Quy tắc phòng chat",
+        "rule1": "Tôn trọng tất cả thành viên",
+        "rule2": "Không spam hoặc quảng cáo",
+        "rule3": "Sử dụng ngôn ngữ phù hợp",
+        "rule4": "Giúp đỡ nhau học tập",
+        "createButton": "Tạo phòng",
+        "errors": {
+            "nameRequired": "Vui lòng nhập tên phòng",
+            "descriptionRequired": "Vui lòng nhập mô tả phòng",
+            "passwordRequired": "Vui lòng nhập mật khẩu cho phòng riêng tư",
+            "creationFailed": "Tạo phòng thất bại. Vui lòng thử lại."
+        }
+    },
+    "social": "Xã hội",
+    "join": "Tham gia",
+    "chat": {
+        "sent_an_attachment": "Đã gửi một tệp đính kèm",
+        "no_active_chats": "Ngoại tuyến",
+        "start_conversation_hint": "Bắt đầu cuộc trò chuyện bằng cách chọn Chat AI hoặc Chat Người dùng",
+        "active_now": "Trực tuyến",
+        "title": "Chat",
+        "aiChat": "Chat với AI",
+        "aiChatDescription": "Thực hành với trợ lý AI thông minh",
+        "userChat": "Chat với Người dùng",
+        "userChatDescription": "Kết nối với những người học khác",
+        "videoCall": "Cuộc gọi video",
+        "joinRoom": "Tham gia phòng",
+        "callSetup": "Thiết lập cuộc gọi",
+        "createRoom": "Tạo phòng",
+        "settings": "Cài đặt Chat",
+        "welcome": "Chào mừng đến với Chat!",
+        "welcomeDescription": "Thực hành ngôn ngữ thông qua hội thoại với AI hoặc kết nối với những người học khác",
+        "chooseType": "Chọn loại hội thoại",
+        "quickActions": "Tác vụ nhanh",
+        "recentActivity": "Hoạt động gần đây",
+        "noRecentActivity": "Không có hoạt động gần đây",
+        "startChatting": "Bắt đầu trò chuyện để xem hoạt động",
+        "yourStats": "Thống kê của bạn",
+        "messages": "Tin nhắn",
+        "translations": "Bản dịch",
+        "videoCalls": "Cuộc gọi video",
+        "tips": "💡 Sử dụng dịch tự động để hiểu tin nhắn từ người dùng khác\n🎯 Tham gia các phòng chat phù hợp với trình độ của bạn\n🤖 Chat với AI để luyện tập hội thoại bất cứ lúc nào",
+        "online": "Trực tuyến",
+        "offline": "Ngoại tuyến",
+        "members": "Thành viên",
+        "people": "người",
+        "inputPlaceholder": "Nhập tin nhắn của bạn...",
+        "roomSettings": "Cài đặt phòng",
+        "roomName": "Tên phòng",
+        "roomId": "ID phòng",
+        "shareRoom": "Chia sẻ phòng",
+        "shareRoomTitle": "Lời mời phòng chat",
+        "shareRoomMessage": "Tham gia phòng chat này và bắt đầu luyện tập!",
+        "kickMember": "Xóa thành viên",
+        "leaveRoom": "Rời phòng",
+        "confirmKick": "Xóa thành viên",
+        "confirmKickMessage": "Bạn có thực sự muốn xóa thành viên này không?",
+        "memberKicked": "Thành viên đã bị xóa.",
+        "nameUpdated": "Tên chat đã cập nhật thành công.",
+        "nameUpdateError": "Cập nhật tên chat thất bại.",
+        "sendMessageError": "Gửi tin nhắn thất bại.",
+        "translationError": "Dịch thất bại.",
+        "autoTranslate": "Tự động dịch",
+        "autoTranslateDesc": "Tự động dịch tin nhắn sang ngôn ngữ ưa thích của bạn.",
+        "showOriginal": "Hiển thị bản gốc",
+        "showOriginalDesc": "Hiển thị tin nhắn gốc cùng với bản dịch.",
+        "translateVietnamese": "Dịch sang tiếng Việt",
+        "translateVietnameseDesc": "Bật dịch cụ thể sang tiếng Việt.",
+        "saveHistory": "Lưu lịch sử chat",
+        "saveHistoryDesc": "Lưu giữ bản ghi các cuộc hội thoại của bạn để xem lại sau.",
+        "offlineTranslation": "Dịch ngoại tuyến",
+        "offlineTranslationDesc": "Dịch tin nhắn mà không cần kết nối internet.",
+        "soundNotifications": "Thông báo âm thanh",
+        "soundNotificationsDesc": "Phát âm thanh cho tin nhắn mới và sự kiện.",
+        "vibrationNotifications": "Thông báo rung",
+        "vibrationNotificationsDesc": "Rung khi có tin nhắn mới.",
+        "typingIndicator": "Chỉ báo đang nhập",
+        "typingIndicatorDesc": "Hiển thị khi ai đó đang nhập tin nhắn.",
+        "autoCorrectDesc": "Tự động sửa lỗi chính tả trong tin nhắn của bạn.",
+        "wordSuggestions": "Gợi ý từ",
+        "wordSuggestionsDesc": "Hiển thị gợi ý khi đang nhập để nhắn tin nhanh hơn.",
+        "clearHistory": "Xóa lịch sử chat",
+        "clearHistoryDesc": "Xóa vĩnh viễn tất cả lịch sử chat đã lưu.",
+        "resetSettings": "Đặt lại cài đặt",
+        "resetSettingsDesc": "Khôi phục tất cả cài đặt về giá trị mặc định.",
+        "settingsTitle": "Cài đặt Chat",
+        "translationInfoTitle": "Thông tin dịch thuật",
+        "translationInfoDesc": "Tìm hiểu cách hoạt động của bản dịch và các ngôn ngữ được hỗ trợ.",
+        "translationSection": "Cài đặt dịch thuật",
+        "translationSubtitle": "Quản lý cách áp dụng bản dịch.",
+        "chatSection": "Tùy chọn Chat",
+        "chatSubtitle": "Tùy chỉnh trải nghiệm chat của bạn.",
+        "actionSection": "Hành động",
+        "actionSubtitle": "Tác vụ nhanh và công cụ cho cuộc trò chuyện của bạn.",
+        "supportedLanguages": "Ngôn ngữ được hỗ trợ",
+        "supportedLanguagesDesc": "Chọn từ nhiều ngôn ngữ để dịch.",
+        "tipsTitle": "Mẹo Chat",
+        "tip1": "Mẹo 1: Bật tự động dịch để giao tiếp trôi chảy hơn.",
+        "tip2": "Mẹo 2: Lưu lịch sử để xem lại các tin nhắn quan trọng sau này.",
+        "tip3": "Mẹo 3: Sử dụng thông báo âm thanh và rung để luôn cập nhật.",
+        "activeRooms": "Phòng hoạt động",
+        "inbox": "Hộp thư",
+        "no_messages": "Không có tin nhắn",
+        "ai_assistant": "Trợ lý AI",
+        "click_to_view": "Nhấn để xem",
+        "room_settings": "Cài đặt phòng",
+        "leave_room": "Rời phòng",
+        "change_nickname": "Đổi biệt danh",
+        "nickname_placeholder": "Nhập biệt danh của bạn"
+    },
+    "groupStudy": {
+        "title": "Phòng học nhóm",
+        "description": "Tham gia hoặc tạo phòng học để học cùng bạn bè và thi đấu trắc nghiệm thời gian thực"
+    },
+    "room": {
+        "title": "Phòng học",
+        "create": "Tạo phòng",
+        "join": "Tham gia phòng",
+        "joinWithId": "Tham gia bằng ID",
+        "available": "Phòng có sẵn",
+        "createdBy": "Được tạo bởi {{name}}",
+        "topic": "Chủ đề",
+        "id": "ID Phòng",
+        "maxParticipants": "Số người tham gia tối đa",
+        "titlePlaceholder": "Nhập tên phòng",
+        "topicPlaceholder": "ví dụ: Ngữ pháp, Từ vựng, Nói",
+        "enterIdDescription": "Nhập ID phòng gồm 6 chữ số để tham gia buổi học",
+        "idPlaceholder": "Nhập ID Phòng (6 chữ số)",
+        "leave": "Rời phòng",
+        "leaveConfirm": "Bạn có chắc chắn muốn rời đi?",
+        "created": "Tạo phòng thành công",
+        "joined": "Tham gia phòng thành công",
+        "allMustBeReady": "Tất cả người tham gia phải sẵn sàng trước khi bắt đầu",
+        "full": "Phòng đã đầy",
+        "full.message": "Phòng này đã đạt số lượng thành viên tối đa.",
+        "join.confirm": "Bạn có muốn tham gia phòng này không?",
+        "not.found": "Không tìm thấy phòng",
+        "not.found.message": "Phòng bạn đang tìm kiếm không tồn tại hoặc đã bị xóa.",
+        "created.by": "Được tạo bởi",
+        "list": "Danh sách phòng",
+        "search": "Tìm kiếm phòng",
+        "empty": "Không có phòng nào",
+        "empty.subtext": "Tạo phòng mới và mời bạn bè của bạn!",
+        "join.by.code": "Tham gia bằng Mã",
+        "join.by.code.desc": "Nhập mã phòng để tham gia",
+        "community_lobby": "Sảnh cộng đồng",
+        "search_public": "Tìm kiếm phòng công khai",
+        "empty_public": "Không tìm thấy phòng công khai nào",
+        "private": {
+            "title": "Phòng riêng tư"
+        },
+        "enter": {
+            "password": "Nhập mật khẩu"
+        }
+    },
+    "reactions": {
+        "send": "Gửi cảm xúc"
+    },
+    "Calls": "Cuộc gọi",
+    "call": {
+        "call_history": "Lịch sử cuộc gọi",
+        "full_call_history": "Lịch sử cuộc gọi đầy đủ",
+        "setupTitle": "Thiết lập cuộc gọi",
+        "findPartner": "Tìm bạn trò chuyện",
+        "setupDescription": "Thiết lập tùy chọn của bạn để tìm người phù hợp cho cuộc gọi video",
+        "commonInterests": "Sở thích chung",
+        "selectTopics": "Chọn chủ đề bạn muốn nói (đã chọn {{count}})",
+        "partnerGender": "Giới tính đối tác",
+        "selectPartnerGender": "Chọn giới tính của bạn trò chuyện",
+        "partnerNativeLanguage": "Ngôn ngữ mẹ đẻ của đối tác",
+        "findNativeSpeaker": "Tìm người có ngôn ngữ mẹ đẻ là ngôn ngữ bạn đang học",
+        "partnerLearningLanguage": "Ngôn ngữ học tập của đối tác",
+        "findLearner": "Tìm người đang học cùng ngôn ngữ với bạn",
+        "ageRange": "Độ tuổi",
+        "selectAgeRange": "Chọn độ tuổi phù hợp",
+        "duration": "Thời lượng cuộc gọi",
+        "expectedDuration": "Thời lượng dự kiến cho cuộc gọi",
+        "searchSummary": "Tóm tắt tìm kiếm",
+        "interestsSelected": "đã chọn {{count}} sở thích",
+        "gender": "Giới tính",
+        "nativeLanguage": "Ngôn ngữ mẹ đẻ",
+        "learning": "Đang học",
+        "time": "Thời gian",
+        "startSearch": "Bắt đầu tìm kiếm",
+        "selectInterests": "Chọn sở thích",
+        "selectInterestsMessage": "Vui lòng chọn ít nhất một sở thích để tìm đối tác phù hợp.",
+        "savePreferencesError": "Lưu tùy chọn thất bại",
+        "genderAny": "Bất kỳ",
+        "genderMale": "Nam",
+        "genderFemale": "Nữ",
+        "age18to25": "18-25 tuổi",
+        "age26to35": "26-35 tuổi",
+        "age36to45": "36-45 tuổi",
+        "age46plus": "46+ tuổi",
+        "duration5min": "5 phút",
+        "duration15min": "15 phút",
+        "duration30min": "30 phút",
+        "duration1hour": "1 giờ",
+        "findingPartner": "Đang tìm đối tác",
+        "matchFound": "Đã tìm thấy!",
+        "onlineUsers": "Người dùng trực tuyến",
+        "elapsedTime": "Thời gian đã trôi qua",
+        "yourNativeLanguage": "Ngôn ngữ mẹ đẻ của bạn",
+        "age": {
+            "AGE_13_17": "13-17",
+            "AGE_18_24": "18-24",
+            "AGE_25_34": "25-34",
+            "AGE_35_44": "35-44",
+            "AGE_45_54": "45-54",
+            "AGE_55_PLUS": "55+"
+        },
+        "languages": {
+            "vi": "Tiếng Việt",
+            "en": "Tiếng Anh",
+            "zh": "Tiếng Trung",
+            "ja": "Tiếng Nhật",
+            "ko": "Tiếng Hàn",
+            "fr": "Tiếng Pháp",
+            "es": "Tiếng Tây Ban Nha",
+            "de": "Tiếng Đức"
+        },
+        "searchTime": "Thời gian tìm kiếm",
+        "findingMatch": "Đang tìm đối tác hoàn hảo...",
+        "criteria": "Tiêu chí phù hợp",
+        "minutes": "phút",
+        "cancelSearch": "Hủy tìm kiếm",
+        "connecting": "Đang kết nối...",
+        "searchingTitle": "Đang tìm kiếm đối tác"
+    },
+    "group": {
+        "share": {
+            "message": "Tham gia nhóm của tôi và cùng luyện tập nhé!",
+            "title": "Lời mời nhóm"
+        },
+        "settings": "Cài đặt nhóm",
+        "name": "Tên nhóm",
+        "members": "Thành viên nhóm",
+        "id": "ID Nhóm",
+        "desc": "Mô tả nhóm",
+        "notifications": "Thông báo",
+        "leave": "Rời nhóm",
+        "members.list": "Danh sách thành viên",
+        "kick": {
+            "confirm": "Xóa thành viên",
+            "confirm.message": "Bạn có chắc chắn muốn xóa thành viên này không?",
+            "success": "Đã xóa thành viên thành công."
+        },
+        "input": {
+            "placeholder": "Nhập tin nhắn của bạn vào đây..."
+        },
+        "members.online": "Thành viên trực tuyến"
+    },
+    "greeting": {
+        "morning": "Chào buổi sáng",
+        "afternoon": "Chào buổi chiều",
+        "evening": "Chào buổi tối"
+    },
+    "leaderboard": {
+        "level": "Cấp độ",
+        "title": "Bảng xếp hạng",
+        "error": "Tải bảng xếp hạng thất bại. Vui lòng thử lại.",
+        "noData": "Không có dữ liệu trên bảng xếp hạng",
+        "noMoreEntries": "Bạn đã đến cuối danh sách",
+        "tabs": {
+            "top100": "Top 100",
+            "thisWeek": "Tuần này",
+            "events": "Sự kiện",
+            "seasons": "Mùa giải",
+            "friends": "Bạn bè",
+            "couples": "Cặp đôi",
+            "admire": "Ngưỡng mộ",
+            "global": "Toàn cầu",
+            "country": "Quốc gia",
+            "coins": "Xu",
+            "hours": "Giờ"
+        },
+        "sort": {
+            "highestScore": "Điểm cao nhất",
+            "lowestScore": "Điểm thấp nhất",
+            "highestLevel": "Cấp độ cao nhất",
+            "lowestLevel": "Cấp độ thấp nhất"
+        },
+        "periods": {
+            "allTime": "Tất cả thời gian",
+            "thisMonth": "Tháng này",
+            "thisWeek": "Tuần này",
+            "today": "Hôm nay"
+        }
+    },
+    "statusConnected": "Đã kết nối",
+    "statusMuted": "Đã tắt tiếng",
+    "statusLeft": "Đã rời",
+    "confirmPassword": "Xác nhận mật khẩu",
+    "videoCallManager": "Quản lý cuộc gọi video",
+    "enterCallerId": "Vui lòng nhập ID người gọi",
+    "groupCallCreated": "Đã tạo cuộc gọi nhóm thành công",
+    "groupCallError": "Lỗi tạo cuộc gọi nhóm",
+    "oneToOneCallCreated": "Đã tạo cuộc gọi 1-1 thành công",
+    "oneToOneCallError": "Lỗi tạo cuộc gọi 1-1",
+    "selectCallFirst": "Vui lòng chọn một cuộc gọi video trước",
+    "enterParticipantId": "Vui lòng nhập userId người tham gia",
+    "addParticipant": "Thêm người tham gia",
+    "joinJitsi": "Tham gia Jitsi",
+    "participants": "Người tham gia",
+    "participantsError": "Không thể lấy danh sách người tham gia",
+    "noParticipants": "Không có người tham gia",
+    "callInfo": "Thông tin cuộc gọi",
+    "callError": "Không thể lấy thông tin cuộc gọi",
+    "noCallSelected": "Chưa chọn cuộc gọi",
+    "id": "ID",
+    "role": "Vai trò",
+    "type": "Loại",
+    "historyUser": "Lịch sử (Người dùng)",
+    "enterUserIdHistory": "Nhập userId để xem lịch sử",
+    "view": "Xem",
+    "historyError": "Không thể lấy lịch sử",
+    "noHistory": "Không có lịch sử",
+    "filterCallerId": "Lọc theo ID người gọi",
+    "filterStatus": "Lọc theo trạng thái",
+    "callerId": "ID người gọi",
+    "participantId": "ID người tham gia",
+    "createGroupCall": "Tạo cuộc gọi nhóm",
+    "createOneToOne": "Tạo cuộc gọi 1-1",
+    "removeUser": "Xóa người dùng",
+    "status": {
+        "online": "Trực tuyến"
+    },
+    "people": "Mọi người",
+    "filter": {
+        "all": "Tất cả",
+        "ai": "AI",
+        "friend": "Bạn bè",
+        "stranger": "Người lạ",
+        "couple": "Cặp đôi"
+    },
+    "assistant": {
+        "name": "Trợ lý AI"
+    },
+    "gender": {
+        "MALE": "Nam",
+        "FEMALE": "Nữ",
+        "OTHER": "Khác",
+        "ANY": "Bất kỳ"
+    },
+    "challenge": {
+        "tab": {
+            "daily": "Hàng ngày",
+            "weekly": "Hàng tuần",
+            "badge": "Huy hiệu"
+        }
+    },
+    "payment": {
+        "selectMethod": "Chọn phương thức",
+        "myWallet": "Ví của tôi",
+        "available": "Khả dụng",
+        "externalGateway": "Cổng thanh toán",
+        "continueToGateway": "Tiếp tục đến cổng thanh toán",
+        "total": "Tổng cộng:",
+        "insufficientWarning": "Số dư không đủ",
+        "payNow": "Thanh toán ngay",
+        "method": "Phương thức thanh toán",
+        "wallet": "Ví",
+        "card": "Thẻ"
+    },
+    "reviews": {
+        "title": "Đánh giá & Bình luận"
     }
 }

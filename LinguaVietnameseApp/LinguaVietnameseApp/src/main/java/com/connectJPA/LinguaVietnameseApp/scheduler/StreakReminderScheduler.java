@@ -61,8 +61,6 @@ public class StreakReminderScheduler {
         String notificationKey = "STREAK_REMINDER";
 
         for (User user : users) {
-            if (user.isDeleted() || !user.getUserSettings().isStreakReminders()) continue;
-            
             try {
                 UUID userId = user.getUserId();
                 Long minGoal = user.getMinLearningDurationMinutes() != 0 ? user.getMinLearningDurationMinutes() : 15L;
@@ -113,7 +111,6 @@ public class StreakReminderScheduler {
                     String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
                     String[] message = NotificationI18nUtil.getLocalizedMessage("STREAK_RESET", langCode);
 
-                    if (user.getUserSettings().isStreakReminders()) {
                         NotificationRequest notificationRequest = NotificationRequest.builder()
                                 .userId(userId)
                                 .title(message[0])
@@ -122,7 +119,6 @@ public class StreakReminderScheduler {
                                 .payload("{\"screen\":\"Home\"}")
                                 .build();
                         notificationService.createPushNotification(notificationRequest);
-                    }
                     
                     user.setStreak(0);
                     user.setLastStreakCheckDate(null);

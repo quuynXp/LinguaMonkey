@@ -9,11 +9,13 @@ if (typeof global.Buffer === 'undefined') {
 
 const ec = new EC('p256');
 
+// Hardcoded salt ensures consistent key derivation across devices for the same user
+const BACKUP_KEY_SALT = "LINGUA_MONKEY_SECURE_BACKUP_SALT_V1";
+
 const P256_SPKI_HEADER_HEX = "3059301306072a8648ce3d020106082a8648ce3d030107034200";
 
 export type CryptoKey = string;
 export type CryptoKeyPair = { publicKey: string; privateKey: string };
-
 
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
     return Buffer.from(buffer).toString('base64');
@@ -27,6 +29,29 @@ function hexToBase64(hex: string): string {
     return Buffer.from(hex, 'hex').toString('base64');
 }
 
+export function deriveBackupKey(userId: string): string {
+    return CryptoJS.SHA256(userId + BACKUP_KEY_SALT).toString(CryptoJS.enc.Base64);
+}
+
+export async function encryptPrivateKeyBundle(bundle: any, userId: string): Promise<string> {
+    const backupKey = deriveBackupKey(userId);
+    const json = JSON.stringify(bundle);
+    const [iv, cipher] = await encryptAES(json, backupKey);
+    // Combine IV + Cipher for storage
+    return JSON.stringify({ iv, cipher });
+}
+
+export async function decryptPrivateKeyBundle(encryptedBundleString: string, userId: string): Promise<any | null> {
+    try {
+        const backupKey = deriveBackupKey(userId);
+        const { iv, cipher } = JSON.parse(encryptedBundleString);
+        const json = await decryptAES(cipher, iv, backupKey);
+        return JSON.parse(json);
+    } catch (e) {
+        console.warn("Failed to decrypt private key bundle", e);
+        return null;
+    }
+}
 
 export async function generateKeyPair(): Promise<CryptoKeyPair> {
     const key = ec.genKeyPair();
@@ -105,7 +130,6 @@ export async function encryptAES(content: string, keyBase64: string): Promise<[s
 
         return [
             iv.toString(CryptoJS.enc.Base64),
-            // FIX: Use ciphertext directly to avoid OpenSSL formatting (Salted__) which breaks Java
             encrypted.ciphertext.toString(CryptoJS.enc.Base64)
         ];
     } catch (e: any) {
@@ -125,14 +149,13 @@ export async function decryptAES(ciphertextBase64: string, ivBase64: string, key
         });
 
         const text = decrypted.toString(CryptoJS.enc.Utf8);
-        if (!text) return "🔒 Tin nhắn cũ (Không thể giải mã)";
+        if (!text) return "";
 
         return text;
     } catch (e: any) {
-        return "🔒 Lỗi giải mã";
+        throw new Error("Decryption_Failed");
     }
 }
-
 
 export async function signData(privateKeyHex: string, data: ArrayBuffer): Promise<string> {
     try {

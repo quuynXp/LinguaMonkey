@@ -7,7 +7,7 @@ let pendingActions: (() => void)[] = [];
 interface NotificationPayload {
   screen?: string;
   stackScreen?: string;
-  screenName?: string; // Backwards compatibility for payload variations
+  screenName?: string;
   [key: string]: any;
 }
 
@@ -38,7 +38,6 @@ export const handleNotificationNavigation = (raw: any) => {
 
   const { screen, stackScreen, screenName, ...params } = data;
 
-  // Resolve the nested screen target
   const targetNestedScreen = stackScreen || screenName;
 
   console.log("🚀 Notification Navigation ->", { screen, targetNestedScreen, params });

@@ -2,13 +2,14 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  Keyboard,
+  LayoutAnimation,
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
@@ -19,6 +20,7 @@ import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { Room } from "../../types/entity";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type AiMessage = {
   id: string;
@@ -27,7 +29,6 @@ type AiMessage = {
   isStreaming?: boolean;
 };
 
-// --- SIMPLIFIED MESSAGE ITEM (Removed Translate Button) ---
 const MessageItem = React.memo(({
   message,
 }: {
@@ -57,14 +58,15 @@ const MessageItem = React.memo(({
 MessageItem.displayName = 'MessageItem';
 
 const ChatAIScreen = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { user } = useUserStore();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   const [inputText, setInputText] = useState("");
   const [isHistoryVisible, setIsHistoryVisible] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
-  // Store Selectors
   const activeAiRoomId = useChatStore(s => s.activeAiRoomId);
   const aiHistory = useChatStore(s => s.aiChatHistory);
   const aiRooms = useChatStore(s => s.aiRoomList);
@@ -74,9 +76,7 @@ const ChatAIScreen = () => {
   const pageByRoom = useChatStore(s => s.pageByRoom);
   const aiWsConnected = useChatStore(s => s.aiWsConnected);
 
-  // ACTIONS
   const initAiClient = useChatStore(s => s.initAiClient);
-  const disconnectAi = useChatStore(s => s.disconnectAi);
   const startNewAiChat = useChatStore(s => s.startNewAiChat);
   const selectAiRoom = useChatStore(s => s.selectAiRoom);
   const fetchAiRoomList = useChatStore(s => s.fetchAiRoomList);
@@ -86,8 +86,8 @@ const ChatAIScreen = () => {
 
   const isLoading = activeAiRoomId ? loadingByRoom[activeAiRoomId] : false;
 
-  // Create display messages (reversed for inverted list)
-  const displayMessages = useMemo(() => [...aiHistory].reverse(), [aiHistory]);
+  // Store lưu [Newest, ..., Oldest] phù hợp với inverted={true}
+  const displayMessages = aiHistory;
 
   useEffect(() => {
     initAiClient();
@@ -98,16 +98,31 @@ const ChatAIScreen = () => {
       }
     };
     if (user?.userId) initializeData();
-    // Don't disconnect here to keep connection alive when navigating back temporarily
     return () => { };
   }, [user?.userId, initAiClient]);
 
-  // --- WELCOME MESSAGE LOGIC (Instant, Local) ---
+  useEffect(() => {
+    const onShow = () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setIsKeyboardVisible(true);
+    };
+    const onHide = () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setIsKeyboardVisible(false);
+    };
+
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', onShow);
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', onHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   useEffect(() => {
     if (activeAiRoomId && aiWsConnected && !isLoading) {
       if (aiHistory.length === 0) {
-        // Send a localized welcome message immediately
-        // Ensure "ai.welcome" exists in your en/vi json files
         const welcomeText = t("ai.welcome", "Hello! I am your AI language tutor. How can I help you today?");
         sendAiWelcomeMessage(welcomeText);
       }
@@ -136,146 +151,138 @@ const ChatAIScreen = () => {
   };
 
   const renderMessageItem = useCallback(({ item }: { item: AiMessage }) => {
-    return (
-      <MessageItem
-        message={item}
-      />
-    );
+    return <MessageItem message={item} />;
   }, []);
 
   const keyExtractor = useCallback((item: AiMessage) => item.id, []);
 
+  const inputPaddingBottom = isKeyboardVisible ? 45 : Math.max(insets.bottom, 20);
+
   return (
-    <ScreenLayout>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-      >
-        <View style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
-                <Icon name="arrow-back" size={24} color="#1F2937" />
-              </TouchableOpacity>
-              <View style={styles.headerTitleContainer}>
-                <Icon name="smart-toy" size={24} color="#3B82F6" style={{ marginRight: 8 }} />
-                <Text style={styles.headerTitle}>AI Assistant</Text>
-              </View>
-            </View>
-            <View style={styles.headerRight}>
-              <TouchableOpacity onPress={() => setIsHistoryVisible(true)} style={styles.iconButton}>
-                <Icon name="history" size={24} color="#4B5563" />
-              </TouchableOpacity>
+    <ScreenLayout keyboardAware={true} disableBottomInset>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+              <Icon name="arrow-back" size={24} color="#1F2937" />
+            </TouchableOpacity>
+            <View style={styles.headerTitleContainer}>
+              <Icon name="smart-toy" size={24} color="#3B82F6" style={{ marginRight: 8 }} />
+              <Text style={styles.headerTitle}>AI Assistant</Text>
             </View>
           </View>
-
-          {/* Chat List */}
-          <FlatList
-            data={displayMessages}
-            renderItem={renderMessageItem}
-            keyExtractor={keyExtractor}
-            style={styles.chatList}
-            contentContainerStyle={styles.chatContent}
-            inverted={true}
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.2}
-            removeClippedSubviews={true}
-            initialNumToRender={15}
-            maxToRenderPerBatch={10}
-            windowSize={10}
-            ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
-            ListEmptyComponent={!isLoading && !isAiStreaming ? (
-              <View style={{ alignItems: 'center', marginTop: 50 }}>
-                <Text style={{ color: '#9CA3AF' }}>{t("ai.start_conversation", "Start chatting...")}</Text>
-              </View>
-            ) : null}
-          />
-
-          {isAiStreaming && !aiHistory.length && (
-            <View style={styles.streamingIndicator}>
-              <ActivityIndicator size="small" color="#6B7280" />
-              <Text style={styles.streamingText}>{t("loading.ai", "AI is thinking...")}</Text>
-            </View>
-          )}
-
-          {/* Input Area */}
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder={t("input.placeholder", "Type a message...")}
-              value={inputText}
-              onChangeText={setInputText}
-              onSubmitEditing={handleSendMessage}
-              returnKeyType="send"
-              multiline
-            // REMOVED editable={!isAiStreaming} to allow typing while AI thinks
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, (!inputText.trim() || isAiStreaming) && styles.sendButtonDisabled]}
-              onPress={handleSendMessage}
-              disabled={!inputText.trim() || isAiStreaming}
-            >
-              <Icon name="send" size={20} color="#FFFFFF" />
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={() => setIsHistoryVisible(true)} style={styles.iconButton}>
+              <Icon name="history" size={24} color="#4B5563" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* History Modal (Unchanged logic, just styling) */}
-        <Modal
-          visible={isHistoryVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setIsHistoryVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t("history.title") || "Conversation History"}</Text>
-                <TouchableOpacity onPress={() => setIsHistoryVisible(false)}>
-                  <Icon name="close" size={24} color="#1F2937" />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={styles.newChatButton}
-                onPress={async () => {
-                  setIsHistoryVisible(false);
-                  await startNewAiChat();
-                }}
-              >
-                <Icon name="add" size={20} color="#FFFFFF" />
-                <Text style={styles.newChatText}>New Chat</Text>
-              </TouchableOpacity>
-
-              <FlatList
-                data={aiRooms}
-                keyExtractor={(item) => item.roomId}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[styles.historyItem, item.roomId === activeAiRoomId && styles.activeHistoryItem]}
-                    onPress={() => handleSelectHistory(item)}
-                  >
-                    <Icon name="chat-bubble-outline" size={20} color="#4B5563" />
-                    <View style={{ marginLeft: 12, flex: 1 }}>
-                      <Text style={styles.historyName} numberOfLines={1}>
-                        {item.roomName || `Chat ${item.roomId.substring(0, 6)}`}
-                      </Text>
-                      <Text style={styles.historyDate}>
-                        {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : 'Unknown date'}
-                      </Text>
-                    </View>
-                    {item.roomId === activeAiRoomId && <Icon name="check" size={20} color="#3B82F6" />}
-                  </TouchableOpacity>
-                )}
-                contentContainerStyle={{ paddingVertical: 8 }}
-              />
+        {/* Chat List */}
+        <FlatList
+          data={displayMessages}
+          renderItem={renderMessageItem}
+          keyExtractor={keyExtractor}
+          style={styles.chatList}
+          contentContainerStyle={styles.chatContent}
+          inverted={true} // Inverted: Newest (index 0) at Bottom
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.2}
+          removeClippedSubviews={true}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
+          ListEmptyComponent={!isLoading && !isAiStreaming ? (
+            <View style={{ alignItems: 'center', marginTop: 50, transform: [{ scaleY: -1 }] }}>
+              <Text style={{ color: '#9CA3AF' }}>{t("ai.start_conversation", "Start chatting...")}</Text>
             </View>
-          </View>
-        </Modal>
+          ) : null}
+        />
 
-      </KeyboardAvoidingView>
+        {/* Streaming Indicator (AI thinking logic) */}
+        {isAiStreaming && !aiHistory.some(m => m.isStreaming) && (
+          // Chỉ hiện indicator này nếu AI đang "think" mà CHƯA có tin nhắn trả về (streaming chunk đầu tiên chưa tới)
+          <View style={styles.streamingIndicator}>
+            <ActivityIndicator size="small" color="#6B7280" />
+            <Text style={styles.streamingText}>{t("loading.ai", "AI is thinking...")}</Text>
+          </View>
+        )}
+
+        {/* Input Area */}
+        <View style={[styles.inputContainer, { paddingBottom: inputPaddingBottom }]}>
+          <TextInput
+            style={styles.input}
+            placeholder={t("input.placeholder", "Type a message...")}
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={handleSendMessage}
+            returnKeyType="send"
+            multiline
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, (!inputText.trim() || isAiStreaming) && styles.sendButtonDisabled]}
+            onPress={handleSendMessage}
+            disabled={!inputText.trim() || isAiStreaming}
+          >
+            <Icon name="send" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* History Modal */}
+      <Modal
+        visible={isHistoryVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsHistoryVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t("history.title") || "Conversation History"}</Text>
+              <TouchableOpacity onPress={() => setIsHistoryVisible(false)}>
+                <Icon name="close" size={24} color="#1F2937" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.newChatButton}
+              onPress={async () => {
+                setIsHistoryVisible(false);
+                await startNewAiChat();
+              }}
+            >
+              <Icon name="add" size={20} color="#FFFFFF" />
+              <Text style={styles.newChatText}>New Chat</Text>
+            </TouchableOpacity>
+
+            <FlatList
+              data={aiRooms}
+              keyExtractor={(item) => item.roomId}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.historyItem, item.roomId === activeAiRoomId && styles.activeHistoryItem]}
+                  onPress={() => handleSelectHistory(item)}
+                >
+                  <Icon name="chat-bubble-outline" size={20} color="#4B5563" />
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={styles.historyName} numberOfLines={1}>
+                      {item.roomName || `Chat ${item.roomId.substring(0, 6)}`}
+                    </Text>
+                    <Text style={styles.historyDate}>
+                      {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : 'Unknown date'}
+                    </Text>
+                  </View>
+                  {item.roomId === activeAiRoomId && <Icon name="check" size={20} color="#3B82F6" />}
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={{ paddingVertical: 8 }}
+            />
+          </View>
+        </View>
+      </Modal>
     </ScreenLayout>
   );
 };
@@ -306,7 +313,7 @@ const styles = createScaledSheet({
   aiMessageContainer: { alignItems: "flex-start" },
   messageRow: { flexDirection: "row", alignItems: "flex-end" },
 
-  messageBubble: { borderRadius: 16, padding: 12, maxWidth: '85%' }, // Increased max width since no translate button
+  messageBubble: { borderRadius: 16, padding: 12, maxWidth: '85%' },
   userMessage: { backgroundColor: "#3B82F6", borderBottomRightRadius: 4 },
   aiMessage: { backgroundColor: "#F3F4F6", borderBottomLeftRadius: 4 },
 
@@ -320,7 +327,8 @@ const styles = createScaledSheet({
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
+    paddingTop: 12,
+    paddingHorizontal: 12,
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
     backgroundColor: "#FFFFFF",
@@ -340,7 +348,6 @@ const styles = createScaledSheet({
   sendButton: { backgroundColor: "#3B82F6", borderRadius: 24, padding: 10 },
   sendButtonDisabled: { backgroundColor: "#D1D5DB" },
 
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 20, borderTopRightRadius: 20, height: "70%", padding: 16 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },

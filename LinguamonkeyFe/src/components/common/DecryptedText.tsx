@@ -2,15 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { Text, TextProps } from 'react-native';
 import { useUserStore } from '../../stores/UserStore';
 import { e2eeService } from '../../services/E2EEService';
+import { roomSecurityService } from '../../services/RoomSecurityService'; 
+import { RoomType } from '../../types/enums'; 
 
 interface DecryptedTextProps extends TextProps {
-    content: string; // Ciphertext
+    content: string; 
+
     senderId?: string;
     senderEphemeralKey?: string;
     initializationVector?: string;
     selfContent?: string;
     selfEphemeralKey?: string;
     selfInitializationVector?: string;
+
+    roomId?: string;
+    roomType?: RoomType;
+
     fallbackText?: string;
 }
 
@@ -22,7 +29,9 @@ const DecryptedText: React.FC<DecryptedTextProps> = ({
     selfContent,
     selfEphemeralKey,
     selfInitializationVector,
-    fallbackText = "Encrypted message",
+    roomId,
+    roomType,
+    fallbackText = "🔒 Tin nhắn mã hóa",
     style,
     ...props
 }) => {
@@ -33,43 +42,66 @@ const DecryptedText: React.FC<DecryptedTextProps> = ({
         let isMounted = true;
 
         const decrypt = async () => {
-            if (!senderEphemeralKey) {
-                if (isMounted) setDecrypted(content);
+            if (roomId && roomType && roomType !== RoomType.PRIVATE) {
+                try {
+                    const result = await roomSecurityService.decryptMessage(roomId, content);
+
+                    if (isMounted) {
+                        setDecrypted(result);
+                    }
+                } catch (e) {
+                    if (isMounted) setDecrypted(fallbackText);
+                }
                 return;
             }
 
-            const mockMsg = {
-                senderId: senderId,
-                content: content,
-                senderEphemeralKey: senderEphemeralKey,
-                initializationVector: initializationVector,
-                selfContent: selfContent,
-                selfEphemeralKey: selfEphemeralKey,
-                selfInitializationVector: selfInitializationVector,
-                id: { chatMessageId: 'temp' }
-            };
+            if (senderEphemeralKey) {
+                const mockMsg = {
+                    senderId: senderId,
+                    content: content,
+                    senderEphemeralKey: senderEphemeralKey,
+                    initializationVector: initializationVector,
+                    selfContent: selfContent,
+                    selfEphemeralKey: selfEphemeralKey,
+                    selfInitializationVector: selfInitializationVector,
+                    id: { chatMessageId: 'temp' } // Mock ID để service không lỗi
+                };
 
-            if (user?.userId) e2eeService.setUserId(user.userId);
+                if (user?.userId) e2eeService.setUserId(user.userId);
 
-            const result = await e2eeService.decrypt(mockMsg);
-
-            if (isMounted) {
-                if (result.includes("!!")) {
-                    setDecrypted(fallbackText); // Lỗi giải mã
-                } else {
-                    setDecrypted(result); // Thành công
+                try {
+                    const result = await e2eeService.decrypt(mockMsg);
+                    if (isMounted) {
+                        if (result.includes("!!") || result.includes("Error")) {
+                            setDecrypted(fallbackText);
+                        } else {
+                            setDecrypted(result);
+                        }
+                    }
+                } catch (e) {
+                    if (isMounted) setDecrypted(fallbackText);
                 }
+                return;
             }
+
+            if (isMounted) setDecrypted(content);
         };
 
         decrypt();
 
         return () => { isMounted = false; };
-    }, [content, senderEphemeralKey, initializationVector, user?.userId]);
+    }, [
+        content,
+        senderEphemeralKey,
+        initializationVector,
+        user?.userId,
+        roomId,
+        roomType
+    ]);
 
     return (
         <Text style={style} {...props}>
-            {decrypted || "..."}
+            {decrypted !== null ? decrypted : "..."}
         </Text>
     );
 };

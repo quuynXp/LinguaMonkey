@@ -11,6 +11,9 @@ services:
     dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
     healthCheckPath: /actuator/health/render
+    initialDelaySeconds: 300   
+    timeoutSeconds: 30 
+    periodSeconds: 20
     numInstances: 1
     envVars:
       - key: TZ

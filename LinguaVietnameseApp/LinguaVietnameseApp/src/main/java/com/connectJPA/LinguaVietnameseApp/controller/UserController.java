@@ -271,7 +271,6 @@ public AppApiResponse<Long> countOnlineUsers() {
     }
 
     @PatchMapping("/{userId}/last-active")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #userId.toString() == authentication.name")
     public ResponseEntity<AppApiResponse<Void>> updateLastActive(
             @PathVariable UUID userId,
             Principal principal,

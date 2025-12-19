@@ -2,28 +2,19 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.NotificationType;
-// import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.Type;
-// import org.springframework.data.elasticsearch.annotations.Document;
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 @Entity
 @Table(name = "notifications")
-// @Document(indexName = "notifications")
 @Data
-// @EntityListeners(ElasticsearchEntityListener.class)
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
 public class Notification extends BaseEntity {
-    @org.springframework.data.annotation.Id
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "notification_id")
@@ -35,7 +26,8 @@ public class Notification extends BaseEntity {
     @Column(name = "title", nullable = false)
     private String title;
 
-    @Column(name = "content")
+    @Lob
+    @Column(name = "content", columnDefinition = "TEXT")
     private String content;
 
     @Enumerated(EnumType.STRING)
@@ -45,10 +37,10 @@ public class Notification extends BaseEntity {
     @Column(name = "language_code")
     private String languageCode;
 
+    @Lob
+    @Column(name = "payload", columnDefinition = "TEXT")
     private String payload;
 
     @Column(name = "read", nullable = false)
     private boolean read;
-
 }
-

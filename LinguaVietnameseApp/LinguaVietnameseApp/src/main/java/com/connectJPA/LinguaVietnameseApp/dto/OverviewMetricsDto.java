@@ -9,11 +9,15 @@ import lombok.*;
 @NoArgsConstructor
 @Builder
 public class OverviewMetricsDto {
-    private long totalLearningTimeSeconds; // Tổng thời gian học (từ _END events)
+    private long totalLearningTimeSeconds;
     private long lessonsCompleted;
     private long badgesEarned;
+    private int totalXP;
+    private long totalLearningTime;
+    private int currentStreak;
+    private int wordsLearned;
     private double averageAccuracy;
     private long totalExperience;
     private long totalCoins;
-    private long streakDays; // (Cần logic riêng để tính)
+    private long streakDays;
 }

@@ -13,7 +13,7 @@ async def generate_text(user_id: str, prompt: str, language: str, user_profile: 
     Replaces the previous transformers/GPT-2 mock implementation.
     """
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         system_context = (
             f"You are an expert language tutor assisting user {user_id}. "

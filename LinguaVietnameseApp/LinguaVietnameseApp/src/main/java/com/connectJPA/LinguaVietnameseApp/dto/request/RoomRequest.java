@@ -24,7 +24,7 @@ public class RoomRequest {
 
     private UUID creatorId;
 
-    private String description;
+    private String content;
 
     private int maxMembers;
 

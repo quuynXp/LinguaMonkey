@@ -1,17 +1,32 @@
-import instance from "../api/axiosClient";
-import { useAppStore } from "../stores/appStore";
+import instance from '../api/axiosClient';
+import { AppApiResponse } from '../types/dto';
 
-export const translateText = async (text: string, externalTargetLang?: string) => {
-  const { callPreferences } = useAppStore.getState();
-  const defaultTargetLang = callPreferences.nativeLanguage || "en";
+interface TranslationResponse {
+  translated_text: string;
+  detected_lang: string;
+}
 
-  const finalTargetLang = externalTargetLang || defaultTargetLang;
+export const translateText = async (
+  text: string,
+  targetLang: string,
+  roomId?: string,
+  messageId?: string
+): Promise<string | null> => {
+  try {
+    const response = await instance.post<AppApiResponse<TranslationResponse>>('/api/py/translate', {
+      text,
+      source_lang: 'auto',
+      target_lang: targetLang,
+      room_id: roomId,
+      message_id: messageId
+    });
 
-  const response = await instance.post("/api/py/translate", {
-    text,
-    source_lang: "auto",
-    target_lang: finalTargetLang,
-  });
-
-  return response.data.translated_text;
+    if (response.data && response.data.result) {
+      return response.data.result.translated_text;
+    }
+    return null;
+  } catch (error) {
+    console.error('Translation API error:', error);
+    return null;
+  }
 };

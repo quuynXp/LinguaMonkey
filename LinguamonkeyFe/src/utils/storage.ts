@@ -39,6 +39,25 @@ const initializeStorage = () => {
     }
 };
 
+export const clearChatCache = () => {
+    try {
+        const storageInstance = ensureStorageInitialized();
+        const allKeys = storageInstance.getAllKeys();
+
+        allKeys.forEach((key) => {
+            if (key.startsWith('room_msgs_') || key.startsWith('trans_')) {
+                storageInstance.delete(key);
+            }
+        });
+
+        logger.info('Chat cache cleared successfully');
+        return true;
+    } catch (error) {
+        logger.error('Failed to clear chat cache', error);
+        return false;
+    }
+};
+
 const isInitialized = initializeStorage();
 
 const ensureStorageInitialized = () => {
@@ -205,6 +224,7 @@ const mmkvStorage = {
     },
     delete: removeItem,
     clearAll,
+    clearChatCache,
     contains: (key: string) => {
         try {
             return ensureStorageInitialized().contains(key);

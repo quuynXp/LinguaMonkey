@@ -8,6 +8,7 @@ import * as Enums from "../../types/enums"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter"
+import { SupportedCurrency } from "../../utils/currency";
 
 const TransactionDetailsScreen = ({ route, navigation }: any) => {
   const { t } = useTranslation()
@@ -73,14 +74,13 @@ const TransactionDetailsScreen = ({ route, navigation }: any) => {
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Main Amount Card */}
         <View style={styles.amountCard}>
           <View style={styles.iconCircle}>
             <Icon name={getIconName(transaction.type)} size={32} color="#4F46E5" />
           </View>
           <Text style={styles.amountLabel}>{t('transaction.totalAmount')}</Text>
           <Text style={styles.amountLarge}>
-            {convert(transaction.amount, transaction.currency || 'USD')}
+            {convert(transaction.amount, (transaction.currency || 'USD') as SupportedCurrency)}
           </Text>
           <View style={[styles.statusBadge, { borderColor: getStatusColor(transaction.status).color }]}>
             <Text style={[styles.statusText, getStatusColor(transaction.status)]}>
@@ -148,7 +148,7 @@ const styles = createScaledSheet({
   errorContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { fontSize: 16, color: '#EF4444' },
 
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 50, paddingBottom: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 20, paddingBottom: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
   placeholder: { width: 24 },
 

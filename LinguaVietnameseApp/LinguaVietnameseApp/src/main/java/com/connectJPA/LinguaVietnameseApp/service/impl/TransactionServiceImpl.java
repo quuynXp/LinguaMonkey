@@ -11,6 +11,7 @@ import com.connectJPA.LinguaVietnameseApp.mapper.TransactionMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stripe.Stripe;
 import com.stripe.exception.SignatureVerificationException;
@@ -120,7 +121,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .user(user)
                 .wallet(wallet)
                 .amount(request.getAmount())
-                .currency("USD")
+                .currency("USD") // Force USD storage
                 .type(TransactionType.WITHDRAW)
                 .status(TransactionStatus.PENDING)
                 .provider(TransactionProvider.INTERNAL) 
@@ -275,12 +276,16 @@ public class TransactionServiceImpl implements TransactionService {
         User user = getUser(request.getUserId());
         Wallet wallet = getWallet(user.getUserId());
 
+        // Always store as USD. Assuming FE sends USD.
+        // If FE sends VND, we should convert here, but assuming FE is consistent with "10 20 30 USD".
+        BigDecimal usdAmount = request.getAmount();
+
         Transaction transaction = Transaction.builder()
                 .transactionId(UUID.randomUUID())
                 .user(user)
                 .wallet(wallet)
-                .amount(request.getAmount())
-                .currency(request.getCurrency() != null ? request.getCurrency() : "USD")
+                .amount(usdAmount)
+                .currency("USD") // Strictly enforce USD for storage
                 .provider(request.getProvider())
                 .type(TransactionType.DEPOSIT)
                 .description("Deposit to wallet via " + request.getProvider())
@@ -291,9 +296,11 @@ public class TransactionServiceImpl implements TransactionService {
         transaction = transactionRepository.save(transaction);
 
         if (request.getProvider() == TransactionProvider.VNPAY) {
-            return createVnPayUrl(transaction, request.getAmount(), request.getCurrency(), clientIp);
+            // Pass the transaction (which is USD) to VNPAY generator
+            // It will handle USD -> VND conversion for the URL only
+            return createVnPayUrl(transaction, clientIp);
         } else {
-            return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), "Deposit to wallet", request.getReturnUrl());
+            return createStripeCheckoutSession(transaction, usdAmount, "USD", "Deposit to wallet", request.getReturnUrl());
         }
     }
     
@@ -332,17 +339,11 @@ public class TransactionServiceImpl implements TransactionService {
             expectedAmount = BigDecimal.ZERO;
         }
         
-        BigDecimal tolerance;
-        if (currency != null && "VND".equalsIgnoreCase(currency)) {
-            BigDecimal rate = currencyService.getUsdToVndRate();
-            expectedAmount = expectedAmount.multiply(rate);
-            tolerance = new BigDecimal("2000"); 
-        } else {
-            tolerance = new BigDecimal("0.05");
-        }
+        // Since we are strictly USD, we expect input to be USD
+        BigDecimal tolerance = new BigDecimal("0.05");
         
         if (requestedAmount.subtract(expectedAmount).abs().compareTo(tolerance) > 0) {
-            log.error("Price Mismatch! Expected: {} {}, Received: {}", expectedAmount, currency, requestedAmount);
+            log.error("Price Mismatch! Expected: {} USD, Received: {}", expectedAmount, requestedAmount);
             throw new AppException(ErrorCode.INVALID_AMOUNT);
         }
 
@@ -364,7 +365,7 @@ public class TransactionServiceImpl implements TransactionService {
             request.getAmount(), 
             request.getCoins(), 
             request.getDescription(),
-            request.getCurrency()
+            "USD" // Force validation logic to treat amounts as USD
         );
 
         if (finalAmount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -375,7 +376,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .transactionId(UUID.randomUUID())
                 .user(user)
                 .amount(finalAmount)
-                .currency(request.getCurrency() != null ? request.getCurrency() : "USD")
+                .currency("USD") // Strictly enforce USD
                 .provider(request.getProvider())
                 .type(request.getType() != null ? request.getType() : TransactionType.PAYMENT)
                 .description(request.getDescription())
@@ -389,32 +390,36 @@ public class TransactionServiceImpl implements TransactionService {
         transaction = transactionRepository.save(transaction);
 
         if (request.getProvider() == TransactionProvider.VNPAY) {
-            return createVnPayUrl(transaction, finalAmount, request.getCurrency(), clientIp);
+            return createVnPayUrl(transaction, clientIp);
         } else {
-            return createStripeCheckoutSession(transaction, finalAmount, request.getCurrency(), request.getDescription(), request.getReturnUrl());
+            return createStripeCheckoutSession(transaction, finalAmount, "USD", request.getDescription(), request.getReturnUrl());
         }
     }
 
     private String createStripeCheckoutSession(Transaction transaction, BigDecimal amount, String currency, String description, String returnUrl) {
         Stripe.apiKey = stripeApiKey;
-        String stripeCurrency = (currency != null) ? currency.toLowerCase() : "usd";
+        String stripeCurrency = "usd"; // Force USD for Stripe if wallet is USD
         
-        String deepLinkSuccess = returnUrl + "?status=success&transactionId=" + transaction.getTransactionId();
-        String deepLinkCancel = returnUrl + "?status=cancel&transactionId=" + transaction.getTransactionId();
+        String separator = returnUrl.contains("?") ? "&" : "?";
+        String deepLinkSuccess = returnUrl + separator + "status=success&transactionId=" + transaction.getTransactionId();
+        String deepLinkCancel = returnUrl + separator + "status=cancel&transactionId=" + transaction.getTransactionId();
+
+        // Calculate unit amount (USD cents)
+        long unitAmount = amount.multiply(BigDecimal.valueOf(100)).longValue();
 
         SessionCreateParams.Builder paramsBuilder = SessionCreateParams.builder()
                 .addPaymentMethodType(SessionCreateParams.PaymentMethodType.CARD)
                 .setMode(SessionCreateParams.Mode.PAYMENT)
                 .setSuccessUrl(deepLinkSuccess)
                 .setCancelUrl(deepLinkCancel)
-                .setClientReferenceId(transaction.getTransactionId().toString())
+                .setClientReferenceId(transaction.getTransactionId().toString()) 
                 .addLineItem(SessionCreateParams.LineItem.builder()
                         .setQuantity(1L)
                         .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
                                 .setCurrency(stripeCurrency)
-                                .setUnitAmount(amount.multiply(BigDecimal.valueOf(100)).longValue()) // Stripe expects cents/smallest unit
+                                .setUnitAmount(unitAmount) 
                                 .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
-                                        .setName(description != null ? description : "LinguaVietnamese Transaction")
+                                        .setName(description != null ? description : "LinguaMonkey Payment")
                                         .build())
                                 .build())
                         .build());
@@ -427,7 +432,7 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
 
-    private String createVnPayUrl(Transaction transaction, BigDecimal amount, String currency, String clientIp) {
+    private String createVnPayUrl(Transaction transaction, String clientIp) {
         String vnp_Version = "2.1.0";
         String vnp_Command = "pay";
         String vnp_OrderInfo = (transaction.getDescription() != null) ? transaction.getDescription() : "Payment";
@@ -436,12 +441,11 @@ public class TransactionServiceImpl implements TransactionService {
         
         String backendReturnUrl = appBackendUrl + "/api/v1/transactions/vnpay-return";
 
-        BigDecimal amountVND = amount;
-        if (!"VND".equalsIgnoreCase(currency)) {
-            BigDecimal rate = currencyService.getUsdToVndRate();
-            amountVND = amount.multiply(rate);
-        }
+        // IMPORTANT: Transaction is stored in USD. We must convert to VND for VNPay.
+        BigDecimal rate = currencyService.getUsdToVndRate();
+        BigDecimal amountVND = transaction.getAmount().multiply(rate);
         
+        // VNPAY requires amount * 100
         long amountVal = amountVND.multiply(BigDecimal.valueOf(100)).longValue();
 
         Map<String, String> vnp_Params = new HashMap<>();
@@ -550,11 +554,8 @@ public class TransactionServiceImpl implements TransactionService {
                 if ("00".equals(responseCode)) {
                     transaction.setStatus(TransactionStatus.SUCCESS);
                     
-                    if (transaction.getType() == TransactionType.DEPOSIT) {
-                        walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
-                    } else if (transaction.getType() == TransactionType.PAYMENT || transaction.getType() == TransactionType.UPGRADE_VIP) {
-                        handleSuccessfulPayment(transaction.getTransactionId().toString());
-                    }
+                    // Transaction is already in USD (ensured at creation), so this credit call is safe.
+                    handleSuccessfulPayment(transaction.getTransactionId().toString());
                     
                     transactionRepository.save(transaction);
                     return baseDeepLink + "?status=success&transactionId=" + txnRef;
@@ -593,34 +594,54 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    public String handleWebhook(WebhookRequest request) {
-        return handleStripeWebhook(request.getPayload());
-    }
-
-    @Transactional
-    protected String handleStripeWebhook(Map<String, String> params) {
-        String payload = params.get("payload");
-        String signatureHeader = params.get("stripe-signature");
-
+    public String handleWebhook(String payload, String signatureHeader) {
         if (payload == null || signatureHeader == null) {
+            log.error("Stripe Webhook Error: Missing payload or signature");
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
         try {
             Event event = Webhook.constructEvent(payload, signatureHeader, stripeWebhookSecret);
-            EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
-
-            if (deserializer.getObject().isPresent()) {
-                if ("checkout.session.completed".equals(event.getType())) {
-                    Session session = (Session) deserializer.getObject().get();
-                    handleSuccessfulPayment(session.getClientReferenceId());
-                }
-            }
+            processStripeEvent(event);
             return "Webhook processed successfully";
         } catch (SignatureVerificationException e) {
+            log.error("Stripe Signature Verification Failed! Header: {}", signatureHeader);
             throw new AppException(ErrorCode.INVALID_SIGNATURE);
         } catch (Exception e) {
+            log.error("Stripe Webhook Processing Error", e);
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    private void processStripeEvent(Event event) {
+        log.info("Processing Stripe Event: {}", event.getType());
+        
+        if ("checkout.session.completed".equals(event.getType())) {
+            EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+            String clientReferenceId = null;
+
+            if (deserializer.getObject().isPresent()) {
+                Session session = (Session) deserializer.getObject().get();
+                clientReferenceId = session.getClientReferenceId();
+            } else {
+                log.warn("Stripe Event deserialization failed, parsing raw JSON...");
+                try {
+                    String rawJson = deserializer.getRawJson();
+                    JsonNode rootNode = objectMapper.readTree(rawJson);
+                    if (rootNode.has("client_reference_id")) {
+                        clientReferenceId = rootNode.get("client_reference_id").asText();
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to parse raw Stripe JSON", e);
+                }
+            }
+
+            if (clientReferenceId != null && !clientReferenceId.isEmpty() && !"null".equals(clientReferenceId)) {
+                log.info("Processing Stripe Success for Tx: {}", clientReferenceId);
+                handleSuccessfulPayment(clientReferenceId);
+            } else {
+                log.error("Stripe Session completed but ClientReferenceId is missing or null.");
+            }
         }
     }
 
@@ -631,25 +652,39 @@ public class TransactionServiceImpl implements TransactionService {
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
 
         if (transaction.getStatus() == TransactionStatus.SUCCESS) {
-            
-            UUID userId = transaction.getUser().getUserId();
-            BigDecimal amount = transaction.getAmount();
-
-            if (transaction.getType() == TransactionType.DEPOSIT) {
-                walletService.credit(userId, amount);
-            } 
-            else if (transaction.getType() == TransactionType.PAYMENT) {
-                log.info("Payment successful for transaction {}. Check enrollment manually if field missing.", transactionId);
-            }
-            else if (transaction.getType() == TransactionType.UPGRADE_VIP) {
-                boolean isVip = transaction.getType() == TransactionType.UPGRADE_VIP;
-                String descLower = transaction.getDescription() != null ? transaction.getDescription().toLowerCase() : "";
-                
-                if (isVip || descLower.contains("vip") || descLower.contains("trial")) {
-                      activateVipForUser(userId, descLower);
-                }
-            }
+            log.info("Transaction {} already successful, skipping.", transactionId);
+            return;
         }
+
+        transaction.setStatus(TransactionStatus.SUCCESS);
+
+        UUID userId = transaction.getUser().getUserId();
+        BigDecimal amount = transaction.getAmount();
+
+        // CREDIT WALLET (Stored as USD)
+        if (transaction.getType() == TransactionType.DEPOSIT) {
+            walletService.credit(userId, amount);
+            log.info("Wallet credited for Deposit Tx: {}", transactionId);
+        } 
+        else if (transaction.getType() == TransactionType.PAYMENT) {
+             if (transaction.getCourseVersionId() != null) {
+                 createEnrollment(transaction.getUser(), transaction.getCourseVersionId());
+                 log.info("User enrolled in course for Payment Tx: {}", transactionId);
+             }
+        }
+        
+        String descLower = transaction.getDescription() != null ? transaction.getDescription().toLowerCase() : "";
+        boolean isVip = transaction.getType() == TransactionType.UPGRADE_VIP || 
+                        descLower.contains("vip") || 
+                        descLower.contains("trial");
+
+        if (isVip) {
+             activateVipForUser(userId, descLower);
+             log.info("VIP Activated for Tx: {}", transactionId);
+        }
+        
+        transactionRepository.save(transaction);
+        log.info("Transaction {} saved with status SUCCESS", transactionId);
     }
 
     @Override
@@ -681,7 +716,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .sender(sender)
                 .receiver(receiver)
                 .amount(request.getAmount())
-                .currency("USD")
+                .currency("USD") // Force USD
                 .type(TransactionType.TRANSFER)
                 .status(TransactionStatus.PENDING)
                 .provider(TransactionProvider.INTERNAL)
@@ -734,7 +769,7 @@ public class TransactionServiceImpl implements TransactionService {
             request.getAmount(), 
             request.getCoins(), 
             request.getDescription(),
-            request.getCurrency()
+            "USD" // Force USD
         );
 
         Wallet wallet = getWallet(user.getUserId());
@@ -747,12 +782,9 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setUser(user);
         transaction.setSender(user);
         transaction.setAmount(finalAmount);
+        transaction.setCurrency("USD"); // Force USD
         transaction.setStatus(request.getStatus() != null ? request.getStatus() : TransactionStatus.PENDING);
         transaction.setCreatedAt(OffsetDateTime.now());
-        
-        if (transaction.getCurrency() == null) {
-            transaction.setCurrency("USD");
-        }
         
         if (request.getType() == TransactionType.UPGRADE_VIP) {
             transaction.setReceiver(null);
@@ -775,9 +807,9 @@ public class TransactionServiceImpl implements TransactionService {
                  createEnrollment(user, request.getCourseVersionId());
              }
 
-             if (request.getType() == TransactionType.UPGRADE_VIP) {
-                 String descLower = request.getDescription() != null ? request.getDescription().toLowerCase() : "";
-                 activateVipForUser(user.getUserId(), descLower);
+             String descLower = request.getDescription() != null ? request.getDescription().toLowerCase() : "";
+             if (request.getType() == TransactionType.UPGRADE_VIP || descLower.contains("vip")) {
+                  activateVipForUser(user.getUserId(), descLower);
              }
         }
 
@@ -790,6 +822,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         boolean alreadyEnrolled = enrollmentRepository.existsByUserIdAndCourseVersion_VersionId(user.getUserId(), courseVersionId);
         if (alreadyEnrolled) {
+            log.info("User {} already enrolled in {}", user.getUserId(), courseVersionId);
             return;
         }
 
@@ -835,7 +868,7 @@ public class TransactionServiceImpl implements TransactionService {
             .sender(original.getReceiver())
             .receiver(original.getSender())
             .amount(original.getAmount())
-            .currency(original.getCurrency())
+            .currency("USD") // Force USD
             .type(TransactionType.REFUND)
             .status(TransactionStatus.PENDING)
             .provider(TransactionProvider.INTERNAL)

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
-    Alert, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Image, FlatList
+    Alert, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Image
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -296,6 +296,37 @@ const CreateLessonScreen = () => {
         return found ? getCountryFlag(found.countryEnum) : "🏳️";
     }
 
+    const onThumbnailUploadSuccess = (result: any) => {
+        // FIX: Handle result as Object, not String ID
+        const id = result.fileId || result.id;
+        const url = result.fileUrl || result.url || result.secure_url;
+        
+        if (id && !url?.includes('http')) {
+             setThumbnailUrl(`https://drive.google.com/open?id=${id}`);
+        } else if (url) {
+             setThumbnailUrl(url);
+        } else if (typeof result === 'string') {
+             setThumbnailUrl(result);
+        }
+    };
+
+    const onQuestionMediaUploadSuccess = (result: any) => {
+        // FIX: Handle result as Object, not String ID
+        const id = result.fileId || result.id;
+        const url = result.fileUrl || result.url || result.secure_url;
+        
+        let finalUrl = '';
+        if (id && !url?.includes('http')) {
+            finalUrl = `https://drive.google.com/open?id=${id}`;
+        } else if (url) {
+            finalUrl = url;
+        } else if (typeof result === 'string') {
+            finalUrl = result;
+        }
+        
+        setCurrentQ({ ...currentQ, mediaUrl: finalUrl });
+    };
+
     const renderHeader = () => (
         <View style={styles.section}>
             <View style={styles.rowCenter}>
@@ -305,7 +336,7 @@ const CreateLessonScreen = () => {
                         style={{ width: 60, height: 60, borderRadius: 5, marginRight: 10 }}
                     />
                 ) : null}
-                <FileUploader mediaType="image" onUploadSuccess={id => setThumbnailUrl(`https://drive.google.com/open?id=${id}`)}>
+                <FileUploader mediaType="image" onUploadSuccess={onThumbnailUploadSuccess}>
                     <Text style={{ color: '#4ECDC4', fontWeight: 'bold' }}>+ Thumbnail</Text>
                 </FileUploader>
             </View>
@@ -503,7 +534,7 @@ const CreateLessonScreen = () => {
                         {currentQ.mediaUrl ? (
                             <MediaPreviewItem url={currentQ.mediaUrl} onDelete={() => setCurrentQ({ ...currentQ, mediaUrl: '' })} />
                         ) : (
-                            <FileUploader mediaType="all" onUploadSuccess={id => setCurrentQ({ ...currentQ, mediaUrl: `https://drive.google.com/open?id=${id}` })}>
+                            <FileUploader mediaType="all" onUploadSuccess={onQuestionMediaUploadSuccess}>
                                 <View style={[styles.input, { alignItems: 'center' }]}><Text>+ Upload Media</Text></View>
                             </FileUploader>
                         )}

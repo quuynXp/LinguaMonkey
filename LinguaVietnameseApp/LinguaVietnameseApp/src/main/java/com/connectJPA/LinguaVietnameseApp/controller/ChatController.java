@@ -32,7 +32,6 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -79,7 +78,7 @@ public class ChatController {
     @GetMapping("/stats/{userId}")
     public ResponseEntity<AppApiResponse<ChatStatsResponse>> getStats(
             @PathVariable UUID userId,
-            Locale locale) { // Fixed: Removed incorrect @Locale annotation
+            Locale locale) {
         ChatStatsResponse stats = chatMessageService.getStatsByUser(userId);
         return ResponseEntity.ok(AppApiResponse.<ChatStatsResponse>builder()
                 .code(200)
@@ -119,7 +118,6 @@ public class ChatController {
     public void sendMessage(
             @DestinationVariable UUID roomId,
             @Payload ChatMessageRequest messageRequest,
-            Principal principal,
             SimpMessageHeaderAccessor headerAccessor) {
         
         log.info("📥 [STOMP] Received message for room: {}", roomId);
@@ -140,19 +138,34 @@ public class ChatController {
     @MessageMapping("/chat/message/{messageId}/react")
     public void reactToMessage (
             @DestinationVariable UUID messageId,
-            @Payload String reaction,
-            Principal principal){
-        ChatMessageResponse updatedMessage = chatMessageService.addReaction(messageId, reaction, UUID.fromString(principal.getName()));
+            @Payload Map<String, String> payload){
+        
+        String reaction = payload.get("reaction");
+        String userIdStr = payload.get("userId");
+        
+        if (reaction == null || userIdStr == null) {
+            log.warn("Invalid reaction payload for msg: {}", messageId);
+            return;
+        }
+
+        UUID userId = UUID.fromString(userIdStr);
+        ChatMessageResponse updatedMessage = chatMessageService.addReaction(messageId, reaction, userId);
         messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId(), updatedMessage);
     }
 
     @MessageMapping("/chat/message/{messageId}/read")
     public void markMessageAsRead (
             @DestinationVariable UUID messageId,
-            @Payload Map<String, Object> payload, 
-            Principal principal){
+            @Payload Map<String, Object> payload){
         
-        UUID userId = UUID.fromString(principal.getName());
+        String senderIdStr = (String) payload.get("senderId");
+        
+        if (senderIdStr == null) {
+            log.warn("markMessageAsRead: senderId is missing in payload for msg {}", messageId);
+            return;
+        }
+
+        UUID userId = UUID.fromString(senderIdStr);
         ChatMessageResponse updatedMessage = chatMessageService.markAsRead(messageId, userId);
         
         if (updatedMessage != null) {
@@ -170,12 +183,16 @@ public class ChatController {
     @MessageMapping("/chat/room/{roomId}/typing")
     public void handleTypingStatus (
             @DestinationVariable UUID roomId,
-            @Payload TypingStatusRequest request,
-            Principal principal){
-        request.setUserId(UUID.fromString(principal.getName()));
+            @Payload TypingStatusRequest request){
+        
+        if (request.getUserId() == null) {
+            return;
+        }
+
         chatMessageService.handleTypingStatus(roomId, request);
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+        
         if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
             roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(roomId).stream()
                     .map(RoomMember::getId)
@@ -195,10 +212,10 @@ public class ChatController {
     @MessageMapping("/chat/room/{roomId}/status")
     public void handleUserStatus(
             @DestinationVariable UUID roomId,
-            @Payload UserStatusRequest request,
-            Principal principal) {
+            @Payload UserStatusRequest request) {
         
-        request.setUserId(UUID.fromString(principal.getName()));
-        messagingTemplate.convertAndSend("/topic/room/" + roomId + "/status", request);
+        if (request.getUserId() != null) {
+            messagingTemplate.convertAndSend("/topic/room/" + roomId + "/status", request);
+        }
     }
 }

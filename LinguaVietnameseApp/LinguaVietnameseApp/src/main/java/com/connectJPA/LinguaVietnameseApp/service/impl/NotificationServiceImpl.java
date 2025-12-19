@@ -44,10 +44,8 @@ public class NotificationServiceImpl implements NotificationService {
     private final UserSettingsRepository userSettingsRepository;
     private final Gson gson = new Gson();
 
-    // Định nghĩa các hằng số ngôn ngữ để tránh hardcode
     private static final String LANG_VI = "vi";
     private static final String LANG_ZH = "zh";
-    // private static final String LANG_EN = "en"; // Default
 
     @Override
     public Page<Notification> searchNotifications(String keyword, int page, int size, Map<String, Object> filters) {
@@ -79,7 +77,6 @@ public class NotificationServiceImpl implements NotificationService {
         return user.getNativeLanguageCode() != null ? Locale.forLanguageTag(user.getNativeLanguageCode()) : Locale.getDefault();
     }
     
-    // Helper để lấy native language code dạng String (vi, en, zh)
     private String getUserLanguageCode(UUID userId) {
         return userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .map(User::getNativeLanguageCode)
@@ -147,20 +144,17 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW) // Cách ly transaction để không làm rollback luồng chính (Chat, Payment) nếu DB log lỗi
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void createPushNotification(NotificationRequest request) {
-        // 1. Cố gắng lưu vào DB
         try {
             Notification notification = notificationMapper.toEntity(request);
             notification.setCreatedAt(OffsetDateTime.now());
             notification.setRead(false);
-            notificationRepository.save(notification);
+            notificationRepository.saveAndFlush(notification);
         } catch (Exception e) {
-            // Log lỗi DB nhưng KHÔNG throw exception để FCM vẫn có thể gửi được
             log.error("Failed to save notification to DB due to: {}. Proceeding to send FCM...", e.getMessage());
         }
         
-        // 2. Gửi FCM (Ưu tiên cao nhất)
         sendFcmToUser(request);
     }
 
@@ -203,12 +197,11 @@ public class NotificationServiceImpl implements NotificationService {
             ApnsConfig apnsConfig = ApnsConfig.builder()
                     .setAps(Aps.builder()
                             .setSound(soundValue)
-                            .setContentAvailable(true) // Cho phép wake up app để xử lý background (quan trọng cho decrypt)
-                            .setMutableContent(true)   // Cho phép Notification Extension thay đổi nội dung
+                            .setContentAvailable(true)
+                            .setMutableContent(true)
                             .build())
                     .build();
 
-            // Prepare Data Payload once
             Map<String, String> dataPayload = new HashMap<>();
             dataPayload.put("type", request.getType() != null ? request.getType() : "DEFAULT");
             dataPayload.put("notificationId", request.getId() != null ? request.getId().toString() : "");

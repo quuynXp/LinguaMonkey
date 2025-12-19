@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,21 +15,22 @@ import { useTranslation } from "react-i18next";
 import { useUsers } from "../../hooks/useUsers";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { UserResponse } from "../../types/dto";
 
 const AdminUserManagementScreen = () => {
   const { t } = useTranslation();
+
   const { useAllUsers, useDeleteUser } = useUsers();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
 
-  // Chỉ gửi các tham số lọc nếu searchQuery có giá trị.
-  // Nếu searchQuery là chuỗi rỗng (''), các tham số sẽ là undefined và bị bỏ qua.
+  const [allUsers, setAllUsers] = useState<UserResponse[]>([]);
+
   const queryParams = searchQuery
     ? {
       email: searchQuery,
       fullname: searchQuery,
-      nickname: searchQuery,
     }
     : {};
 
@@ -41,48 +42,90 @@ const AdminUserManagementScreen = () => {
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
 
+  // Logic nối danh sách (Load More)
+  useEffect(() => {
+    if (data?.data) {
+      // Ép kiểu dữ liệu từ API về UserResponse[] để TS không báo lỗi
+      const incomingData = data.data as UserResponse[];
+
+      if (page === 0) {
+        setAllUsers(incomingData);
+      } else {
+        setAllUsers((prev) => {
+          const newIds = new Set(incomingData.map((u) => u.userId));
+          const uniquePrev = prev.filter(u => !newIds.has(u.userId));
+          return [...uniquePrev, ...incomingData];
+        });
+      }
+    }
+  }, [data, page]);
+
   const handleSearch = () => {
     setPage(0);
+    setAllUsers([]);
     refetch();
   };
 
   const handleDelete = (userId: string, userName: string) => {
     Alert.alert(
-      t("admin.users.deleteTitle"),
-      t("admin.users.deleteConfirm", { name: userName }),
+      t("admin.users.deleteTitle") || "Delete User",
+      t("admin.users.deleteConfirm", { name: userName }) || `Delete ${userName}?`,
       [
         { text: t("common.cancel"), style: "cancel" },
         {
           text: t("common.delete"),
           style: "destructive",
-          onPress: () => deleteUser(userId),
+          onPress: () => {
+            deleteUser(userId, {
+              onSuccess: () => {
+                setAllUsers((prev) => prev.filter((u) => u.userId !== userId));
+              },
+            });
+          },
         },
       ]
     );
   };
 
-  const renderItem = ({ item }: { item: any }) => (
+  const renderItem = ({ item }: { item: UserResponse }) => (
     <View style={styles.userCard}>
       <Image
-        source={{ uri: item.avatarUrl || "https://via.placeholder.com/50" }}
+        source={{ uri: item.avatarUrl || "https://via.placeholder.com/150" }}
         style={styles.avatar}
       />
       <View style={styles.userInfo}>
-        <Text style={styles.userName}>{item.fullname || item.nickname || "No Name"}</Text>
-        <Text style={styles.userEmail}>{item.email}</Text>
-        <Text style={styles.userMeta}>
-          Level {item.level || 0} • {item.country || "Unknown"}
+        <Text style={styles.userName}>
+          {item.fullname || item.nickname || item.email?.split('@')[0] || "No Name"}
         </Text>
+        <Text style={styles.userEmail}>{item.email}</Text>
+        <View style={styles.metaRow}>
+          {item.vip && (
+            <View style={styles.vipTag}>
+              <Text style={styles.vipText}>VIP</Text>
+            </View>
+          )}
+          <Text style={styles.userMeta}>
+            Lv.{item.level || 0} • {item.country || "Global"}
+          </Text>
+        </View>
       </View>
       <TouchableOpacity
         style={styles.deleteBtn}
-        onPress={() => handleDelete(item.userId, item.fullname)}
+        onPress={() => handleDelete(item.userId, item.fullname || "User")}
         disabled={isDeleting}
       >
         <Icon name="delete-outline" size={24} color="#EF4444" />
       </TouchableOpacity>
     </View>
   );
+
+  const handleLoadMore = () => {
+    // Ép kiểu data thành any để truy cập pagination mà không bị TS chặn
+    const responseData = data as any;
+    if (!isFetching && responseData?.pagination?.hasNext) {
+      setPage((prev) => prev + 1);
+    }
+  };
 
   return (
     <ScreenLayout>
@@ -91,10 +134,17 @@ const AdminUserManagementScreen = () => {
           <Icon name="search" size={20} color="#94A3B8" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder={t("admin.users.searchPlaceholder")}
+            placeholder={t("admin.users.searchPlaceholder") || "Search by email/name..."}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={(text) => {
+              setSearchQuery(text);
+              if (text === "") {
+                setPage(0);
+                refetch();
+              }
+            }}
             onSubmitEditing={handleSearch}
+            returnKeyType="search"
           />
         </View>
 
@@ -102,19 +152,25 @@ const AdminUserManagementScreen = () => {
           <ActivityIndicator size="large" color="#4F46E5" style={styles.loader} />
         ) : (
           <FlatList
-            data={data?.data}
+            data={allUsers}
             keyExtractor={(item) => item.userId}
             renderItem={renderItem}
             contentContainerStyle={styles.listContent}
             refreshControl={
-              <RefreshControl refreshing={isFetching} onRefresh={refetch} />
+              <RefreshControl
+                refreshing={isFetching && page === 0}
+                onRefresh={() => { setPage(0); refetch(); }}
+              />
             }
-            onEndReached={() => {
-              if (data?.pagination?.hasNext) setPage((prev) => prev + 1);
-            }}
+            onEndReached={handleLoadMore}
             onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              isFetching && page > 0 ? <ActivityIndicator size="small" color="#4F46E5" style={{ margin: 10 }} /> : null
+            }
             ListEmptyComponent={
-              <Text style={styles.emptyText}>{t("admin.users.noUsers")}</Text>
+              !isFetching ? (
+                <Text style={styles.emptyText}>{t("admin.users.noUsers") || "No users found"}</Text>
+              ) : null
             }
           />
         )}
@@ -157,7 +213,10 @@ const styles = createScaledSheet({
   userInfo: { flex: 1, marginLeft: 16 },
   userName: { fontSize: 16, fontWeight: "700", color: "#1E293B" },
   userEmail: { fontSize: 13, color: "#64748B", marginTop: 2 },
-  userMeta: { fontSize: 12, color: "#94A3B8", marginTop: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 },
+  userMeta: { fontSize: 12, color: "#94A3B8" },
+  vipTag: { backgroundColor: '#FFD700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  vipText: { fontSize: 10, fontWeight: 'bold', color: '#B45309' },
   deleteBtn: { padding: 8 },
   emptyText: { textAlign: "center", marginTop: 40, color: "#94A3B8" },
 });

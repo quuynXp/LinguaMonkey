@@ -9,10 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -23,14 +21,12 @@ public class MemorizationController {
     private final UserMemorizationService memorizationService;
     private final MessageSource messageSource;
 
-    @Operation(summary = "Save a memorization item", description = "Save a note, event, lesson, video, vocabulary, or formula for a user")
+    @Operation(summary = "Save a memorization item")
     @PostMapping
     public AppApiResponse<MemorizationResponse> saveMemorization(
             @RequestBody MemorizationRequest request,
-            Principal principal,
             Locale locale) {
-        UUID authenticatedUserId = UUID.fromString(principal.getName());
-        MemorizationResponse response = memorizationService.saveMemorization(request, authenticatedUserId);
+        MemorizationResponse response = memorizationService.saveMemorization(request, request.getUserId());
         return AppApiResponse.<MemorizationResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("memorization.create.success", null, locale))
@@ -38,15 +34,14 @@ public class MemorizationController {
                 .build();
     }
 
-    @Operation(summary = "Update a memorization item", description = "Update an existing memorization item")
+    @Operation(summary = "Update a memorization item")
     @PutMapping("/{memorizationId}")
     public AppApiResponse<MemorizationResponse> updateMemorization(
             @PathVariable UUID memorizationId,
             @RequestBody MemorizationRequest request,
-            Principal principal,
             Locale locale) {
-        UUID authenticatedUserId = UUID.fromString(principal.getName());
-        MemorizationResponse response = memorizationService.updateMemorization(memorizationId, request, authenticatedUserId);
+        // Lấy userId trực tiếp từ Request Body
+        MemorizationResponse response = memorizationService.updateMemorization(memorizationId, request, request.getUserId());
         return AppApiResponse.<MemorizationResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("memorization.update.success", null, locale))
@@ -54,29 +49,27 @@ public class MemorizationController {
                 .build();
     }
 
-    @Operation(summary = "Delete a memorization item", description = "Soft delete a memorization item")
+    @Operation(summary = "Delete a memorization item")
     @DeleteMapping("/{memorizationId}")
     public AppApiResponse<Void> deleteMemorization(
             @PathVariable UUID memorizationId,
-            Principal principal,
+            @RequestParam UUID userId, 
             Locale locale) {
-        UUID authenticatedUserId = UUID.fromString(principal.getName());
-        memorizationService.deleteMemorization(memorizationId, authenticatedUserId);
+        memorizationService.deleteMemorization(memorizationId, userId);
         return AppApiResponse.<Void>builder()
                 .code(200)
                 .message(messageSource.getMessage("memorization.delete.success", null, locale))
                 .build();
     }
 
-    @Operation(summary = "Get memorization items", description = "Get paginated memorization items for a user, optionally filtered by content type")
+    @Operation(summary = "Get memorization items")
     @GetMapping
     public AppApiResponse<Page<MemorizationResponse>> getMemorizations(
+            @RequestParam UUID userId, 
             @RequestParam(required = false) String contentType,
             Pageable pageable,
-            Principal principal,
             Locale locale) {
-        UUID authenticatedUserId = UUID.fromString(principal.getName());
-        Page<MemorizationResponse> memorizations = memorizationService.getMemorizationsByUser(authenticatedUserId, contentType, pageable);
+        Page<MemorizationResponse> memorizations = memorizationService.getMemorizationsByUser(userId, contentType, pageable);
         return AppApiResponse.<Page<MemorizationResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("memorization.list.success", null, locale))

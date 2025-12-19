@@ -10,7 +10,7 @@ import binascii
 import time
 import re
 import string
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Set, Any, Generic, TypeVar
 from contextlib import asynccontextmanager
@@ -34,7 +34,7 @@ from src.core.video_call_service import start_or_join_call, end_call_if_empty
 from src.core.session import get_db, AsyncSessionLocal
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.user_profile_service import get_user_profile
-from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
+from src.api.chat_ai import chat_with_ai, chat_with_ai_stream, FALLBACK_MESSAGE
 from src.api.tts_generator import generate_tts
 from src.worker.tasks import ingest_huggingface_task
 from src.worker.translation_consumer import run_translation_worker
@@ -42,6 +42,7 @@ from src.auth.auth_utils import verify_token_http, validate_websocket_token, sec
 from src.core.connection_manager import signal_manager, audio_manager, ConnectionManager
 from src.core.azure_stt import AzureTranscriber 
 from src.core.crypto_utils import aes_utils
+from src.core.models import RoomPurpose
 
 load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,7 @@ if GOOGLE_API_KEY:
 
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 
+# Used only for direct translation endpoint, separate from Chat AI tiers
 TRANSLATION_MODEL_TIERS = [
     {"name": "gemini-2.5-flash", "purpose": "Flash - Balanced"},
     {"name": "gemini-2.5-flash-lite", "purpose": "Lite - Cost Effective"},
@@ -333,6 +335,7 @@ class TranslationRequest(BaseModel):
     source_lang: str
     target_lang: str
     message_id: Optional[str] = None
+    room_id: Optional[str] = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -490,8 +493,14 @@ async def manual_translate(request: TranslationRequest, redis: Redis = Depends(g
                         message = result.scalar_one_or_none()
                         
                         if message:
+                            room_stmt = select(Room).where(Room.room_id == message.room_id)
+                            room_res = await db.execute(room_stmt)
+                            room = room_res.scalar_one_or_none()
+                            
+                            encrypted_trans = aes_utils.encrypt(translated_text, room.secret_key) if room and room.secret_key else translated_text
+                            
                             current_map = dict(message.translations) if message.translations else {}
-                            current_map[request.target_lang] = translated_text
+                            current_map[request.target_lang] = encrypted_trans
                             message.translations = current_map
                             flag_modified(message, "translations")
                             await db.commit()
@@ -546,6 +555,7 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
     if not user_id_str:
         await websocket.close(code=1008)
         return
+    
     db_session = AsyncSessionLocal()
     redis = await get_redis_client()
     translator = get_translator(redis)
@@ -564,17 +574,72 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                     room_id_str = msg.get("roomId")
                     if not raw_prompt: continue
                     
-                    async for chunk in chat_with_ai_stream(raw_prompt, history, user_profile, redis_client=redis):
-                          await websocket.send_text(json.dumps({
-                            "type": "chat_response_chunk", "content": chunk, "roomId": room_id_str
+                    try:
+                        # 1. Save USER message to DB immediately
+                        if room_id_str and user_id_str:
+                            try:
+                                user_msg_db = ChatMessage(
+                                    chat_message_id=uuid.uuid4(),
+                                    room_id=uuid.UUID(room_id_str),
+                                    sender_id=uuid.UUID(user_id_str),
+                                    content=raw_prompt,
+                                    message_type=MessageType.TEXT if hasattr(MessageType, 'TEXT') else "TEXT",
+                                    # Use timezone-aware UTC datetime
+                                    sent_at=datetime.now(timezone.utc)
+                                )
+                                # Note: Assuming schema has a default for is_read or we set it
+                                if hasattr(user_msg_db, 'is_read'): user_msg_db.is_read = True 
+                                
+                                db_session.add(user_msg_db)
+                                await db_session.commit()
+                            except Exception as db_err:
+                                logger.error(f"Failed to save User Message to DB: {db_err}")
+                                await db_session.rollback()
+
+                        full_response = ""
+                        async for chunk in chat_with_ai_stream(raw_prompt, history, user_profile, redis_client=redis):
+                            full_response += chunk
+                            await websocket.send_text(json.dumps({
+                                "type": "chat_response_chunk", 
+                                "content": chunk, 
+                                "roomId": room_id_str
+                            }))
+                        
+                        # 2. Save AI response to DB after streaming completes
+                        if full_response and room_id_str:
+                            try:
+                                ai_msg_db = ChatMessage(
+                                    chat_message_id=uuid.uuid4(),
+                                    room_id=uuid.UUID(room_id_str),
+                                    sender_id=AI_BOT_ID,
+                                    content=full_response,
+                                    message_type=MessageType.TEXT if hasattr(MessageType, 'TEXT') else "TEXT",
+                                    sent_at=datetime.now(timezone.utc)
+                                )
+                                if hasattr(ai_msg_db, 'is_read'): ai_msg_db.is_read = False
+
+                                db_session.add(ai_msg_db)
+                                await db_session.commit()
+                            except Exception as db_err:
+                                logger.error(f"Failed to save AI Message to DB: {db_err}")
+                                await db_session.rollback()
+
+                    except Exception as stream_err:
+                        logger.error(f"Stream generation crashed: {stream_err}")
+                        await websocket.send_text(json.dumps({
+                            "type": "chat_response_chunk", 
+                            "content": FALLBACK_MESSAGE, 
+                            "roomId": room_id_str
                         }))
-                    await websocket.send_text(json.dumps({"type": "chat_response_complete", "roomId": room_id_str}))
+                    finally:
+                        await websocket.send_text(json.dumps({"type": "chat_response_complete", "roomId": room_id_str}))
 
                 elif msg_type == "translate_request":
                     text = msg.get("text", "")
                     message_id = msg.get("messageId")
                     target_lang = msg.get("targetLang", "vi")
                     source_lang = msg.get("sourceLang", "auto")
+                    room_id = msg.get("roomId")
                     
                     if text:
                         translated, detected = await translator.translate(text, source_lang, target_lang)
@@ -585,7 +650,8 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                             "originalText": text,
                             "translatedText": translated,
                             "targetLang": target_lang,
-                            "detectedLang": detected
+                            "detectedLang": detected,
+                            "roomId": room_id
                         }
                         await websocket.send_text(json.dumps(response_payload))
                         
@@ -726,26 +792,42 @@ async def signaling_endpoint(websocket: WebSocket, token: str = Query(...), room
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
-            # FIX: Added "REACTION" to the whitelist so it gets broadcasted
+            
             if msg.get("type") in ["webrtc_signal", "JOIN_ROOM", "offer", "answer", "ice_candidate", "REACTION"]:
                 msg["senderId"] = user_id
                 if msg.get("type") == "JOIN_ROOM":
                     join_msg = {"type": "webrtc_signal", "senderId": user_id, "payload": {"type": "JOIN_ROOM"}}
                     await signal_manager.broadcast_except(join_msg, normalized_room_id, websocket)
+                    await signal_manager.broadcast_except({"type": "JOIN_ROOM", "senderId": user_id}, normalized_room_id, websocket)
                 else:
                     await signal_manager.broadcast_except(msg, normalized_room_id, websocket)
                     
     except WebSocketDisconnect:
         signal_manager.disconnect(websocket, normalized_room_id)
+        
         await signal_manager.broadcast_except(
             {"type": "USER_LEFT", "senderId": user_id}, 
             normalized_room_id, 
             None
         )
-        remaining_users = signal_manager.get_participant_count(normalized_room_id)
-        if remaining_users == 0:
+        
+        remaining_users = signal_manager.get_remaining_users(normalized_room_id)
+        count = len(remaining_users)
+        
+        if count == 1:
+            last_user_id = remaining_users[0]
+            if str(last_user_id) != str(user_id):
+                logger.info(f"Room {normalized_room_id} only has {last_user_id}. Sending FORCE_LEAVE.")
+                await signal_manager.send_to_user(
+                    {"type": "FORCE_LEAVE", "reason": "ALONE"}, 
+                    normalized_room_id, 
+                    last_user_id
+                )
+            
+        if count == 0:
             async with AsyncSessionLocal() as db_session:
                 await end_call_if_empty(db_session, normalized_room_id)
+                
     except Exception as e:
         logger.error(f"Signal Error: {e}")
         signal_manager.disconnect(websocket, normalized_room_id)

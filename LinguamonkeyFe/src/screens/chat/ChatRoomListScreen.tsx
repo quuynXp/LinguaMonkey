@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
   FlatList,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
+import { useFocusEffect } from '@react-navigation/native';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useJoinedRooms } from '../../hooks/useRoom';
@@ -17,21 +18,37 @@ import { useChatStore } from '../../stores/ChatStore';
 import { RoomResponse } from '../../types/dto';
 import { RoomType } from '../../types/enums';
 import DecryptedText from '../../components/common/DecryptedText';
+import { roomSecurityService } from '../../services/RoomSecurityService';
 
 const ChatRoomListScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
-  
-  // FIX: Xóa dòng gọi hook factory cũ: const { useJoinedRooms } = useRooms();
   const { messagesByRoom } = useChatStore();
 
-  // Gọi trực tiếp hook đã import
   const { data: roomsData, isLoading, refetch } = useJoinedRooms({
     userId: user?.userId || '',
     page: 0,
     size: 50,
   });
 
+  // Gọi lại API mỗi khi màn hình được focus để cập nhật trạng thái mới nhất
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  useEffect(() => {
+    if (roomsData?.data) {
+      roomsData.data.forEach((room: RoomResponse) => {
+        if (room.secretKey && room.roomType !== RoomType.PRIVATE) {
+          roomSecurityService.setKey(room.roomId, room.secretKey);
+        }
+      });
+    }
+  }, [roomsData]);
+
+  // Cập nhật khi có tin nhắn mới trong store
   useEffect(() => {
     refetch();
   }, [messagesByRoom, refetch]);
@@ -55,7 +72,13 @@ const ChatRoomListScreen = ({ navigation }: any) => {
   const renderRoomItem = ({ item }: { item: RoomResponse }) => {
     const isPrivate = item.roomType === RoomType.PRIVATE;
     const isSelf = item.lastMessageSenderId === user?.userId;
-    const isUnread = !isSelf && item.read === false;
+
+    // FIX LOGIC: Kiểm tra kỹ cả 2 trường hợp key 'isRead' (đúng) và 'read' (do lỗi serialization cũ)
+    // Nếu item.isRead là false HOẶC item.read là false -> Tức là chưa đọc
+    const readStatus = item.isRead ?? (item as any).read;
+    const isUnread = !isSelf && readStatus === false;
+
+    const isMedia = item.lastMessageType && item.lastMessageType !== 'TEXT';
 
     return (
       <TouchableOpacity style={styles.roomItem} onPress={() => handleRoomPress(item)}>
@@ -69,9 +92,14 @@ const ChatRoomListScreen = ({ navigation }: any) => {
 
         <View style={styles.roomInfo}>
           <View style={styles.roomHeader}>
-            <Text style={[styles.roomName, isUnread && styles.unReadText]} numberOfLines={1}>{item.roomName}</Text>
+            <Text 
+              style={[styles.roomName, isUnread && styles.unReadTextName]} 
+              numberOfLines={1}
+            >
+              {item.roomName}
+            </Text>
             {item.lastMessageTime && (
-              <Text style={[styles.timeText, isUnread && styles.unReadText]}>
+              <Text style={[styles.timeText, isUnread && styles.unReadTimeText]}>
                 {new Date(item.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Text>
             )}
@@ -81,18 +109,41 @@ const ChatRoomListScreen = ({ navigation }: any) => {
             {isPrivate && !item.partnerIsOnline && item.partnerLastActiveText && (
               <Text style={styles.statusText}>{item.partnerLastActiveText} • </Text>
             )}
-            <DecryptedText
-              style={[styles.lastMessage, isUnread && styles.unReadMessage]}
-              numberOfLines={1}
-              content={item.lastMessage || ''}
-              senderId={item.lastMessageSenderId}
-              senderEphemeralKey={item.lastMessageSenderEphemeralKey}
-              initializationVector={item.lastMessageInitializationVector}
-              selfContent={item.lastMessageSelfContent}
-              selfEphemeralKey={item.lastMessageSelfEphemeralKey}
-              selfInitializationVector={item.lastMessageSelfInitializationVector}
-              fallbackText={t('chat.sent_an_attachment')}
-            />
+            {item.lastMessage ? (
+              isMedia ? (
+                <Text
+                  style={[styles.lastMessage, isUnread && styles.unReadMessage]}
+                  numberOfLines={1}
+                >
+                  {item.lastMessageType === 'IMAGE' ? t('chat.sent_an_image') : 
+                   item.lastMessageType === 'VIDEO' ? t('chat.sent_a_video') : 
+                   item.lastMessageType === 'DOCUMENT' ? t('chat.sent_a_document') : 
+                   t('chat.sent_an_attachment')}
+                </Text>
+              ) : (
+                <DecryptedText
+                  style={[styles.lastMessage, isUnread && styles.unReadMessage]}
+                  numberOfLines={1}
+                  content={item.lastMessage}
+                  senderId={item.lastMessageSenderId}
+                  senderEphemeralKey={item.lastMessageSenderEphemeralKey}
+                  initializationVector={item.lastMessageInitializationVector}
+                  selfContent={item.lastMessageSelfContent}
+                  selfEphemeralKey={item.lastMessageSelfEphemeralKey}
+                  selfInitializationVector={item.lastMessageSelfInitializationVector}
+                  roomId={item.roomId}
+                  roomType={item.roomType}
+                  fallbackText={t('chat.encrypted_message')}
+                />
+              )
+            ) : (
+              <Text style={styles.lastMessage} numberOfLines={1}>
+                {t('chat.no_messages_yet')}
+              </Text>
+            )}
+            
+            {/* Dot xanh hiển thị chưa đọc */}
+            {isUnread && <View style={styles.unreadDot} />}
           </View>
         </View>
       </TouchableOpacity>
@@ -166,12 +217,14 @@ const styles = createScaledSheet({
   roomInfo: { flex: 1, marginLeft: 12, justifyContent: 'center' },
   roomHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   roomName: { fontSize: 16, fontWeight: '600', color: '#1F2937', flex: 1, marginRight: 8 },
+  unReadTextName: { fontWeight: 'bold', color: '#000' }, // In đậm tên phòng
   timeText: { fontSize: 12, color: '#9CA3AF' },
-  lastMessageContainer: { flexDirection: 'row', alignItems: 'center' },
+  unReadTimeText: { fontWeight: 'bold', color: '#4F46E5' }, // In đậm thời gian
+  lastMessageContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statusText: { fontSize: 12, color: '#9CA3AF' },
-  lastMessage: { fontSize: 14, color: '#6B7280', flex: 1 },
-  unReadText: { fontWeight: '700', color: '#111827' },
-  unReadMessage: { fontWeight: '600', color: '#111827' },
+  lastMessage: { fontSize: 14, color: '#6B7280', flex: 1, marginRight: 8 },
+  unReadMessage: { fontWeight: 'bold', color: '#111827' }, // In đậm nội dung
+  unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4F46E5', marginLeft: 4 },
   emptyContainer: { alignItems: 'center', marginTop: 50 },
   emptyText: { fontSize: 16, fontWeight: '600', color: '#374151' },
   emptySubText: { fontSize: 14, color: '#6B7280', marginTop: 4 },

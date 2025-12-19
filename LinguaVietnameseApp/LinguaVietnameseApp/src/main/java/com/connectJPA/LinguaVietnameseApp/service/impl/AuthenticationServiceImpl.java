@@ -156,7 +156,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .subject(user.getUserId().toString())
                     .issuer("LinguaMonkey.com")
                     .issueTime(new Date())
-                    .expirationTime(Date.from(Instant.now().plus(30, ChronoUnit.DAYS)))
+                    .expirationTime(Date.from(Instant.now().plus(30, ChronoUnit.MINUTES)))
                     .claim("scope", buildScope(user.getUserId()))
                     .build();
             JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
@@ -213,25 +213,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
         
-        // Single session enforcement
-        List<RefreshToken> existingTokens = refreshTokenRepository.findAllByUserId(user.getUserId());
-        existingTokens.forEach(t -> t.setRevoked(true));
-        refreshTokenRepository.saveAll(existingTokens);
-
-        String accessToken = generateToken(user);
-        String refreshToken = generateRefreshToken(user, 30);
-        RefreshToken refreshTokenEntity = RefreshToken.builder()
-                .token(refreshToken)
-                .userId(user.getUserId())
-                .expiresAt(OffsetDateTime.now().plusDays(30))
-                .isRevoked(false)
-                .build();
-        refreshTokenRepository.save(refreshTokenEntity);
-        return AuthenticationResponse.builder()
-                .token(accessToken)
-                .refreshToken(refreshToken)
-                .authenticated(true)
-                .build();
+        return createAndSaveTokens(user, null, null, null);
     }
     @Transactional
     public AuthenticationResponse refreshToken(String oldRefreshToken) {
@@ -246,11 +228,15 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
             }
             UUID userId = UUID.fromString(subject);
+            
+            // Note: If token exists but is revoked, this throws NOT_FOUND which leads to logout
             RefreshToken oldToken = refreshTokenRepository
                     .findByUserIdAndTokenAndIsRevokedFalse(userId, oldRefreshToken)
                     .orElseThrow(() -> new AppException(ErrorCode.REFRESH_TOKEN_NOT_FOUND));
+            
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            
             String newAccessToken = generateToken(user);
             OffsetDateTime now = OffsetDateTime.now();
             long daysLeft = ChronoUnit.DAYS.between(now, oldToken.getExpiresAt());
@@ -270,6 +256,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .refreshToken(newRefreshToken)
                     .authenticated(true)
                     .build();
+        } catch (AppException e) {
+            throw e;
         } catch (Exception e) {
             throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
         }
@@ -482,11 +470,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
             userId = UUID.fromString(subject);
 
+            // This check is crucial for Single Session: revoked tokens will fail here
             Optional<RefreshToken> optionalToken = refreshTokenRepository
                     .findByUserIdAndTokenAndIsRevokedFalse(userId, cleanToken);
 
             if (optionalToken.isEmpty()) {
-                log.error("Token not found in database for userId: {}", userId);
+                log.error("Token not found or REVOKED for userId: {}", userId);
                 throw new AppException(ErrorCode.REFRESH_TOKEN_NOT_FOUND);
             }
 
@@ -765,6 +754,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         refreshTokenRepository.saveAll(existingTokens);
 
         String accessToken = generateToken(user);
+        // Refresh token valid for 30 days
         String refreshToken = generateRefreshToken(user, 30);
         RefreshToken refreshTokenEntity = RefreshToken.builder()
                 .token(refreshToken)

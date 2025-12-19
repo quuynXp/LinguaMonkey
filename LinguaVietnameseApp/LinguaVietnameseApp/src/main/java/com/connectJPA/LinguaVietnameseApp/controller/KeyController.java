@@ -37,10 +37,13 @@ public class KeyController {
         key.setSignedPreKeyPublicKey(request.getSignedPreKeyPublicKey());
         key.setSignedPreKeySignature(request.getSignedPreKeySignature());
         key.setLastPreKeyBundleUpload(LocalDateTime.now());
+        
+        if (request.getEncryptedPrivateKeys() != null) {
+            key.setEncryptedPrivateKeys(request.getEncryptedPrivateKeys());
+        }
 
         userE2EKeyRepository.save(key);
         
-        // 2. Lưu One-Time PreKeys mới
         if (request.getOneTimePreKeys() != null && !request.getOneTimePreKeys().isEmpty()) {
             LocalDateTime now = LocalDateTime.now();
             for (Map.Entry<Integer, String> entry : request.getOneTimePreKeys().entrySet()) {
@@ -72,23 +75,20 @@ public class KeyController {
         response.setSignedPreKeyId(key.getSignedPreKeyId());
         response.setSignedPreKeyPublicKey(key.getSignedPreKeyPublicKey());
         response.setSignedPreKeySignature(key.getSignedPreKeySignature());
+        
+        response.setEncryptedPrivateKeys(key.getEncryptedPrivateKeys());
 
-        // 3. Lấy 1 One-Time PreKey có sẵn (nếu có)
         Optional<OneTimePreKey> otpKeyOptional = oneTimePreKeyRepository.findNextAvailablePreKey(userId);
 
         if (otpKeyOptional.isPresent()) {
             OneTimePreKey otpKey = otpKeyOptional.get();
             response.setOneTimePreKeyId(otpKey.getPreKeyId());
             response.setOneTimePreKeyPublicKey(otpKey.getPublicKey());
-            
-            // Xóa OTPK đã được sử dụng để đảm bảo tính One-Time
             oneTimePreKeyRepository.deleteByUserIdAndPreKeyId(userId, otpKey.getPreKeyId());
         }
         
-        // 4. Kiểm tra và Gửi cảnh báo thiếu khóa (PreKey Exhaustion)
         long remainingKeys = oneTimePreKeyRepository.countByUserId(userId);
         if (remainingKeys < MIN_PREKEYS) {
-            // Đây là nơi bạn gửi Push Notification/Socket Event đến Client để yêu cầu upload thêm khóa mới
         }
 
         return ResponseEntity.ok(response);

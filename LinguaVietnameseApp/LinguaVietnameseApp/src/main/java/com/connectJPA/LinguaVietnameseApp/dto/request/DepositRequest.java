@@ -21,7 +21,6 @@ public class DepositRequest {
     private UUID userId;
 
     @NotNull
-    @Min(10000) // Ví dụ: yêu cầu nạp tối thiểu
     private BigDecimal amount;
 
     @NotNull

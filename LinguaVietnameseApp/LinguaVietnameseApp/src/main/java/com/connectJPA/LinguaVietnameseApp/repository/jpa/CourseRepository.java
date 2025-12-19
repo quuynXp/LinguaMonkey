@@ -27,6 +27,7 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     List<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId);
 
     List<Course> findByCreatedAtBetweenAndIsDeletedFalse(OffsetDateTime start, OffsetDateTime end);
+    long countByCreatedAtBetweenAndIsDeletedFalse(OffsetDateTime start, OffsetDateTime end);
 
     @Query("SELECT c FROM Course c " +
            "JOIN c.latestPublicVersion cv " +

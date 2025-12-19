@@ -40,21 +40,32 @@ const DepositScreen = ({ navigation, route }: any) => {
     const { refetch: refetchWallet } = useWalletBalance(user?.userId);
 
     useEffect(() => {
-        const handleDeepLink = async (event: Linking.EventType) => {
+        const handleDeepLink = async (event: { url: string }) => {
             const { url } = event;
+            // Catch both standard scheme (monkeylingua://) and expo scheme
+            if (url && (url.includes('deposit-result') || url.includes('payment-success') || url.includes('vnp_ResponseCode'))) {
 
-            if (url && (url.includes('deposit-result') || url.includes('payment-success'))) {
-                WebBrowser.dismissBrowser();
+                // Close the browser immediately to prevent "hanging"
+                try {
+                    WebBrowser.dismissBrowser();
+                } catch (e) {
+                    console.log('Browser already closed');
+                }
+
                 const queryParams = Linking.parse(url).queryParams;
                 const status = queryParams?.status || queryParams?.vnp_ResponseCode;
 
                 setIsProcessing(true);
+                // Force refetch logic to ensure status is updated
                 await refetchWallet();
                 setIsProcessing(false);
 
                 if (status === 'success' || status === '00' || url.includes('success')) {
-                    Alert.alert(t('common.success'), t('deposit.successMessage'));
-                    navigation.goBack();
+                    Alert.alert(
+                        t('common.success'),
+                        t('deposit.successMessage'),
+                        [{ text: 'OK', onPress: () => navigation.goBack() }]
+                    );
                 } else {
                     Alert.alert(t('common.error'), t('deposit.failedMessage'));
                 }
@@ -62,8 +73,10 @@ const DepositScreen = ({ navigation, route }: any) => {
         };
 
         const subscription = Linking.addEventListener('url', handleDeepLink);
+
+        // Handle cold start deep link
         Linking.getInitialURL().then((url) => {
-            if (url) handleDeepLink({ url } as Linking.EventType);
+            if (url) handleDeepLink({ url });
         });
 
         return () => {
@@ -81,6 +94,8 @@ const DepositScreen = ({ navigation, route }: any) => {
 
         if (!user?.userId) return;
 
+        // Ensure this string matches the host in AndroidManifest
+        // Result: monkeylingua://deposit-result
         const returnUrl = Linking.createURL('deposit-result');
 
         const payload: DepositRequest = {

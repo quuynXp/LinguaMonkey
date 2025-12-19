@@ -11,8 +11,9 @@ import {
     Pressable,
     Modal,
     Dimensions,
+    ViewToken,
     Keyboard,
-    StyleSheet
+    LayoutAnimation,
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
@@ -21,17 +22,17 @@ import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useToast } from "../../utils/useToast";
 import { MemberResponse, UserProfileResponse } from "../../types/dto";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getAvatarSource } from "../../utils/avatarUtils";
-import { getDirectMediaUrl, getDriveThumbnailUrl } from "../../utils/mediaUtils";
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
 import { useAppStore } from "../../stores/appStore";
 import FileUploader from "../common/FileUploader";
+import Video from 'react-native-video';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MediaViewerModal from "../common/MediaViewerModal";
+import mmkvStorage from "../../utils/storage";
 
-const { width } = Dimensions.get('window');
-
-const INPUT_BAR_HEIGHT = 80;
+const { width, height } = Dimensions.get('window');
 
 type UIMessage = {
     id: string;
@@ -64,6 +65,37 @@ const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en'
     return date.toLocaleTimeString(locale, timeOptions);
 };
 
+const MediaViewerModal = ({ visible, url, type, onClose }: { visible: boolean; url: string | null; type: 'IMAGE' | 'VIDEO' | null; onClose: () => void }) => {
+    if (!visible || !url) return null;
+    const finalUrl = getDirectMediaUrl(url, type);
+
+    return (
+        <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+            <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
+                <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: Platform.OS === 'android' ? 40 : 50, right: 20, zIndex: 999, padding: 10, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 20 }}>
+                    <Icon name="close" size={30} color="#FFF" />
+                </TouchableOpacity>
+                {type === 'VIDEO' ? (
+                    <Video
+                        source={{ uri: finalUrl }}
+                        style={{ width: width, height: height * 0.8 }}
+                        controls={true}
+                        resizeMode="contain"
+                        paused={false}
+                        onError={(e) => console.error("[MediaViewer] Video Error:", e)}
+                    />
+                ) : (
+                    <Image
+                        source={{ uri: finalUrl }}
+                        style={{ width: width, height: height, resizeMode: 'contain' }}
+                        onError={(e) => console.error("[MediaViewer] Image Error:", e.nativeEvent.error)}
+                    />
+                )}
+            </View>
+        </Modal>
+    );
+};
+
 const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile }: any) => {
     if (!visible || !profile) return null;
     return (
@@ -83,50 +115,48 @@ const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile }: any
 
 interface ChatInnerViewProps {
     roomId: string;
+    initialRoomName?: string;
     isBubbleMode?: boolean;
+    onCloseBubble?: () => void;
+    onMinimizeBubble?: () => void;
     soundEnabled?: boolean;
     initialFocusMessageId?: string | null;
     members?: MemberResponse[];
-    customHeaderHeight?: number;
 }
 
 const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     roomId,
     isBubbleMode = false,
-    soundEnabled = true,
-    initialFocusMessageId = null,
-    members = [],
-    customHeaderHeight = 0
+    members = []
 }) => {
     const { t } = useTranslation();
     const { showToast } = useToast();
     const navigation = useNavigation<any>();
     const { user } = useUserStore();
+
     const insets = useSafeAreaInsets();
 
     const chatSettings = useAppStore(state => state.chatSettings);
-    const appNativeLang = useAppStore(state => state.nativeLanguage);
+    const nativeLanguage = useAppStore(state => state.nativeLanguage);
 
-    const translationTargetLang = user?.nativeLanguageCode || appNativeLang || 'vi';
     const autoTranslate = chatSettings.autoTranslate;
+    const translationTargetLang = user?.nativeLanguageCode || chatSettings.targetLanguage || nativeLanguage || 'vi';
 
     const currentUserId = user?.userId;
     const setCurrentViewedRoomId = useChatStore(s => s.setCurrentViewedRoomId);
     const userStatuses = useChatStore(s => s.userStatuses);
     const eagerTranslations = useChatStore(s => s.eagerTranslations);
-    const readReceipts = useChatStore(s => s.readReceipts[roomId] || {});
-    const typingUsers = useChatStore(s => s.typingUsers[roomId] || []);
 
     const pageByRoom = useChatStore(s => s.pageByRoom);
     const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
     const loadingByRoom = useChatStore(s => s.loadingByRoom);
 
     const [inputText, setInputText] = useState("");
-    const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | MemberResponse | null>(null);
     const [isPopupVisible, setIsPopupVisible] = useState(false);
-    const [translatingId, setTranslatingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [visibleTranslations, setVisibleTranslations] = useState<Set<string>>(new Set());
+    const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
     const [mediaViewer, setMediaViewer] = useState<{ visible: boolean; url: string | null; type: 'IMAGE' | 'VIDEO' | null }>({
         visible: false, url: null, type: null
@@ -135,10 +165,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const processedReadIds = useRef<Set<string>>(new Set());
     const flatListRef = useRef<FlatList>(null);
     const lastSentRef = useRef<number>(0);
-    const inputRef = useRef<TextInput>(null);
-    const isTypingRef = useRef<boolean>(false);
-    // Updated: Use 'any' to handle both NodeJS.Timeout and number (React Native)
-    const typingTimeoutRef = useRef<any>(null);
 
     const membersMap = useMemo(() => {
         const map: Record<string, MemberResponse> = {};
@@ -148,17 +174,35 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     useEffect(() => {
         if (!isBubbleMode) setCurrentViewedRoomId(roomId);
+        processedReadIds.current.clear();
         return () => { if (!isBubbleMode) setCurrentViewedRoomId(null); };
     }, [roomId, isBubbleMode]);
 
+    useEffect(() => {
+        const onShow = () => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setIsKeyboardVisible(true);
+        };
+        const onHide = () => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setIsKeyboardVisible(false);
+        };
+
+        const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', onShow);
+        const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', onHide);
+
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, []);
+
     const loadMessages = useChatStore(s => s.loadMessages);
     const sendMessage = useChatStore(s => s.sendMessage);
-    const editMessage = useChatStore(s => s.editMessage);
     const markMessageAsRead = useChatStore(s => s.markMessageAsRead);
     const messagesByRoom = useChatStore(s => s.messagesByRoom);
     const performEagerTranslation = useChatStore(s => s.performEagerTranslation);
-    const sendTypingStatus = useChatStore(s => s.sendTypingStatus);
-
+    const translateLastNMessages = useChatStore(s => s.translateLastNMessages);
     const serverMessages = messagesByRoom[roomId] || [];
     const isLoading = loadingByRoom[roomId] || false;
     const hasMore = hasMoreByRoom[roomId] || false;
@@ -171,18 +215,20 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 const senderId = msg?.senderId ?? 'unknown';
                 const messageId = msg?.id?.chatMessageId || (typeof msg?.id === 'string' ? msg.id : `${senderId}_${msg.sentAt}`);
                 const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
-                const dbMapTrans = msg.translationsMap ? msg.translationsMap[translationTargetLang] : null;
-                const finalTranslation = eagerTrans || dbMapTrans;
+                const dbMapTrans = msg.decryptedTranslationsMap
+                    ? msg.decryptedTranslationsMap[translationTargetLang]
+                    : (msg.translationsMap ? msg.translationsMap[translationTargetLang] : null);
+                let finalTranslation = eagerTrans || dbMapTrans;
+                if (!finalTranslation) {
+                    finalTranslation = mmkvStorage.getString(`trans_${messageId}_${translationTargetLang}`) || null;
+                }
                 const senderProfile = msg.senderProfile || membersMap[senderId];
                 const isEncrypted = !!msg.senderEphemeralKey;
-
                 let displayContent = '';
                 if (msg.decryptedContent) displayContent = msg.decryptedContent;
                 else if (isEncrypted) displayContent = '';
                 else displayContent = msg.content || '';
-
                 const rawMediaUrl = msg.mediaUrl || (msg as any).media_url || null;
-
                 return {
                     id: messageId,
                     sender: senderId === currentUserId ? 'user' : 'other',
@@ -211,29 +257,30 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     useEffect(() => {
         loadMessages(roomId);
-    }, [roomId]);
-
-    useEffect(() => {
-        if (autoTranslate) {
-            messages.forEach(msg => {
-                if (msg.sender === 'other' && !msg.translatedText && !msg.isDeleted && msg.messageType === 'TEXT' && msg.text) {
-                    performEagerTranslation(msg.id, msg.text, translationTargetLang);
-                }
-            });
+        if (chatSettings.autoTranslate) {
+            translateLastNMessages(roomId, translationTargetLang, 20);
         }
-    }, [messages, autoTranslate, translationTargetLang, performEagerTranslation]);
+    }, [roomId, chatSettings.autoTranslate, translationTargetLang]);
 
-    useEffect(() => {
-        const unreadMessages = messages.filter(msg =>
-            msg.sender === 'other' && !msg.isRead && !processedReadIds.current.has(msg.id)
-        );
-        if (unreadMessages.length > 0) {
-            unreadMessages.forEach(msg => {
-                processedReadIds.current.add(msg.id);
-                markMessageAsRead(roomId, msg.id);
-            });
-        }
-    }, [messages, roomId]);
+    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+        viewableItems.forEach((viewableItem) => {
+            const item = viewableItem.item as UIMessage;
+            if (
+                item.sender === 'other' &&
+                !item.isRead &&
+                !item.isLocal &&
+                !processedReadIds.current.has(item.id)
+            ) {
+                processedReadIds.current.add(item.id);
+                markMessageAsRead(roomId, item.id);
+            }
+        });
+    }).current;
+
+    const viewabilityConfig = useRef({
+        itemVisiblePercentThreshold: 50,
+        minimumViewTime: 300,
+    }).current;
 
     const handleLoadMore = () => {
         if (hasMore && !isLoading) {
@@ -241,60 +288,24 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         }
     };
 
-    const handleTextChange = (text: string) => {
-        setInputText(text);
-
-        if (text.length > 0 && !isTypingRef.current) {
-            sendTypingStatus(roomId, true);
-            isTypingRef.current = true;
-        } else if (text.length === 0 && isTypingRef.current) {
-            sendTypingStatus(roomId, false);
-            isTypingRef.current = false;
-        }
-
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        if (text.length > 0) {
-            typingTimeoutRef.current = setTimeout(() => {
-                if (isTypingRef.current) {
-                    sendTypingStatus(roomId, false);
-                    isTypingRef.current = false;
-                }
-            }, 3000);
-        }
-    };
-
     const handleSendMessage = () => {
         const now = Date.now();
         if (now - lastSentRef.current < 500) return;
-        if (inputText.trim() === "") return;
 
+        if (inputText.trim() === "") return;
         lastSentRef.current = now;
 
-        if (isTypingRef.current) {
-            sendTypingStatus(roomId, false);
-            isTypingRef.current = false;
-        }
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
-        if (editingMessage) {
-            editMessage(roomId, editingMessage.id, inputText)
-                .then(() => { setEditingMessage(null); setInputText(""); })
-                .catch(() => showToast({ message: t("chat.edit_error"), type: "error" }));
-        } else {
-            sendMessage(roomId, inputText, 'TEXT');
-            setInputText("");
-            setTimeout(() => {
-                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-            }, 100);
-        }
+        sendMessage(roomId, inputText, 'TEXT');
+        setInputText("");
+        setTimeout(() => {
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }, 100);
     };
 
     const handleUploadSuccess = (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => {
-        const finalUrl = result?.fileUrl || result?.secure_url || result?.url;
+        const finalUrl = result?.secure_url || result?.url || result?.fileUrl;
         if (finalUrl) {
             sendMessage(roomId, '', type, finalUrl);
-            Keyboard.dismiss();
-            inputRef.current?.blur();
             setTimeout(() => {
                 flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
             }, 100);
@@ -311,13 +322,23 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         }
     };
 
-    const handleManualTranslate = async (id: string, text: string) => {
-        const msg = messages.find(m => m.id === id);
-        const textToTranslate = msg?.decryptedContent || msg?.content || text;
-        if (!textToTranslate) return;
-        setTranslatingId(id);
-        await performEagerTranslation(id, textToTranslate, translationTargetLang);
-        setTranslatingId(null);
+    const handleToggleTranslation = async (id: string, text: string) => {
+        if (visibleTranslations.has(id)) {
+            const next = new Set(visibleTranslations);
+            next.delete(id);
+            setVisibleTranslations(next);
+        } else {
+            const next = new Set(visibleTranslations);
+            next.add(id);
+            setVisibleTranslations(next);
+
+            const msg = messages.find(m => m.id === id);
+            const textToTranslate = msg?.decryptedContent || msg?.content || text;
+
+            if (!msg?.translatedText && textToTranslate) {
+                await performEagerTranslation(id, textToTranslate, translationTargetLang, roomId);
+            }
+        }
     };
 
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
@@ -326,259 +347,131 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
         const isTranslationSameAsOriginal = item.text?.trim().toLowerCase() === item.translatedText?.trim().toLowerCase();
-        const showTranslatedText = !!item.translatedText && !isMedia && !isUser && !isTranslationSameAsOriginal;
+        const isManuallyVisible = visibleTranslations.has(item.id);
+        const shouldShowTranslation = (autoTranslate || isManuallyVisible) && !!item.translatedText && !isMedia && !isUser && !isTranslationSameAsOriginal;
         const showManualButton = !autoTranslate && !isMedia && !isUser;
-        const isTranslating = translatingId === item.id;
         const showDecryptionError = item.isEncrypted && item.decryptedContent?.includes('!! Decryption Failed');
 
         let displayMediaUrl = null;
-        let videoThumbnailUrl = null;
-
-        if (isMedia && item.mediaUrl) {
-            displayMediaUrl = getDirectMediaUrl(item.mediaUrl, item.messageType);
-            if (item.messageType === 'VIDEO') {
-                videoThumbnailUrl = getDriveThumbnailUrl(item.mediaUrl);
-            }
-        }
+        if (isMedia && item.mediaUrl) displayMediaUrl = getDirectMediaUrl(item.mediaUrl);
 
         let primaryText = item.text;
         let isWaitingForDecrypt = false;
 
         if (item.isEncrypted) {
-            if (item.decryptedContent && !showDecryptionError) {
-                primaryText = item.decryptedContent;
-            } else if (showDecryptionError) {
-                primaryText = "Tin nhắn đã mã hóa";
-            } else {
-                primaryText = '...';
-                isWaitingForDecrypt = true;
-            }
+            if (item.decryptedContent && !showDecryptionError) primaryText = item.decryptedContent;
+            else if (showDecryptionError) primaryText = "Tin nhắn đã mã hóa";
+            else { primaryText = '...'; isWaitingForDecrypt = true; }
         }
 
-        const readers = Object.entries(readReceipts)
-            .filter(([uid, msgId]) => msgId === item.id && uid !== currentUserId)
-            .map(([uid]) => uid);
-
-        const displayReaders = readers.slice(0, 5);
-        const remainingCount = readers.length - 5;
-
         return (
-            <View>
-                <Pressable onLongPress={() => isUser && !isMedia && setEditingMessage(item)} style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther]}>
-                    {!isUser && (
-                        <TouchableOpacity onPress={() => handleAvatarPress(item.senderProfile)}>
-                            <View>
-                                <Image source={getAvatarSource(item.avatar, null)} style={styles.msgAvatarImg} />
-                                {status?.isOnline && <View style={[styles.activeDot, { right: 8, bottom: 0, borderWidth: 1 }]} />}
+            <Pressable style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther]}>
+                {!isUser && (
+                    <TouchableOpacity onPress={() => handleAvatarPress(item.senderProfile)}>
+                        <View>
+                            <Image source={getAvatarSource(item.avatar, null)} style={styles.msgAvatarImg} />
+                            {status?.isOnline && <View style={[styles.activeDot, { right: 8, bottom: 0, borderWidth: 1 }]} />}
+                        </View>
+                    </TouchableOpacity>
+                )}
+                <View style={styles.msgContent}>
+                    {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
+                    {isMedia && displayMediaUrl ? (
+                        <TouchableOpacity style={[styles.mediaContainer, isUser ? styles.mediaUser : styles.mediaOther]} onPress={() => openMedia(item.mediaUrl, item.messageType as 'IMAGE' | 'VIDEO')}>
+                            {item.messageType === 'IMAGE' && <Image source={{ uri: displayMediaUrl }} style={styles.msgImage} resizeMode="cover" />}
+                            {item.messageType === 'VIDEO' && <View style={[styles.msgImage, styles.videoPlaceholder]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
+                        </TouchableOpacity>
+                    ) : (
+                        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
+                            {item.messageType === 'DOCUMENT' && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+                                    <Icon name="description" size={30} color={isUser ? "#FFF" : "#4B5563"} />
+                                    <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginLeft: 8 }]}>{t('chat.document')}</Text>
+                                </View>
+                            )}
+                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, (isWaitingForDecrypt || showDecryptionError) && { fontStyle: 'italic', opacity: 0.8 }]}>{primaryText}</Text>
+                            {shouldShowTranslation && (
+                                <View style={styles.dualLineContainer}>
+                                    <View style={[styles.separator, { backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' }]} />
+                                    <Text style={[styles.translatedText, isUser ? styles.textUserTrans : styles.textOtherTrans]}>{item.translatedText}</Text>
+                                </View>
+                            )}
+                            <View style={styles.metaRow}>
+                                <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
+                                {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
                             </View>
+                        </View>
+                    )}
+                    {showManualButton && (
+                        <TouchableOpacity onPress={() => handleToggleTranslation(item.id, item.text)} style={styles.transBtn}>
+                            <Icon name={isManuallyVisible ? "visibility-off" : "translate"} size={16} color={isManuallyVisible ? "#3B82F6" : "#9CA3AF"} />
                         </TouchableOpacity>
                     )}
-                    <View style={styles.msgContent}>
-                        {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
-                        {isMedia && displayMediaUrl ? (
-                            <TouchableOpacity style={[styles.mediaContainer, isUser ? styles.mediaUser : styles.mediaOther]} onPress={() => openMedia(item.mediaUrl, item.messageType as 'IMAGE' | 'VIDEO')}>
-                                {item.messageType === 'IMAGE' && (
-                                    <Image
-                                        source={{ uri: displayMediaUrl }}
-                                        style={styles.msgImage}
-                                        resizeMode="cover"
-                                    />
-                                )}
-                                {item.messageType === 'VIDEO' && (
-                                    <View style={[styles.msgImage, styles.videoPlaceholder]}>
-                                        {videoThumbnailUrl ? (
-                                            <Image
-                                                source={{ uri: videoThumbnailUrl }}
-                                                style={[StyleSheet.absoluteFill, { opacity: 0.7 }]}
-                                                resizeMode="cover"
-                                            />
-                                        ) : null}
-                                        <Icon name="play-circle-outline" size={50} color="#FFF" style={{ zIndex: 2 }} />
-                                    </View>
-                                )}
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
-                                {item.messageType === 'DOCUMENT' && (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
-                                        <Icon name="description" size={30} color={isUser ? "#FFF" : "#4B5563"} />
-                                        <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginLeft: 8 }]}>{t('chat.document')}</Text>
-                                    </View>
-                                )}
-                                <Text
-                                    selectable={true}
-                                    style={[styles.text, isUser ? styles.textUser : styles.textOther, (isWaitingForDecrypt || showDecryptionError) && { fontStyle: 'italic', opacity: 0.8 }]}
-                                >
-                                    {primaryText}
-                                </Text>
-
-                                {showTranslatedText && (
-                                    <View style={styles.dualLineContainer}>
-                                        <View style={[styles.separator, { backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' }]} />
-                                        <Text
-                                            selectable={true}
-                                            style={[styles.translatedText, isUser ? styles.textUserTrans : styles.textOtherTrans]}
-                                        >
-                                            {item.translatedText}
-                                        </Text>
-                                    </View>
-                                )}
-                                <View style={styles.metaRow}>
-                                    <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
-                                    {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
-                                </View>
-                            </View>
-                        )}
-                        {showManualButton && (
-                            <TouchableOpacity onPress={() => handleManualTranslate(item.id, item.text)} style={styles.transBtn} disabled={isTranslating}>
-                                {isTranslating ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name="translate" size={16} color="#9CA3AF" />}
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                </Pressable>
-
-                {readers.length > 0 && (
-                    <View style={[styles.readReceiptContainer, isUser ? { justifyContent: 'flex-end', paddingRight: 10 } : { justifyContent: 'flex-start', paddingLeft: 50 }]}>
-                        {displayReaders.map((uid) => {
-                            const member = membersMap[uid];
-                            return (
-                                <Image
-                                    key={uid}
-                                    source={getAvatarSource(member?.avatarUrl, null)}
-                                    style={styles.readAvatar}
-                                />
-                            );
-                        })}
-                        {remainingCount > 0 && (
-                            <View style={styles.moreReadersBubble}>
-                                <Text style={styles.moreReadersText}>+{remainingCount}</Text>
-                            </View>
-                        )}
-                    </View>
-                )}
-            </View>
-        );
-    };
-
-    const renderTypingIndicator = () => {
-        if (!typingUsers || typingUsers.length === 0) return null;
-
-        const typingMembers = typingUsers
-            .map(uid => membersMap[uid])
-            .filter(Boolean);
-
-        if (typingMembers.length === 0) return null;
-
-        const displayTyping = typingMembers.slice(0, 3);
-        const extraCount = typingMembers.length - 3;
-
-        return (
-            <View style={styles.typingContainer}>
-                <View style={styles.typingBubble}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {displayTyping.map((m, index) => (
-                            <Image
-                                key={m.userId}
-                                source={getAvatarSource(m.avatarUrl, null)}
-                                style={[styles.typingAvatar, { marginLeft: index > 0 ? -10 : 0 }]}
-                            />
-                        ))}
-                        {extraCount > 0 && (
-                            <View style={[styles.typingAvatar, styles.typingExtra]}>
-                                <Text style={styles.typingExtraText}>+{extraCount}</Text>
-                            </View>
-                        )}
-                        <View style={styles.typingDots}>
-                            <View style={styles.dot} />
-                            <View style={styles.dot} />
-                            <View style={styles.dot} />
-                        </View>
-                    </View>
                 </View>
-            </View>
+            </Pressable>
         );
     };
-
-    const bottomPadding = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 10;
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#FFF' }}>
-            <View style={{ flex: 1 }}>
-                <FlatList
-                    ref={flatListRef}
-                    data={messages}
-                    extraData={[eagerTranslations, loadingByRoom[roomId], readReceipts, typingUsers]}
-                    keyExtractor={item => item.id}
-                    style={styles.list}
-                    renderItem={renderMessageItem}
-                    inverted
-                    onEndReached={handleLoadMore}
-                    onEndReachedThreshold={0.5}
-                    contentContainerStyle={{ paddingTop: 10, paddingBottom: bottomPadding + INPUT_BAR_HEIGHT, flexGrow: 1 }}
-                    keyboardShouldPersistTaps="always"
-                    keyboardDismissMode="on-drag"
-                    initialNumToRender={15}
-                    ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
-                    ListHeaderComponent={renderTypingIndicator}
-                    maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
-                />
-            </View>
-
-            {editingMessage && (
-                <View style={styles.editBanner}>
-                    <Text style={styles.editText}>{t("chat.editing_message")}</Text>
-                    <TouchableOpacity onPress={() => { setEditingMessage(null); setInputText(""); }}><Icon name="close" size={20} color="#6B7280" /></TouchableOpacity>
-                </View>
-            )}
-
-            <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>
-                {isUploading && <View style={styles.uploadingOverlay}><ActivityIndicator size="small" color="#3B82F6" /></View>}
-                <View style={styles.inputArea}>
-                    <FileUploader
-                        onUploadStart={() => setIsUploading(true)}
-                        onUploadEnd={() => setIsUploading(false)}
-                        onUploadSuccess={handleUploadSuccess}
-                        mediaType="all"
-                        style={styles.attachBtn}
-                    >
-                        <Icon name="add-photo-alternate" size={26} color="#6B7280" />
-                    </FileUploader>
-                    <TextInput
-                        ref={inputRef}
-                        style={styles.input}
-                        value={inputText}
-                        onChangeText={handleTextChange}
-                        onFocus={() => {
-                            setTimeout(() => {
-                                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-                            }, 200);
-                        }}
-                        placeholder={t("group.input.placeholder")}
-                        multiline
-                        placeholderTextColor="#9CA3AF"
-                        submitBehavior="newline"
+        <ScreenLayout style={styles.container} keyboardAware={false} disableBottomInset>
+            <View style={{ flex: 1, flexDirection: 'column' }}>
+                <View style={{ flex: 1 }}>
+                    <FlatList
+                        ref={flatListRef}
+                        data={messages}
+                        keyExtractor={item => item.id}
+                        style={styles.list}
+                        renderItem={renderMessageItem}
+                        inverted
+                        extraData={[eagerTranslations, visibleTranslations]}
+                        onEndReached={handleLoadMore}
+                        onEndReachedThreshold={0.5}
+                        contentContainerStyle={{ paddingTop: 20, paddingBottom: 10, flexGrow: 1 }}
+                        keyboardShouldPersistTaps="handled"
+                        initialNumToRender={15}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfig}
+                        ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
                     />
-                    <TouchableOpacity onPress={handleSendMessage} style={[styles.sendBtn, !inputText.trim() && { backgroundColor: '#E5E7EB' }]} disabled={!inputText.trim()}>
-                        <Icon name={editingMessage ? "check" : "send"} size={20} color={inputText.trim() ? "#FFF" : "#9CA3AF"} />
-                    </TouchableOpacity>
+                </View>
+
+                <View style={[styles.inputWrapper, { paddingBottom: isKeyboardVisible ? 34 : Math.max(insets.bottom, 20) }]}>
+                    {isUploading && <View style={styles.uploadingOverlay}><ActivityIndicator size="small" color="#3B82F6" /></View>}
+                    <View style={styles.inputArea}>
+                        <FileUploader
+                            onUploadStart={() => setIsUploading(true)}
+                            onUploadEnd={() => setIsUploading(false)}
+                            onUploadSuccess={handleUploadSuccess}
+                            mediaType="all"
+                            style={styles.attachBtn}
+                        >
+                            <Icon name="add-photo-alternate" size={26} color="#6B7280" />
+                        </FileUploader>
+                        <TextInput
+                            style={styles.input}
+                            value={inputText}
+                            onChangeText={setInputText}
+                            placeholder={t("group.input.placeholder")}
+                            multiline
+                            placeholderTextColor="#9CA3AF"
+                        />
+                        <TouchableOpacity onPress={handleSendMessage} style={[styles.sendBtn, !inputText.trim() && { backgroundColor: '#E5E7EB' }]} disabled={!inputText.trim()}>
+                            <Icon name="send" size={20} color={inputText.trim() ? "#FFF" : "#9CA3AF"} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </View>
 
             <QuickProfilePopup visible={isPopupVisible} profile={selectedProfile} onClose={() => setIsPopupVisible(false)} onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }} />
-
-            <MediaViewerModal
-                visible={mediaViewer.visible}
-                url={mediaViewer.url}
-                type={mediaViewer.type}
-                onClose={() => setMediaViewer(s => ({ ...s, visible: false }))}
-            />
-        </View>
+            <MediaViewerModal visible={mediaViewer.visible} url={mediaViewer.url} type={mediaViewer.type} onClose={() => setMediaViewer(s => ({ ...s, visible: false }))} />
+        </ScreenLayout>
     );
 };
 
 const styles = createScaledSheet({
+    container: { flex: 1, backgroundColor: '#FFF' },
     list: { flex: 1, paddingHorizontal: 16 },
-    msgRow: { flexDirection: 'row', marginVertical: 2 },
+    msgRow: { flexDirection: 'row', marginVertical: 6 },
     rowUser: { justifyContent: 'flex-end' },
     rowOther: { justifyContent: 'flex-start' },
     msgAvatarImg: { width: 32, height: 32, borderRadius: 16, marginRight: 8, marginTop: 4 },
@@ -601,7 +494,7 @@ const styles = createScaledSheet({
     timeUser: { color: 'rgba(255,255,255,0.7)' },
     timeOther: { color: '#9CA3AF' },
     transBtn: { marginTop: 4, padding: 6, alignSelf: 'flex-start', backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6' },
-    inputWrapper: { borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF', zIndex: 20 },
+    inputWrapper: { width: '100%', borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF' },
     inputArea: { flexDirection: 'row', padding: 10, alignItems: 'center', backgroundColor: '#FFF' },
     attachBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
     input: {
@@ -634,17 +527,6 @@ const styles = createScaledSheet({
     translatedText: { fontSize: 15, fontStyle: 'italic', lineHeight: 22 },
     textUserTrans: { color: '#E0F2FE' },
     textOtherTrans: { color: '#4B5563' },
-    readReceiptContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 2, marginBottom: 6 },
-    readAvatar: { width: 14, height: 14, borderRadius: 7, marginLeft: 2, borderWidth: 1, borderColor: '#FFF' },
-    moreReadersBubble: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
-    moreReadersText: { fontSize: 8, color: '#6B7280', fontWeight: 'bold' },
-    typingContainer: { marginLeft: 50, marginBottom: 5, alignSelf: 'flex-start' },
-    typingBubble: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 16, borderBottomLeftRadius: 4 },
-    typingAvatar: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: '#FFF' },
-    typingExtra: { backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center', marginLeft: -8 },
-    typingExtraText: { fontSize: 8, fontWeight: 'bold', color: '#6B7280' },
-    typingDots: { flexDirection: 'row', marginLeft: 6, alignItems: 'center' },
-    dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#9CA3AF', marginHorizontal: 1 }
 });
 
 export default ChatInnerView;

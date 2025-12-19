@@ -90,16 +90,15 @@ public class StatisticsController {
         switch (period.toLowerCase()) {
             case "day" -> {
                 startDate = today;
-                endDate = today;
             }
             case "month" -> {
-                startDate = today.minusMonths(1).plusDays(1);
+                startDate = today.withDayOfMonth(1);
             }
             case "year" -> {
-                startDate = today.minusYears(1).plusDays(1);
+                startDate = today.withDayOfYear(1);
             }
-            default -> { // week
-                startDate = today.minusWeeks(1).plusDays(1);
+            default -> { 
+                startDate = today.minusDays(6);
             }
         }
         

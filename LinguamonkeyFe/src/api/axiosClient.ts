@@ -41,25 +41,12 @@ const getCommonHeaders = async () => {
     };
 };
 
-// 🔥 DEBUG MODE: Force TRUE để xem log. Sửa lại logic cũ sau khi fix xong lỗi.
 const DEV_LOG_ENABLED = true;
-// const DEV_LOG_ENABLED = typeof (global as any).__DEV__ !== 'undefined' && (global as any).__DEV__;
 
 const logRequest = (config: CustomAxiosRequestConfig) => {
     if (!DEV_LOG_ENABLED) return;
-    const { method, url, headers, data } = config;
-    const isFormData = data instanceof FormData;
-
-    console.log(`🚀 [REQ] ${method?.toUpperCase()} ${url} ${isFormData ? '(FormData)' : ''}`);
-
-    // 🔥 LOG PAYLOAD: Để kiểm tra bạn đang gửi gì lên (VD: contentId có bị rỗng không?)
-    if (data && !isFormData) {
-        try {
-            console.log('📦 [REQ BODY]:', JSON.stringify(data, null, 2));
-        } catch (e) {
-            console.log('📦 [REQ BODY]:', data);
-        }
-    }
+    const { method, url } = config;
+    console.log(`🚀 [REQ] ${method?.toUpperCase()} ${url}`);
 };
 
 const logResponse = (response: AxiosResponse) => {
@@ -69,92 +56,11 @@ const logResponse = (response: AxiosResponse) => {
 };
 
 const logError = (error: AxiosError) => {
-    // Luôn log lỗi kể cả khi tắt DEV mode để debug production nếu cần
-    // if (!DEV_LOG_ENABLED) return; 
-
     const config = error.config as CustomAxiosRequestConfig;
     const status = error.response?.status;
-    const data = error.response?.data;
-
     console.log(`🔥 [ERR] ${status || 'Unknown'} ${config?.url}`);
     console.log(`❌ [ERR MSG]: ${error.message}`);
-
-    // 🔥 LOG SERVER RESPONSE: Đây là cái bạn cần để biết tại sao 400 Bad Request
-    if (data) {
-        try {
-            console.log('❌ [SERVER RESPONSE]:', JSON.stringify(data, null, 2));
-        } catch (e) {
-            console.log('❌ [SERVER RESPONSE]:', data);
-        }
-    }
 };
-
-export const publicClient = axios.create({
-    baseURL: API_BASE_URL,
-    timeout: 30000,
-    headers: { 'Content-Type': 'application/json' },
-});
-
-publicClient.interceptors.request.use(async (config) => {
-    const commonHeaders = await getCommonHeaders();
-    config.headers = Object.assign({}, commonHeaders, config.headers) as any;
-    logRequest(config);
-    return config;
-});
-
-export const privateClient = axios.create({
-    baseURL: API_BASE_URL,
-    withCredentials: true,
-    timeout: 30000,
-    headers: { 'Content-Type': 'application/json' },
-});
-
-privateClient.interceptors.request.use(
-    async (config: InternalAxiosRequestConfig) => {
-        const commonHeaders = await getCommonHeaders();
-        config.headers = Object.assign({}, commonHeaders, config.headers) as any;
-
-        const { accessToken } = useTokenStore.getState();
-        if (accessToken && !config.headers['Authorization']) {
-            config.headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-
-        logRequest(config);
-        return config;
-    },
-    (error) => Promise.reject(error)
-);
-
-export const mediaClient = axios.create({
-    baseURL: API_BASE_URL,
-    timeout: 300000,
-    headers: {
-        'Accept': 'application/json',
-    },
-    transformRequest: (data) => {
-        return data;
-    },
-});
-
-mediaClient.interceptors.request.use(
-    async (config: InternalAxiosRequestConfig) => {
-        const commonHeaders = await getCommonHeaders();
-        config.headers = Object.assign({}, commonHeaders, config.headers) as any;
-
-        const { accessToken } = useTokenStore.getState();
-        if (accessToken && !config.headers['Authorization']) {
-            config.headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-
-        if (config.data instanceof FormData) {
-            delete config.headers['Content-Type'];
-        }
-
-        logRequest(config);
-        return config;
-    },
-    (error) => Promise.reject(error)
-);
 
 const handleErrorResponse = (error: AxiosError) => {
     const httpStatus = error.response?.status;
@@ -166,35 +72,41 @@ const handleErrorResponse = (error: AxiosError) => {
             const message = isTimeout
                 ? i18n.t('error.timeout_message')
                 : i18n.t('error.connection_message');
-
-            showToast({
-                message: message,
-                type: 'error',
-            });
+            showToast({ message: message, type: 'error' });
         }
         return;
     }
 
-    if (httpStatus >= 500) {
-        return;
-    }
-
+    if (httpStatus >= 500) return;
     if (httpStatus === 401 || httpStatus === 403 || httpStatus === 429) return;
 
     if (data?.message) {
-        showToast({
-            message: data.message,
-            type: 'error',
-        });
+        showToast({ message: data.message, type: 'error' });
     } else if (httpStatus >= 400 && httpStatus < 500) {
-        showToast({
-            message: i18n.t('error.default_client_message'),
-            type: 'error',
-        });
+        showToast({ message: i18n.t('error.default_client_message'), type: 'error' });
     }
 };
 
-const setupInterceptors = (client: any) => {
+export const publicClient = axios.create({
+    baseURL: API_BASE_URL,
+    timeout: 30000,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+export const privateClient = axios.create({
+    baseURL: API_BASE_URL,
+    withCredentials: true,
+    timeout: 30000,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+export const mediaClient = axios.create({
+    baseURL: API_BASE_URL,
+    timeout: 300000,
+    headers: { 'Accept': 'application/json' },
+});
+
+const setupInterceptors = (client: any, isPrivate: boolean = true) => {
     let isRefreshing = false;
     let failedQueue: any[] = [];
 
@@ -206,6 +118,24 @@ const setupInterceptors = (client: any) => {
         failedQueue = [];
     };
 
+    client.interceptors.request.use(
+        async (config: InternalAxiosRequestConfig) => {
+            const commonHeaders = await getCommonHeaders();
+            config.headers = Object.assign({}, commonHeaders, config.headers) as any;
+
+            if (isPrivate) {
+                const { accessToken } = useTokenStore.getState();
+                if (accessToken && !config.headers['Authorization']) {
+                    config.headers['Authorization'] = `Bearer ${accessToken}`;
+                }
+            }
+
+            logRequest(config);
+            return config;
+        },
+        (error: any) => Promise.reject(error)
+    );
+
     client.interceptors.response.use(
         (response: AxiosResponse) => {
             logResponse(response);
@@ -215,18 +145,17 @@ const setupInterceptors = (client: any) => {
             const originalRequest = error.config as CustomAxiosRequestConfig;
             const httpStatus = error.response?.status;
 
-            // 🔥 LOG ERROR HERE
             logError(error);
 
             if (httpStatus !== 401 && httpStatus !== 403) {
                 handleErrorResponse(error);
             }
 
-            if (httpStatus !== 401 || originalRequest._retry) {
+            if (httpStatus !== 401 || originalRequest._retry || !isPrivate) {
                 return Promise.reject(error);
             }
 
-            if (originalRequest.url?.includes('/auth/login')) {
+            if (originalRequest.url?.includes('/auth/refresh-token')) {
                 return Promise.reject(error);
             }
 
@@ -249,7 +178,6 @@ const setupInterceptors = (client: any) => {
             const { refreshToken, setTokens } = useTokenStore.getState();
 
             if (!refreshToken) {
-                eventBus.emit('logout');
                 return Promise.reject(error);
             }
 
@@ -275,7 +203,7 @@ const setupInterceptors = (client: any) => {
                 }
             } catch (err) {
                 processQueue(err, null);
-                eventBus.emit('logout');
+                eventBus.emit('auth.session_expired');
                 return Promise.reject(err);
             } finally {
                 isRefreshing = false;
@@ -284,8 +212,8 @@ const setupInterceptors = (client: any) => {
     );
 };
 
-setupInterceptors(publicClient);
-setupInterceptors(privateClient);
-setupInterceptors(mediaClient);
+setupInterceptors(publicClient, false);
+setupInterceptors(privateClient, true);
+setupInterceptors(mediaClient, true);
 
 export default privateClient;

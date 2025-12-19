@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react"
-import { Alert, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, TextInput, Keyboard, Switch } from "react-native"
+import { useState, useEffect, useMemo, useRef } from "react"
+import { Alert, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, TextInput, Keyboard, Switch, AppState } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useUserStore } from "../../stores/UserStore"
 import * as WebBrowser from "expo-web-browser"
@@ -14,6 +14,11 @@ import { PaymentRequest, TransactionRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import PaymentMethodSelector from "../../components/payment/PaymentMethodSelector"
+import { SupportedCurrency } from "../../utils/currency"
+import privateClient from "../../api/axiosClient"
+
+// Ensure WebBrowser works correctly on Android
+WebBrowser.maybeCompleteAuthSession();
 
 interface PaymentCourseVersion {
   versionId: string;
@@ -31,6 +36,7 @@ interface PaymentCourseParams {
 
 const PaymentScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
+  const appState = useRef(AppState.currentState);
 
   const { course } = route.params as { course: PaymentCourseParams };
   const { user } = useUserStore();
@@ -50,69 +56,75 @@ const PaymentScreen = ({ navigation, route }: any) => {
   const { convert, isLoading: loadingRates } = useCurrencyConverter();
   const { mutate: validateDiscount, isPending: isValidatingCoupon } = useCourses().useValidateDiscount();
 
-  // Refresh course status sau khi mua thành công
   const { refetch: refetchCourse } = useCourses().useCourse(course.courseId);
 
   const COINS_PER_USD = 1000;
-  const originalPrice = course.latestPublicVersion?.price || 0;
+  const basePriceUSD = course.latestPublicVersion?.price || 0;
 
-  const discountAmount = appliedDiscount
-    ? (originalPrice * appliedDiscount.percent) / 100
-    : 0;
+  const targetCurrency = useMemo((): SupportedCurrency => {
+    if (selectedMethod === 'gateway') {
+      if (gatewayProvider === Enums.TransactionProvider.VNPAY) return 'VND';
+      if (gatewayProvider === Enums.TransactionProvider.STRIPE) return 'USD';
+    }
+    return user?.country === Enums.Country.VIETNAM ? 'VND' : 'USD';
+  }, [selectedMethod, gatewayProvider, user?.country]);
 
-  const priceAfterCoupon = Math.max(0, originalPrice - discountAmount);
+  const displayOriginalPrice = useMemo(() => {
+    return convert(basePriceUSD, targetCurrency);
+  }, [basePriceUSD, targetCurrency, convert]);
+
+  const discountAmount = useMemo(() => {
+    return appliedDiscount
+      ? (displayOriginalPrice * appliedDiscount.percent) / 100
+      : 0;
+  }, [displayOriginalPrice, appliedDiscount]);
+
+  const priceAfterCoupon = Math.max(0, displayOriginalPrice - discountAmount);
+
+  const valuePerCoin = useMemo(() => {
+    const valueInUSD = 1 / COINS_PER_USD;
+    return convert(valueInUSD, targetCurrency);
+  }, [targetCurrency, convert]);
+
   const availableCoins = user?.coins || 0;
 
   const maxCoinsUsable = useMemo(() => {
-    const priceInCoins = priceAfterCoupon * COINS_PER_USD;
-    return Math.floor(Math.min(availableCoins, priceInCoins));
-  }, [availableCoins, priceAfterCoupon]);
+    if (valuePerCoin === 0) return 0;
+    const maxCoinsForPrice = Math.floor(priceAfterCoupon / valuePerCoin);
+    return Math.floor(Math.min(availableCoins, maxCoinsForPrice));
+  }, [availableCoins, priceAfterCoupon, valuePerCoin]);
 
   useEffect(() => {
     setCoinsToUse(useCoins ? maxCoinsUsable : 0);
-  }, [useCoins, maxCoinsUsable]);
+  }, [useCoins, maxCoinsUsable, targetCurrency]);
 
-  const coinDiscountAmount = useCoins ? (coinsToUse / COINS_PER_USD) : 0;
+  const coinDiscountAmount = useCoins ? (coinsToUse * valuePerCoin) : 0;
   const finalAmount = Math.max(0, priceAfterCoupon - coinDiscountAmount);
-  const userCurrency = user?.country === Enums.Country.VIETNAM ? 'VND' : 'USD';
+  const walletBalanceDisplay = convert(walletData?.balance || 0, targetCurrency);
+  const isBalanceSufficient = walletBalanceDisplay >= finalAmount;
 
-  const displayFinalPrice = convert(finalAmount, userCurrency);
-  const displayOriginalPrice = convert(originalPrice, userCurrency);
-  const isBalanceSufficient = (walletData?.balance || 0) >= displayFinalPrice;
-
+  // --- APP STATE HANDLER (Handle Token Refresh on Resume) ---
   useEffect(() => {
-    const handleDeepLink = (event: { url: string }) => {
-      const { url } = event;
-      console.log("Deep link received:", url);
-      if (url.includes('payment/result')) {
-        const queryParams = Linking.parse(url).queryParams;
-        WebBrowser.dismissBrowser();
-
-        if (queryParams?.status === 'success') {
-          Alert.alert(t('common.success'), t('payment.success'), [
-            {
-              text: 'OK', onPress: () => {
-                refetchWallet();
-                refetchCourse();
-                navigation.navigate('MyCoursesScreen');
-              }
-            }
-          ]);
-        } else {
-          Alert.alert(t('common.error'), t('payment.failed') + ': ' + (queryParams?.reason || 'Unknown'));
-        }
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        privateClient.get('/api/v1/users/me/profile')
+          .then(() => {
+            refetchWallet();
+          })
+          .catch((err) => {
+            console.log("Token check on resume failed or token invalid", err);
+          });
       }
-    };
-
-    const subscription = Linking.addEventListener("url", handleDeepLink);
-    Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink({ url });
+      appState.current = nextAppState;
     });
 
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [refetchWallet]);
 
   const handleApplyCoupon = () => {
     Keyboard.dismiss();
@@ -141,12 +153,13 @@ const PaymentScreen = ({ navigation, route }: any) => {
   };
 
   const processWalletPayment = () => {
-    const cleanAmount = Number(displayFinalPrice.toFixed(2));
+    const cleanAmount = Number(finalAmount.toFixed(2));
+
     const payload: TransactionRequest = {
       userId: user!.userId,
       amount: cleanAmount,
       provider: Enums.TransactionProvider.INTERNAL,
-      currency: userCurrency,
+      currency: targetCurrency,
       type: Enums.TransactionType.PAYMENT,
       status: Enums.TransactionStatus.SUCCESS,
       description: `Payment for course: ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
@@ -157,24 +170,63 @@ const PaymentScreen = ({ navigation, route }: any) => {
 
     createTransaction.mutate(payload, {
       onSuccess: () => {
-        Alert.alert(t('common.success'), t('payment.success'));
-        refetchWallet();
-        refetchCourse();
-        navigation.navigate('MyCoursesScreen');
+        Alert.alert(t('common.success'), t('payment.success'), [
+          {
+            text: 'OK', onPress: () => {
+              refetchWallet();
+              refetchCourse();
+              navigation.navigate('MyCoursesScreen');
+            }
+          }
+        ]);
       },
       onError: () => Alert.alert(t('common.error'), t('payment.failed'))
     });
   };
 
+  const handlePaymentResult = async (resultUrl: string | null) => {
+    if (!resultUrl) return;
+
+    // Parse result from deep link
+    const { queryParams } = Linking.parse(resultUrl);
+
+    // Wait a bit for webhook to process
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    await refetchWallet();
+    await refetchCourse();
+
+    if (queryParams?.status === 'success' || queryParams?.vnp_ResponseCode === '00') {
+      Alert.alert(t('common.success'), t('payment.success'), [
+        {
+          text: 'OK', onPress: () => {
+            navigation.navigate('MyCoursesScreen');
+          }
+        }
+      ]);
+    } else if (queryParams?.status === 'cancel') {
+      // User cancelled, do nothing or show toast
+    } else {
+      Alert.alert(t('common.error'), t('payment.failed') + ': ' + (queryParams?.reason || 'Unknown'));
+    }
+  }
+
   const processGatewayPayment = () => {
-    const cleanAmount = Number(displayFinalPrice.toFixed(2));
+    let cleanAmount = finalAmount;
+    if (targetCurrency === 'VND') {
+      cleanAmount = Math.round(finalAmount);
+    } else {
+      cleanAmount = Number(finalAmount.toFixed(2));
+    }
+
+    // Creates: exp://192.168.1.x:8081/--/payment/result (Dev) or monkeylingua://payment/result (Prod)
     const returnDeepLink = Linking.createURL("payment/result");
 
     const payload: PaymentRequest & { coins?: number; courseVersionId?: string } = {
       userId: user!.userId,
       amount: cleanAmount,
       provider: gatewayProvider,
-      currency: userCurrency,
+      currency: targetCurrency,
       type: Enums.TransactionType.PAYMENT,
       returnUrl: returnDeepLink,
       description: `Buy ${course.title}`,
@@ -183,26 +235,46 @@ const PaymentScreen = ({ navigation, route }: any) => {
     };
 
     createPaymentUrl.mutate(payload, {
-      onSuccess: async (url) => {
-        if (url) {
-          await WebBrowser.openBrowserAsync(url);
+      onSuccess: async (paymentUrl) => {
+        if (paymentUrl) {
+          try {
+            // FIX: Use openAuthSessionAsync instead of openBrowserAsync
+            // This waits for the redirect and automatically closes the browser window
+            const result = await WebBrowser.openAuthSessionAsync(
+              paymentUrl,
+              returnDeepLink
+            );
+
+            if (result.type === 'success' && result.url) {
+              handlePaymentResult(result.url);
+            }
+          } catch (error) {
+            console.error("Browser Error:", error);
+          }
         }
       },
-      onError: () => Alert.alert(t('common.error'), t('payment.gatewayError'))
+      onError: (err: any) => {
+        console.error("Gateway Error:", err);
+        Alert.alert(t('common.error'), t('payment.gatewayError'));
+      }
     });
   };
 
   const renderPriceDisplay = () => {
     if (loadingRates) return <ActivityIndicator size="small" color="#4F46E5" />;
+
+    const formattedOriginal = displayOriginalPrice.toLocaleString('vi-VN', { style: 'currency', currency: targetCurrency });
+    const formattedFinal = finalAmount.toLocaleString('vi-VN', { style: 'currency', currency: targetCurrency });
+
     return (
       <View style={{ alignItems: 'flex-end' }}>
         {(appliedDiscount || useCoins) && (
           <Text style={styles.originalPrice}>
-            {displayOriginalPrice.toLocaleString()} {userCurrency}
+            {formattedOriginal}
           </Text>
         )}
         <Text style={styles.totalValue}>
-          {displayFinalPrice.toLocaleString()} {userCurrency}
+          {formattedFinal}
         </Text>
       </View>
     );
@@ -224,7 +296,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
           <Text style={styles.instructor}>by {course.instructor}</Text>
           <View style={styles.divider} />
 
-          {/* Coupon Section */}
           <View style={styles.couponContainer}>
             <View style={styles.inputWrapper}>
               <Icon name="local-offer" size={20} color="#6B7280" style={styles.inputIcon} />
@@ -252,7 +323,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
             )}
           </View>
 
-          {/* Coin Switch */}
           <View style={styles.coinSection}>
             <View style={styles.coinHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -268,7 +338,9 @@ const PaymentScreen = ({ navigation, route }: any) => {
               />
             </View>
             {useCoins && (
-              <Text style={styles.discountText}>- ${(coinsToUse / COINS_PER_USD).toFixed(2)}</Text>
+              <Text style={styles.discountText}>
+                - {coinDiscountAmount.toLocaleString('vi-VN', { style: 'currency', currency: targetCurrency })}
+              </Text>
             )}
           </View>
 
@@ -279,14 +351,13 @@ const PaymentScreen = ({ navigation, route }: any) => {
           </View>
         </View>
 
-        {/* Reusable Payment Selector */}
         <PaymentMethodSelector
           selectedMethod={selectedMethod}
           selectedProvider={gatewayProvider}
           onMethodChange={setSelectedMethod}
           onProviderChange={setGatewayProvider}
           walletBalance={walletData?.balance}
-          currency={userCurrency}
+          currency={targetCurrency}
           showWalletOption={true}
           insufficientBalance={!isBalanceSufficient}
         />

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react"; // Thêm useCallback
 import { useTranslation } from "react-i18next";
 import {
   FlatList,
@@ -23,6 +23,8 @@ import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { VocabularyFlashcardView } from "../../components/learn/VocabularyFlashcardView";
+import FileUploader from "../../components/common/FileUploader";
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
 
 const { width } = Dimensions.get("window");
 
@@ -54,12 +56,13 @@ const NotesScreen = ({ navigation }: any) => {
 
   const searchParams = useMemo(() => {
     return {
+      userId: user?.userId,
       page: 0,
       size: 50,
       content_type: activeTab === "vocab" ? Enums.ContentType.VOCABULARY : Enums.ContentType.FORMULA,
       keyword: searchQuery.length > 2 ? searchQuery : undefined
     };
-  }, [activeTab, searchQuery]);
+  }, [activeTab, searchQuery, user?.userId]);
 
   const { data: notesData, isLoading, refetch } = useUserMemorizations(searchParams);
   const { mutate: createNote, isPending: isCreating } = useCreateMemorization();
@@ -127,11 +130,9 @@ const NotesScreen = ({ navigation }: any) => {
     questionType: Enums.QuestionType.MULTIPLE_CHOICE,
     skillType: Enums.SkillType.VOCABULARY,
     languageCode: "en",
-
     transcript: note.definition || undefined,
     correctOption: note.example || "",
     mediaUrl: note.imageUrl || undefined,
-
     weight: 1,
     orderIndex: 0,
     isDeleted: false,
@@ -140,16 +141,16 @@ const NotesScreen = ({ navigation }: any) => {
     correctAnswer: "",
   });
 
-  const renderVocabItem = ({ item }: { item: MemorizationResponse }) => (
+  const renderVocabItem = useCallback(({ item }: { item: MemorizationResponse }) => (
     <View style={styles.flashcardWrapper}>
       <View style={styles.flashcardHeader}>
         <Text style={styles.dateText}>{new Date(item.createdAt).toLocaleDateString()}</Text>
         <View style={styles.actionRow}>
           <TouchableOpacity onPress={() => openEdit(item)}><Icon name="edit" size={20} color="#6B7280" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => deleteNote(item.memorizationId)} style={{ marginLeft: 10 }}><Icon name="delete" size={20} color="#EF4444" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => deleteNote({ id: item.memorizationId, userId: user?.userId! })} style={{ marginLeft: 10 }}><Icon name="delete" size={20} color="#EF4444" /></TouchableOpacity>
         </View>
       </View>
-      {/* Pass mapped object */}
+
       <VocabularyFlashcardView question={mapNoteToQuestion(item)} />
 
       {item.reminderEnabled && (
@@ -159,15 +160,15 @@ const NotesScreen = ({ navigation }: any) => {
         </View>
       )}
     </View>
-  );
+  ), [deleteNote]);
 
-  const renderGrammarItem = ({ item }: { item: MemorizationResponse }) => (
+  const renderGrammarItem = useCallback(({ item }: { item: MemorizationResponse }) => (
     <View style={styles.grammarCard}>
       <View style={styles.grammarHeader}>
         <Text style={styles.grammarTitle}>{item.noteText}</Text>
         <View style={styles.actionRow}>
           <TouchableOpacity onPress={() => openEdit(item)}><Icon name="edit" size={18} color="#6B7280" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => deleteNote(item.memorizationId)} style={{ marginLeft: 8 }}><Icon name="delete" size={18} color="#EF4444" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => deleteNote({ id: item.memorizationId, userId: user?.userId! })} style={{ marginLeft: 8 }}><Icon name="delete" size={18} color="#EF4444" /></TouchableOpacity>
         </View>
       </View>
 
@@ -183,7 +184,7 @@ const NotesScreen = ({ navigation }: any) => {
         </View>
       )}
     </View>
-  );
+  ), [deleteNote]);
 
   return (
     <ScreenLayout style={styles.container}>
@@ -220,6 +221,11 @@ const NotesScreen = ({ navigation }: any) => {
           renderItem={activeTab === "vocab" ? renderVocabItem : renderGrammarItem}
           keyExtractor={(item) => item.memorizationId}
           contentContainerStyle={styles.listContent}
+          // Thêm các props tối ưu
+          removeClippedSubviews={true}
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          windowSize={5}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>No notes found in this category.</Text>
@@ -228,15 +234,23 @@ const NotesScreen = ({ navigation }: any) => {
         />
       )}
 
-      <Modal visible={showAddModal} animationType="slide" transparent>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
+        {/* FIX QUAN TRỌNG:
+            Thay đổi behavior: Chỉ dùng 'padding' cho iOS.
+            Trên Android, để undefined vì Modal native của Android tự xử lý resize khi bàn phím hiện lên.
+            Việc set behavior="height" trên Android + Modal + flex-end gây ra vòng lặp tính toán layout.
+        */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editingId ? "Edit Note" : `Add ${activeTab === "vocab" ? "Vocabulary" : "Grammar"}`}</Text>
               <TouchableOpacity onPress={() => setShowAddModal(false)}><Icon name="close" size={24} color="#37352F" /></TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={styles.label}>{activeTab === "vocab" ? "Word / Phrase" : "Grammar Point"}</Text>
               <TextInput style={styles.input} value={noteText} onChangeText={setNoteText} placeholder="e.g. Hello / Present Simple" />
 
@@ -248,9 +262,31 @@ const NotesScreen = ({ navigation }: any) => {
 
               {activeTab === "vocab" && (
                 <>
-                  <Text style={styles.label}>Image URL (Optional)</Text>
-                  <TextInput style={styles.input} value={imageUrl} onChangeText={setImageUrl} placeholder="https://..." />
-                  {imageUrl ? <Image source={{ uri: imageUrl }} style={{ width: 60, height: 60, borderRadius: 8, marginBottom: 10 }} /> : null}
+                  <Text style={styles.label}>Image (Optional)</Text>
+                  {imageUrl ? (
+                    <View style={styles.imagePreviewContainer}>
+                      <Image
+                        source={{ uri: getDirectMediaUrl(imageUrl, 'IMAGE') }}
+                        style={styles.imagePreview}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity
+                        style={styles.removeImageBtn}
+                        onPress={() => setImageUrl("")}
+                      >
+                        <Icon name="close" size={16} color="#FFF" />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.uploaderContainer}>
+                      <FileUploader onUploadSuccess={(url: string) => setImageUrl(url)}>
+                        <View style={styles.uploadPlaceholder}>
+                          <Icon name="add-photo-alternate" size={32} color="#9CA3AF" />
+                          <Text style={styles.uploadPlaceholderText}>Tap to Upload Image</Text>
+                        </View>
+                      </FileUploader>
+                    </View>
+                  )}
                 </>
               )}
 
@@ -282,6 +318,7 @@ const NotesScreen = ({ navigation }: any) => {
 };
 
 const styles = createScaledSheet({
+  // ... Giữ nguyên styles cũ của bạn
   container: { flex: 1, backgroundColor: '#F9FAFB' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF', elevation: 2 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
@@ -319,7 +356,13 @@ const styles = createScaledSheet({
   smallLabel: { fontSize: 12, color: '#6B7280', marginTop: 8, marginBottom: 4 },
   smallInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, padding: 8 },
   saveBtn: { backgroundColor: '#37352F', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 24 },
-  saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
+  saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  imagePreviewContainer: { position: 'relative', marginBottom: 12, borderRadius: 8, overflow: 'hidden' },
+  imagePreview: { width: '100%', height: 180, borderRadius: 8, backgroundColor: '#E5E7EB' },
+  removeImageBtn: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 12 },
+  uploaderContainer: { marginBottom: 12 },
+  uploadPlaceholder: { height: 120, borderWidth: 1, borderColor: '#D1D5DB', borderStyle: 'dashed', borderRadius: 8, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' },
+  uploadPlaceholderText: { marginTop: 8, color: '#6B7280', fontSize: 14, fontWeight: '500' }
 });
 
 export default NotesScreen;

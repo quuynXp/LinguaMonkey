@@ -8,6 +8,7 @@ from typing import List, Tuple
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.exc import IntegrityError # IMPORT THÊM
 from langdetect import detect, LangDetectException
 import google.generativeai as genai
 from google.generativeai import GenerativeModel
@@ -28,6 +29,8 @@ TRANSLATION_MODEL_TIERS = [
 class HybridTranslator:
     def __init__(self, redis_client: Redis):
         self.redis = redis_client
+        self.vi_pattern = re.compile(r'[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]', re.IGNORECASE)
+        self.zh_pattern = re.compile(r'[\u4e00-\u9fff]')
 
     def _normalize(self, text: str) -> str:
         if not text: return ""
@@ -42,22 +45,40 @@ class HybridTranslator:
         if not lang: return "en"
         lang = lang.lower().strip()
         if lang in ['vn', 'vietnamese', 'vi-vn', 'vi']: return 'vi'
-        if lang in ['zh', 'zh-cn', 'cn']: return 'zh-CN'
+        if lang in ['zh', 'zh-cn', 'cn', 'zh-tw']: return 'zh-CN'
+        if lang in ['en', 'english', 'en-us', 'en-uk']: return 'en'
         return lang.split('-')[0] if '-' in lang else lang
 
     def detect_language(self, text: str) -> str:
-        try: return detect(text)
-        except LangDetectException: return "en"
+        """
+        Custom Detection: Prioritize Vi -> Zh -> En
+        """
+        if not text or not text.strip():
+            return "en"
+            
+        if self.vi_pattern.search(text):
+            return "vi"
+            
+        if self.zh_pattern.search(text):
+            return "zh-CN"
+            
+        return "en"
 
     def _tokenize(self, text: str, lang: str) -> List[str]:
         if not text: return []
-        if lang in ['zh-CN', 'zh-TW', 'ja', 'ko']:
-            return [char for char in text if char.strip() and char not in string.punctuation]
-        return self._normalize(text).split()
+        if lang in ['zh-CN', 'zh-TW', 'ja', 'ko', 'zh']:
+             return [char for char in text if char.strip() and char not in string.punctuation]
+        
+        clean_text = self._normalize(text)
+        return clean_text.split()
 
     async def _save_to_db(self, original_text: str, src_lang: str, target_lang: str, translated_text: str):
+        """
+        Lưu vào DB với cơ chế Retry/Update nếu gặp Race Condition (IntegrityError)
+        """
         async with AsyncSessionLocal() as db:
             try:
+                # 1. Thử tìm bản ghi tồn tại
                 stmt = select(TranslationLexicon).where(
                     TranslationLexicon.original_text == original_text,
                     TranslationLexicon.original_lang == src_lang
@@ -66,12 +87,14 @@ class HybridTranslator:
                 entry = result.scalar_one_or_none()
 
                 if entry:
+                    # Nếu đã có, update translations JSON
                     current = dict(entry.translations) if entry.translations else {}
                     current[target_lang] = translated_text
                     entry.translations = current
                     flag_modified(entry, "translations")
                     entry.usage_count += 1
                 else:
+                    # Nếu chưa có, tạo mới
                     new_entry = TranslationLexicon(
                         original_text=original_text,
                         original_lang=src_lang,
@@ -79,16 +102,47 @@ class HybridTranslator:
                         usage_count=1
                     )
                     db.add(new_entry)
+                
                 await db.commit()
+            
+            except IntegrityError:
+                # 2. Bắt lỗi Race Condition: Process khác đã insert trong lúc ta đang xử lý
+                await db.rollback()
+                # Thử update lại lần nữa (Re-fetch & Update)
+                try:
+                    stmt_retry = select(TranslationLexicon).where(
+                        TranslationLexicon.original_text == original_text,
+                        TranslationLexicon.original_lang == src_lang
+                    )
+                    res_retry = await db.execute(stmt_retry)
+                    entry_retry = res_retry.scalar_one_or_none()
+                    
+                    if entry_retry:
+                        current = dict(entry_retry.translations) if entry_retry.translations else {}
+                        current[target_lang] = translated_text
+                        entry_retry.translations = current
+                        flag_modified(entry_retry, "translations")
+                        entry_retry.usage_count += 1
+                    else:
+                        # If still not found after retry, create new
+                        new_entry = TranslationLexicon(
+                            original_text=original_text,
+                            original_lang=src_lang,
+                            translations={target_lang: translated_text},
+                            usage_count=1
+                        )
+                        db.add(new_entry)
+                    await db.commit()
+                    logger.info(f"Recovered from race condition for: {original_text}")
+                except Exception as e_retry:
+                    await db.rollback()
+                    logger.warning(f"Failed to recover DB save: {e_retry}")
+
             except Exception as e:
-                logger.error(f"DB Save Error: {e}")
+                logger.error(f"DB Save Error (General): {e}")
                 await db.rollback()
 
     async def lpm_translate(self, text: str, src_lang: str, target_lang: str) -> Tuple[str, float]:
-        """
-        Thuật toán Longest Prefix Match:
-        Cố gắng tìm cụm từ dài nhất trong DB khớp với đoạn đầu câu.
-        """
         words = self._tokenize(text, src_lang)
         n = len(words)
         if n == 0: return text, 0.0

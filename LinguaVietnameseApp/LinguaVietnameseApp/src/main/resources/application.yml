@@ -148,7 +148,6 @@ management:
       groups:
         render:
           include: diskSpace, ping
-          exclude: mail, redis, db, datastore, kafka, elasticsearch
           show-components: always
 
 # Logging
@@ -160,7 +159,7 @@ logging:
     org.hibernate.SQL: ERROR # Tắt hoàn toàn log query SQL
     org.hibernate.type.descriptor.sql.BasicBinder: ERROR # Tắt log tham số truyền vào query
     com.google.auth: WARN
-    com.connectJPA.LinguaVietnameseApp: INFO 
+    com.connectJPA.LinguaVietnameseApp: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 vip:

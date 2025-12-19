@@ -15,10 +15,9 @@ public interface TransactionService {
     Page<TransactionResponse> getAllUserTransactions(UUID userId, Pageable pageable);
     TransactionResponse getTransactionById(UUID id);
     
-    // Updated: deposit now needs IP for VNPay Prod
     String createDepositUrl(DepositRequest request, String clientIp); 
     
-    String handleWebhook(WebhookRequest request);
+    String handleWebhook(String payload, String signatureHeader);
     TransactionResponse transfer(TransferRequest request);
     TransactionResponse withdraw(WithdrawRequest request);
     TransactionResponse requestRefund(RefundRequest request);
@@ -29,7 +28,6 @@ public interface TransactionService {
     TransactionResponse updateTransaction(UUID id, TransactionRequest request);
     void deleteTransaction(UUID id);
     
-    // Updated: payment URL now needs IP for VNPay Prod
     String createPaymentUrl(PaymentRequest request, String clientIp);
     Page<RefundRequestResponse> getPendingRefundRequests(Pageable pageable);
     String processVnPayReturn(HttpServletRequest request);

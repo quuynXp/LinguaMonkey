@@ -62,6 +62,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
                 setIsProcessing(true);
                 if (onUploadStart) onUploadStart();
 
+                // Direct upload call from component
                 const response = await uploadTemp(file);
 
                 onUploadSuccess(response, type);
@@ -96,6 +97,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
                 const typeStr = asset.type === 'video' ? 'video/mp4' : 'image/jpeg';
+                const finalMimeType = asset.mimeType || typeStr;
 
                 const isValid = await validateFile(asset.fileSize, asset.type || 'image', asset.uri);
                 if (!isValid) return;
@@ -103,7 +105,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
                 const fileObj = {
                     uri: asset.uri,
                     name: asset.fileName || `upload_${Date.now()}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
-                    type: asset.mimeType || typeStr,
+                    type: finalMimeType,
+                    mimeType: finalMimeType,
                     duration: asset.duration,
                     width: asset.width,
                     height: asset.height
@@ -130,21 +133,23 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                const safeMimeType = asset.mimeType || 'application/octet-stream';
 
-                const isValid = await validateFile(asset.size, asset.mimeType || 'application', asset.uri);
+                const isValid = await validateFile(asset.size, safeMimeType, asset.uri);
                 if (!isValid) return;
 
                 const fileObj = {
                     uri: asset.uri,
                     name: asset.name,
-                    type: asset.mimeType || 'application/octet-stream',
+                    type: safeMimeType,
+                    mimeType: safeMimeType,
                     size: asset.size
                 };
 
                 let msgType: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'DOCUMENT';
-                if (asset.mimeType?.startsWith('audio')) msgType = 'AUDIO';
-                else if (asset.mimeType?.startsWith('video')) msgType = 'VIDEO';
-                else if (asset.mimeType?.startsWith('image')) msgType = 'IMAGE';
+                if (safeMimeType.startsWith('audio')) msgType = 'AUDIO';
+                else if (safeMimeType.startsWith('video')) msgType = 'VIDEO';
+                else if (safeMimeType.startsWith('image')) msgType = 'IMAGE';
 
                 await processFile(fileObj, msgType);
             }

@@ -77,8 +77,14 @@ public class RoomServiceImpl implements RoomService {
 
     private RoomResponse toRoomResponseWithMembers(Room room) {
         RoomResponse response = roomMapper.toResponse(room);
-        long memberCount = roomRepository.countMembersByRoomId(room.getRoomId());
-        response.setMemberCount((int) memberCount);
+        
+        Long cachedCount = room.getMemberCount(); 
+        if (cachedCount != null) {
+            response.setMemberCount(cachedCount.intValue());
+        } else {
+            long memberCount = roomRepository.countMembersByRoomId(room.getRoomId());
+            response.setMemberCount((int) memberCount);
+        }
         
         response.setSecretKey(room.getSecretKey());
 
@@ -95,6 +101,21 @@ public class RoomServiceImpl implements RoomService {
             .collect(Collectors.toList());
 
         response.setMembers(memberProfiles);
+
+        Optional<ChatMessage> lastMsgOpt = chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(room.getRoomId());
+        if (lastMsgOpt.isPresent()) {
+            ChatMessage lastMsg = lastMsgOpt.get();
+            response.setLastMessage(lastMsg.getContent());
+            response.setLastMessageTime(lastMsg.getId().getSentAt());
+            response.setLastMessageSenderId(lastMsg.getSenderId().toString());
+            response.setRead(lastMsg.isRead());
+            
+            if (lastMsg.getMessageType() != null) {
+                response.setLastMessageType(lastMsg.getMessageType().name());
+            }
+        } else {
+            response.setRead(true); // No messages means nothing to read
+        }
 
         if (room.getRoomType() == RoomType.PRIVATE) {
             try {
@@ -118,17 +139,46 @@ public class RoomServiceImpl implements RoomService {
         return response;
     }
 
+    private RoomResponse toRoomResponseLightweight(Room room) {
+        RoomResponse response = roomMapper.toResponse(room);
+        
+        long memberCount = roomRepository.countMembersByRoomId(room.getRoomId());
+        response.setMemberCount((int) memberCount);
+        response.setSecretKey(room.getSecretKey());
+        
+        response.setMembers(null);
+        
+        return response;
+    }
+
     @Override
     @Transactional(readOnly = true)
     public Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pageable) {
+        // Fetch joined rooms
         Page<Room> rooms = roomRepository.findJoinedRoomsStrict(userId, purpose, pageable);
+
+        List<UUID> roomIds = rooms.getContent().stream()
+                .map(Room::getRoomId)
+                .collect(Collectors.toList());
+        
+        Map<UUID, Long> memberCountMap = new HashMap<>();
+        if (!roomIds.isEmpty()) {
+            List<Object[]> counts = roomRepository.findMemberCountsByRoomIds(roomIds);
+            for (Object[] row : counts) {
+                if (row.length >= 2 && row[0] instanceof UUID && row[1] instanceof Number) {
+                    memberCountMap.put((UUID) row[0], ((Number) row[1]).longValue());
+                }
+            }
+        }
 
         return rooms.map(room -> {
             RoomResponse response = roomMapper.toResponse(room);
-            long memberCount = roomRepository.countMembersByRoomId(room.getRoomId());
-            response.setMemberCount((int) memberCount);
+            
+            Long memberCount = memberCountMap.get(room.getRoomId());
+            response.setMemberCount(memberCount != null ? memberCount.intValue() : 0);
             response.setSecretKey(room.getSecretKey());
 
+            // Handle Private Chat Info
             if (room.getRoomType() == RoomType.PRIVATE && room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
                 List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId());
                 Optional<RoomMember> partnerOpt = members.stream()
@@ -145,27 +195,43 @@ public class RoomServiceImpl implements RoomService {
                     response.setRoomName("Unknown User");
                 }
             } else {
+                // For Group/Public Chat
                 if (response.getRoomName() == null) response.setRoomName("Group Chat");
                 userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
                         .ifPresent(creator -> response.setCreatorAvatarUrl(creator.getAvatarUrl()));
             }
 
-            chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(room.getRoomId())
-                    .ifPresent(msg -> {
-                        response.setLastMessage(msg.getContent());
-                        response.setLastMessageTime(msg.getId().getSentAt());
-                        response.setLastMessageSenderId(msg.getSenderId().toString());
-                        response.setLastMessageSenderEphemeralKey(msg.getSenderEphemeralKey());
-                        response.setLastMessageInitializationVector(msg.getInitializationVector());
-                        response.setLastMessageSelfContent(msg.getSelfContent());
-                        response.setLastMessageSelfEphemeralKey(msg.getSelfEphemeralKey());
-                        response.setLastMessageSelfInitializationVector(msg.getSelfInitializationVector());
-                    });
+            // Safe fetching of Last Message
+            Optional<ChatMessage> lastMsgOpt = chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(room.getRoomId());
+            
+            if (lastMsgOpt.isPresent()) {
+                ChatMessage lastMsg = lastMsgOpt.get();
+                response.setLastMessage(lastMsg.getContent());
+                response.setLastMessageTime(lastMsg.getId().getSentAt());
+                response.setLastMessageSenderId(lastMsg.getSenderId().toString());
+                response.setLastMessageSenderEphemeralKey(lastMsg.getSenderEphemeralKey());
+                response.setLastMessageInitializationVector(lastMsg.getInitializationVector());
+                response.setLastMessageSelfContent(lastMsg.getSelfContent());
+                response.setLastMessageSelfEphemeralKey(lastMsg.getSelfEphemeralKey());
+                response.setLastMessageSelfInitializationVector(lastMsg.getSelfInitializationVector());
+                
+                // === FIX IS HERE: Map the read status ===
+                response.setRead(lastMsg.isRead());
+                // ========================================
+
+                if (lastMsg.getMessageType() != null) {
+                    response.setLastMessageType(lastMsg.getMessageType().name());
+                }
+            } else {
+                // If no messages, consider it read
+                response.setRead(true);
+            }
 
             return response;
         });
     }
 
+    // ... [Rest of the file remains unchanged: getAllRooms, ensureCourseRoomExists, etc.] ...
     @Override
     @Transactional(readOnly = true)
     public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
@@ -254,7 +320,6 @@ public class RoomServiceImpl implements RoomService {
         room.setRoomCode(generateUniqueRoomCode());
         room.setUpdatedAt(OffsetDateTime.now());
         
-        // Fix logic: Nếu là PRIVATE nhưng không phải chat 1-1 (tức là Quiz/Group có pass), vẫn cần tạo Secret Key
         if (room.getRoomType() != RoomType.PRIVATE || room.getPurpose() != RoomPurpose.PRIVATE_CHAT) {
             room.setSecretKey(aesUtils.generateRoomKey()); 
         }
@@ -690,27 +755,29 @@ public class RoomServiceImpl implements RoomService {
 
         Room room = roomOpt.orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
+        RoomMemberId memberId = new RoomMemberId(room.getRoomId(), userId);
+        boolean alreadyMember = roomMemberRepository.existsById(memberId);
+        
+        if (alreadyMember) {
+            return toRoomResponseLightweight(room);
+        }
+
         long currentMembers = roomRepository.countMembersByRoomId(room.getRoomId());
         if (currentMembers >= room.getMaxMembers()) {
             throw new AppException(ErrorCode.EXCEEDS_MAX_MEMBERS);
         }
 
-        // Fix logic: Check password nếu room có password, không phụ thuộc cứng vào RoomType (để cover trường hợp Group Private)
         if (StringUtils.hasText(room.getPassword())) {
             if (!StringUtils.hasText(request.getPassword()) || !request.getPassword().equals(room.getPassword())) {
                 throw new AppException(ErrorCode.INVALID_PASSWORD);
             }
         }
 
-        if (roomMemberRepository.existsById(new RoomMemberId(room.getRoomId(), userId))) {
-            return toRoomResponseWithMembers(room); 
-        }
-
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         RoomMember member = RoomMember.builder()
-                .id(new RoomMemberId(room.getRoomId(), userId))
+                .id(memberId)
                 .room(room)
                 .user(user)
                 .role(RoomRole.MEMBER)
@@ -719,7 +786,7 @@ public class RoomServiceImpl implements RoomService {
                 .build();
         roomMemberRepository.save(member);
 
-        return toRoomResponseWithMembers(room);
+        return toRoomResponseLightweight(room);
     }
 
     @Override

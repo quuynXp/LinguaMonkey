@@ -8,7 +8,9 @@ import {
     Dimensions,
     KeyboardAvoidingView,
     Platform,
-    StyleSheet
+    StyleSheet,
+    TouchableWithoutFeedback,
+    Keyboard
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
@@ -109,7 +111,13 @@ const ChatBubble = () => {
         setIsMinimized(!isMinimized);
     };
 
-    const handleClose = () => {
+    const handleMinimize = () => {
+        Keyboard.dismiss();
+        setIsMinimized(true);
+    };
+
+    const handleDestroyBubble = () => {
+        Keyboard.dismiss();
         closeBubble();
         setIsMinimized(true);
     };
@@ -143,47 +151,49 @@ const ChatBubble = () => {
     return (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
             {!isMinimized && (
-                <View style={styles.expandedWrapper} pointerEvents="box-none">
-                    <TouchableOpacity
-                        style={styles.backdrop}
-                        activeOpacity={1}
-                        onPress={() => setIsMinimized(true)}
-                    />
-                    <KeyboardAvoidingView
-                        behavior={Platform.OS === "ios" ? "padding" : "height"}
-                        style={[styles.window, { marginTop: insets.top + 60, marginBottom: insets.bottom + 20 }]}
-                    >
-                        <View style={styles.header}>
-                            <View style={styles.headerInfo}>
-                                <TouchableOpacity onPress={handleOpenFullChat} style={styles.headerTitleRow}>
-                                    <Text style={styles.headerTitle} numberOfLines={1}>{displayTitle}</Text>
-                                    <Icon name="open-in-new" size={16} color="#6B7280" style={{ marginLeft: 5 }} />
-                                </TouchableOpacity>
-                                {roomInfo?.purpose === RoomPurpose.PRIVATE_CHAT && (
-                                    <View style={styles.statusRow}>
-                                        {isTargetOnline && <View style={styles.onlineDotHeader} />}
-                                        <Text style={styles.statusText}>
-                                            {isTargetOnline ? t('chat.active_now') : t('chat.offline')}
-                                        </Text>
-                                    </View>
-                                )}
-                            </View>
-                            <View style={styles.headerControls}>
-                                <TouchableOpacity onPress={() => setIsMinimized(true)} style={styles.controlBtn}>
-                                    <Icon name="remove" size={24} color="#4B5563" />
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={handleClose} style={styles.controlBtn}>
-                                    <Icon name="close" size={24} color="#4B5563" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
+                <View style={styles.expandedOverlay} pointerEvents="box-none">
+                    <TouchableWithoutFeedback onPress={handleMinimize}>
+                        <View style={styles.backdrop} />
+                    </TouchableWithoutFeedback>
 
-                        <View style={styles.content}>
-                            <ChatInnerView
-                                roomId={activeBubbleRoomId}
-                                isBubbleMode={true}
-                                members={members || []}
-                            />
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === "ios" ? "padding" : undefined}
+                        style={styles.keyboardContainer}
+                        pointerEvents="box-none"
+                    >
+                        <View style={[styles.window, { maxHeight: SCREEN_HEIGHT * 0.85 }]}>
+                            <View style={styles.header}>
+                                <View style={styles.headerInfo}>
+                                    <TouchableOpacity onPress={handleOpenFullChat} style={styles.headerTitleRow}>
+                                        <Text style={styles.headerTitle} numberOfLines={1}>{displayTitle}</Text>
+                                        <Icon name="open-in-new" size={16} color="#6B7280" style={{ marginLeft: 5 }} />
+                                    </TouchableOpacity>
+                                    {roomInfo?.purpose === RoomPurpose.PRIVATE_CHAT && (
+                                        <View style={styles.statusRow}>
+                                            {isTargetOnline && <View style={styles.onlineDotHeader} />}
+                                            <Text style={styles.statusText}>
+                                                {isTargetOnline ? t('chat.active_now') : t('chat.offline')}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </View>
+                                <View style={styles.headerControls}>
+                                    <TouchableOpacity onPress={handleMinimize} style={styles.controlBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                        <Icon name="remove" size={24} color="#4B5563" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={handleDestroyBubble} style={styles.controlBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                        <Icon name="close" size={24} color="#EF4444" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            <View style={styles.content}>
+                                <ChatInnerView
+                                    roomId={activeBubbleRoomId}
+                                    isBubbleMode={true}
+                                    members={members || []}
+                                />
+                            </View>
                         </View>
                     </KeyboardAvoidingView>
                 </View>
@@ -213,7 +223,7 @@ const ChatBubble = () => {
                     )}
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.closeBadge} onPress={handleClose}>
+                <TouchableOpacity style={styles.closeBadge} onPress={handleDestroyBubble}>
                     <Icon name="close" size={12} color="#FFF" />
                 </TouchableOpacity>
             </Animated.View>
@@ -269,19 +279,24 @@ const styles = createScaledSheet({
         borderColor: '#FFF',
         zIndex: 5
     },
-    expandedWrapper: {
+    expandedOverlay: {
         ...StyleSheet.absoluteFillObject,
         zIndex: 9990,
-        justifyContent: 'center',
-        alignItems: 'center',
     },
     backdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.1)',
+        backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    keyboardContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingBottom: 20,
     },
     window: {
-        width: SCREEN_WIDTH * 0.9,
-        height: SCREEN_HEIGHT * 0.7,
+        width: '100%',
+        height: '75%',
         backgroundColor: '#FFF',
         borderRadius: 16,
         shadowColor: "#000",
@@ -292,7 +307,6 @@ const styles = createScaledSheet({
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: '#E5E7EB',
-        zIndex: 9991
     },
     header: {
         flexDirection: 'row',
@@ -337,8 +351,8 @@ const styles = createScaledSheet({
         alignItems: 'center',
     },
     controlBtn: {
-        padding: 4,
-        marginLeft: 8
+        padding: 6,
+        marginLeft: 4
     },
     content: {
         flex: 1,

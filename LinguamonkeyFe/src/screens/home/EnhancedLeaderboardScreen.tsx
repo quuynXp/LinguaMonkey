@@ -190,6 +190,10 @@ const EnhancedLeaderboardScreen = () => {
 const LeaderboardRow = ({ rank, entry, isMe, unit, formatter, isSticky, onPress, tabId }: any) => {
     const avatarUri = entry.avatarUrl ? { uri: entry.avatarUrl } : PLACEHOLDER_DEFAULT;
     const isGlobal = tabId === 'global';
+    const isAdmire = tabId === 'admire';
+
+    // [LOGIC MỚI] Nếu là tab admire thì lấy field admire, ngược lại lấy score
+    const displayScore = isAdmire ? (entry.admire ?? 0) : (entry.score ?? 0);
 
     return (
         <TouchableOpacity
@@ -224,7 +228,7 @@ const LeaderboardRow = ({ rank, entry, isMe, unit, formatter, isSticky, onPress,
                     </>
                 ) : (
                     <>
-                        <Text style={styles.rowScore}>{formatter(entry.score ?? 0)}</Text>
+                        <Text style={styles.rowScore}>{formatter(displayScore)}</Text>
                         <Text style={styles.rowUnit}>{unit}</Text>
                     </>
                 )}
@@ -281,6 +285,10 @@ const PodiumItem = ({ entry, rank, unit, formatter, onPress, tabId }: any) => {
     const color = rank === 1 ? '#F59E0B' : rank === 2 ? '#9CA3AF' : '#CD7C2F';
     const avatarUri = entry.avatarUrl ? { uri: entry.avatarUrl } : PLACEHOLDER_DEFAULT;
     const isGlobal = tabId === 'global';
+    const isAdmire = tabId === 'admire';
+
+    // [LOGIC MỚI] Nếu là tab admire thì lấy field admire
+    const displayScore = isAdmire ? (entry.admire ?? 0) : (entry.score ?? 0);
 
     return (
         <TouchableOpacity style={styles.podiumCol} onPress={onPress} activeOpacity={0.8}>
@@ -300,7 +308,7 @@ const PodiumItem = ({ entry, rank, unit, formatter, onPress, tabId }: any) => {
                 </View>
             ) : (
                 <Text style={[styles.podiumScore, { color }]}>
-                    {formatter(entry.score ?? 0)} {unit}
+                    {formatter(displayScore)} {unit}
                 </Text>
             )}
 

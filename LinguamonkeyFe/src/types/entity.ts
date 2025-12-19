@@ -193,6 +193,7 @@ export interface ChatMessage {
     isLocal?: boolean;
     translatedText?: string | null;
     decryptedContent?: string;
+    decryptedTranslationsMap?: Record<string, string>;
 }
 export interface Couple extends BaseEntity {
     id: string;

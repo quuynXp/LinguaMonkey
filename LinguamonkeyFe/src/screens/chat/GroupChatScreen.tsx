@@ -1,19 +1,19 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
-import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, Switch, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
+import React, { useEffect, useState, useMemo } from "react";
+import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, Switch, ScrollView, ActivityIndicator } from "react-native";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
-import { useHeaderHeight } from "@react-navigation/elements";
+import { useQueryClient } from "@tanstack/react-query"; // IMPORT THIS
 
 import ChatInnerView from "../../components/chat/ChatInnerView";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useAppStore } from "../../stores/appStore";
-import { useRoom, useRoomMembers, useRemoveRoomMembers, useLeaveRoom } from "../../hooks/useRoom";
+import { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom } from "../../hooks/useRoom";
 import { useVideoCalls } from "../../hooks/useVideos";
-import { MemberResponse } from "../../types/dto";
+import { MemberResponse, PageResponse, RoomResponse } from "../../types/dto"; // IMPORT RoomResponse, PageResponse
 import { RoomType, VideoCallType } from "../../types/enums";
 import { privateClient } from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
@@ -21,8 +21,6 @@ import IncomingCallModal from "../../components/modals/IncomingCallModal";
 import { stompService } from "../../services/stompService";
 import { gotoTab } from "../../utils/navigationRef";
 import type { Room } from "../../types/entity";
-import RoomAvatar from '../../components/common/RoomAvatar';
-import FileUploader from "../../components/common/FileUploader";
 
 type ReturnToParams = {
     tab: string;
@@ -44,7 +42,7 @@ type ChatRoomParams = {
 const GroupChatScreen = () => {
     const route = useRoute<RouteProp<ChatRoomParams, 'ChatRoom'>>();
     const navigation = useNavigation<any>();
-    const headerHeight = useHeaderHeight();
+    const queryClient = useQueryClient(); // INIT CLIENT
     const { t } = useTranslation();
     const { roomId, roomName: initialRoomName, initialFocusMessageId, partnerIsOnline: initialIsOnline, partnerLastActiveText: initialLastActive, returnTo } = route.params;
 
@@ -55,30 +53,12 @@ const GroupChatScreen = () => {
         chatSettings: state.chatSettings, setChatSettings: state.setChatSettings, notificationPreferences: state.notificationPreferences, setNotificationPreferences: state.setNotificationPreferences,
     })));
 
-    const {
-        activeBubbleRoomId,
-        closeBubble,
-        stompConnected,
-        subscribeToRoom,
-        unsubscribeFromRoom,
-        userStatuses,
-        upsertRoom,
-        incomingCallRequest
-    } = useChatStore(useShallow((state) => ({
-        activeBubbleRoomId: state.activeBubbleRoomId,
-        closeBubble: state.closeBubble,
-        stompConnected: state.stompConnected,
-        subscribeToRoom: state.subscribeToRoom,
-        unsubscribeFromRoom: state.unsubscribeFromRoom,
-        userStatuses: state.userStatuses,
-        upsertRoom: state.upsertRoom,
-        incomingCallRequest: state.incomingCallRequest
-    })));
+    const { activeBubbleRoomId, closeBubble, stompConnected, subscribeToRoom, unsubscribeFromRoom, userStatuses, upsertRoom, incomingCallRequest } = useChatStore();
 
     const { useCreateGroupCall } = useVideoCalls();
 
-    const { data: members, refetch: refetchMembers } = useRoomMembers(roomId);
-    const { data: roomInfo, refetch: refetchRoom } = useRoom(roomId);
+    const { data: members } = useRoomMembers(roomId);
+    const { data: roomInfo } = useRoom(roomId);
     const { mutate: kickMember } = useRemoveRoomMembers();
     const { mutate: leaveRoom } = useLeaveRoom();
     const { mutate: createGroupCall, isPending: isCalling } = useCreateGroupCall();
@@ -88,51 +68,56 @@ const GroupChatScreen = () => {
     const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
     const [isStartingCall, setIsStartingCall] = useState(false);
     const [activeCallPopup, setActiveCallPopup] = useState<{ visible: boolean, callerName: string, videoCallId: string } | null>(null);
-    const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
 
-    // FIX: Use ref to prevent infinite loop when syncing room info
-    const lastSyncedRoomRef = useRef<string>("");
+    // === FIX START: Optimistic Update for Read Status ===
+    // Ngay khi vào màn hình này, cập nhật cache của danh sách phòng thành "Đã đọc"
+    useEffect(() => {
+        // Tìm tất cả các query bắt đầu bằng ['rooms', 'joined'] (bất kể params page/size là gì)
+        queryClient.setQueriesData({ queryKey: ['rooms', 'joined'] }, (oldData: any) => {
+            if (!oldData || !oldData.data) return oldData;
+            
+            // Map qua danh sách phòng trong cache và cập nhật isRead = true cho phòng hiện tại
+            const newData = {
+                ...oldData,
+                data: oldData.data.map((room: RoomResponse) => {
+                    if (room.roomId === roomId) {
+                        return { ...room, isRead: true };
+                    }
+                    return room;
+                })
+            };
+            return newData;
+        });
+    }, [roomId, queryClient]);
+    // === FIX END ===
 
     useEffect(() => {
         if (roomInfo) {
             const roomEntity: Room = { ...roomInfo, isDeleted: false, members: (roomInfo.members || []) as any };
-            const roomString = JSON.stringify(roomEntity);
-
-            // Only upsert if content actually changed
-            if (lastSyncedRoomRef.current !== roomString) {
-                lastSyncedRoomRef.current = roomString;
-                upsertRoom(roomEntity);
-            }
+            upsertRoom(roomEntity);
         }
     }, [roomInfo, upsertRoom]);
 
-    // FIX: Check current activeCallPopup to prevent infinite loop
     useEffect(() => {
-        const shouldShowPopup = incomingCallRequest && incomingCallRequest.roomId === roomId && incomingCallRequest.callerId !== user?.userId;
-
-        if (shouldShowPopup) {
-            // Prevent duplicated updates causing maximum depth exceeded
-            if (activeCallPopup?.videoCallId === incomingCallRequest.videoCallId) return;
-
+        if (incomingCallRequest && incomingCallRequest.roomId === roomId && incomingCallRequest.callerId !== user?.userId) {
             const callerMember = members?.find(m => m.userId === incomingCallRequest.callerId);
             const callerName = callerMember?.nickname || callerMember?.fullname || 'Someone';
             setActiveCallPopup({ visible: true, callerName, videoCallId: incomingCallRequest.videoCallId });
         } else {
-            // Only update to null if it is not already null
-            if (activeCallPopup !== null) {
-                setActiveCallPopup(null);
-            }
+            setActiveCallPopup(null);
         }
-    }, [incomingCallRequest, roomId, members, user?.userId, activeCallPopup?.videoCallId]);
+    }, [incomingCallRequest, roomId, members, user?.userId]);
 
     useEffect(() => {
         if (!returnTo) return;
+
         const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
             if (e.data.action.type === 'GO_BACK') {
                 e.preventDefault();
                 gotoTab(returnTo.tab, returnTo.screen, returnTo.params);
             }
         });
+
         return unsubscribe;
     }, [navigation, returnTo]);
 
@@ -218,26 +203,6 @@ const GroupChatScreen = () => {
         }
     };
 
-    const handleAvatarUpdate = async (result: any) => {
-        const url = result?.fileUrl || result?.secure_url || result?.url;
-        if (!url || !roomInfo) return;
-        setIsUpdatingAvatar(true);
-        try {
-            await privateClient.put(`/api/v1/rooms/${roomId}`, {
-                ...roomInfo,
-                avatarUrl: url,
-                roomName: roomInfo.roomName,
-                creatorId: roomInfo.creatorId
-            });
-            showToast({ message: "Room avatar updated", type: "success" });
-            refetchRoom();
-        } catch (error) {
-            showToast({ message: "Failed to update room avatar", type: "error" });
-        } finally {
-            setIsUpdatingAvatar(false);
-        }
-    };
-
     const renderMemberItem = ({ item }: { item: MemberResponse }) => {
         const displayName = item.nickNameInRoom || item.nickname || item.fullname;
         const isSelf = item.userId === user?.userId;
@@ -263,8 +228,9 @@ const GroupChatScreen = () => {
         );
     };
 
+    // ENABLE keyboardAware={true}
     return (
-        <ScreenLayout>
+        <ScreenLayout disableBottomInset keyboardAware={true}>
             <IncomingCallModal />
 
             {activeCallPopup && (
@@ -290,72 +256,21 @@ const GroupChatScreen = () => {
                 </TouchableOpacity>
 
                 <View style={styles.headerContent}>
-                    <View style={{ position: 'relative', marginRight: 10 }}>
-                        <RoomAvatar
-                            avatarUrl={roomInfo?.avatarUrl}
-                            members={members || []}
-                            isGroup={!isPrivateRoom}
-                            size={36}
-                        />
-                        {renderHeaderStatusDot()}
-                    </View>
-                    <View style={{ alignItems: 'flex-start', flex: 1 }}>
-                        <Text style={styles.headerTitle} numberOfLines={1}>{displayRoomName}</Text>
-                        <Text style={styles.headerSubtitle}>{getHeaderStatusText()}</Text>
-                    </View>
+                    {isPrivateRoom && targetMember && (<View style={{ position: 'relative', marginRight: 10 }}><Image source={targetMember.avatarUrl ? { uri: targetMember.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={{ width: 36, height: 36, borderRadius: 18 }} />{renderHeaderStatusDot()}</View>)}
+                    <View style={{ alignItems: isPrivateRoom ? 'flex-start' : 'center', flex: 1 }}><Text style={styles.headerTitle} numberOfLines={1}>{displayRoomName}</Text><Text style={styles.headerSubtitle}>{getHeaderStatusText()}</Text></View>
                 </View>
                 <TouchableOpacity onPress={handleVideoIconPress} style={{ padding: 8 }} disabled={isCalling || isStartingCall}><Icon name="videocam" size={26} color={(isCalling || isStartingCall) ? "#9CA3AF" : "#4F46E5"} /></TouchableOpacity>
                 <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}><Icon name="info-outline" size={26} color="#4F46E5" /></TouchableOpacity>
             </View>
 
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
-                enabled
-                keyboardVerticalOffset={headerHeight + (Platform.OS === 'android' ? 0 : 0)}
-            >
-                <ChatInnerView
-                    roomId={roomId}
-                    isBubbleMode={false}
-                    soundEnabled={notificationPreferences.soundEnabled}
-                    initialFocusMessageId={initialFocusMessageId}
-                    members={members}
-                />
-            </KeyboardAvoidingView>
+            <View style={{ flex: 1 }}>
+                <ChatInnerView roomId={roomId} isBubbleMode={false} soundEnabled={notificationPreferences.soundEnabled} initialFocusMessageId={initialFocusMessageId} members={members} />
+            </View>
 
             <Modal visible={showSettings} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowSettings(false)}>
                 <View style={styles.modalContainer}>
                     <View style={styles.modalHeader}><Text style={styles.modalTitle}>{t('chat.room_settings')}</Text><TouchableOpacity onPress={() => setShowSettings(false)}><Icon name="close" size={24} color="#374151" /></TouchableOpacity></View>
                     <ScrollView style={{ flex: 1 }}>
-                        <View style={{ alignItems: 'center', marginTop: 20 }}>
-                            {isAdmin && !isPrivateRoom ? (
-                                <FileUploader onUploadSuccess={handleAvatarUpdate} mediaType="image" style={{ position: 'relative' }}>
-                                    <RoomAvatar
-                                        avatarUrl={roomInfo?.avatarUrl}
-                                        members={members || []}
-                                        isGroup={!isPrivateRoom}
-                                        size={80}
-                                    />
-                                    {isUpdatingAvatar && (
-                                        <View style={styles.avatarUpdateOverlay}>
-                                            <ActivityIndicator color="#FFF" />
-                                        </View>
-                                    )}
-                                    <View style={styles.cameraIconBadge}>
-                                        <Icon name="camera-alt" size={14} color="#FFF" />
-                                    </View>
-                                </FileUploader>
-                            ) : (
-                                <RoomAvatar
-                                    avatarUrl={roomInfo?.avatarUrl}
-                                    members={members || []}
-                                    isGroup={!isPrivateRoom}
-                                    size={80}
-                                />
-                            )}
-                            <Text style={{ marginTop: 10, fontWeight: 'bold', fontSize: 18 }}>{displayRoomName}</Text>
-                        </View>
-
                         <View style={styles.sectionContainer}><Text style={styles.sectionTitle}>{t('settings.preferences')}</Text><View style={styles.settingRow}><Text style={styles.settingLabel}>{t('settings.auto_translate')}</Text><Switch value={chatSettings.autoTranslate} onValueChange={toggleAutoTranslate} /></View><View style={styles.settingRow}><Text style={styles.settingLabel}>{t('settings.sound')}</Text><Switch value={notificationPreferences.soundEnabled} onValueChange={toggleSound} /></View></View>
                         <View style={styles.sectionContainer}><Text style={styles.sectionTitle}>{t('chat.members')}</Text><FlatList data={members} renderItem={renderMemberItem} keyExtractor={item => item.userId} scrollEnabled={false} /></View>
                         {!isPrivateRoom && (<TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveRoom}><Text style={styles.leaveBtnText}>{t('chat.leave_room')}</Text></TouchableOpacity>)}
@@ -377,7 +292,7 @@ const GroupChatScreen = () => {
 
 const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 12, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#F3F4F6', elevation: 2 },
-    headerContent: { flex: 1, flexDirection: 'row', alignItems: 'center', marginHorizontal: 8 },
+    headerContent: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 8 },
     headerTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937' },
     headerSubtitle: { fontSize: 12, color: '#10B981', fontWeight: '500' },
     headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#FFF' },
@@ -403,9 +318,7 @@ const styles = StyleSheet.create({
     startCallBtn: { flexDirection: 'row', backgroundColor: '#4F46E5', paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
     startCallText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
     joinCallPopup: { position: 'absolute', top: 100, alignSelf: 'center', width: '90%', backgroundColor: '#1F2937', borderRadius: 12, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 999, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 8 },
-    joinBtn: { backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-    avatarUpdateOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 40, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    cameraIconBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#3B82F6', borderRadius: 10, padding: 4, borderWidth: 2, borderColor: '#FFF' }
+    joinBtn: { backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }
 });
 
 export default GroupChatScreen;

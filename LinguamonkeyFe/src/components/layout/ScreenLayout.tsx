@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+// ScreenLayout.tsx (thay thế nguyên file)
+import React, { useEffect, useState } from 'react';
 import {
     View,
     StatusBar,
     ViewStyle,
     StatusBarStyle,
     Platform,
-    BackHandler,
     Dimensions,
+    KeyboardAvoidingView,
+    LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';
@@ -26,8 +28,10 @@ interface ScreenLayoutProps {
     unsafe?: boolean;
     headerComponent?: React.ReactNode;
     bottomComponent?: React.ReactNode;
+    disableBottomInset?: boolean;
     swipeToTab?: string;
     enableSwipeBack?: boolean;
+    keyboardAware?: boolean;
 }
 
 const ScreenLayout: React.FC<ScreenLayoutProps> = ({
@@ -41,41 +45,29 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     bottomComponent,
     swipeToTab,
     enableSwipeBack = true,
+    keyboardAware = true,
+    disableBottomInset = false,
 }) => {
     const insets = useSafeAreaInsets();
     const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-    const safeInsets = unsafe
-        ? { top: 0, bottom: 0, left: 0, right: 0 }
-        : insets;
+    const safeInsets = unsafe ? { top: 0, bottom: 0, left: 0, right: 0 } : insets;
 
     const headerPaddingTop = headerComponent && !unsafe ? safeInsets.top : 0;
-    const bottomPaddingBottom =
-        bottomComponent && !unsafe ? insets.bottom : 0;
-    const headerSpacerHeight =
-        !headerComponent && !unsafe ? safeInsets.top : 0;
+    const bottomPaddingBottom = bottomComponent && !unsafe ? insets.bottom : 0;
+    const headerSpacerHeight = !headerComponent && !unsafe ? safeInsets.top : 0;
     const bottomSpacerHeight =
-        !bottomComponent && !unsafe ? insets.bottom : 0;
+        !bottomComponent && !unsafe && !disableBottomInset
+            ? insets.bottom
+            : 0;
 
-    const handleNavigateTab = () => {
-        if (swipeToTab) {
-            gotoTab(swipeToTab);
-        }
-    };
+    const [headerHeight, setHeaderHeight] = useState(0);
 
-    const handleGoBack = (): boolean => {
-        if (enableSwipeBack) {
-            return goBack();
-        }
-        return false;
-    };
+    const handleNavigateTab = () => { if (swipeToTab) gotoTab(swipeToTab); };
+    const handleGoBack = (): boolean => { if (enableSwipeBack) { return goBack(); } return false; };
 
-    // --- ANDROID HARDWARE BACK BUTTON / SYSTEM GESTURE ---
-    // NOTE: actual android back handling is centralized in RootNavigation to avoid
-    // conflicts across screens. We keep this hook minimal to avoid double-handling.
     useEffect(() => {
-        // noop here — RootNavigation handles BackHandler on Android globally.
-        // This keeps ScreenLayout from interfering.
+        // noop kept
     }, [enableSwipeBack]);
 
     const panGesture = Platform.OS === 'ios' ? Gesture.Pan()
@@ -86,85 +78,69 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
             const isSwipeLeft = e.translationX < -50 && e.velocityX < -500;
 
             if (isSwipeRight) {
-                if (
-                    enableSwipeBack &&
-                    e.x < 50
-                ) {
+                if (enableSwipeBack && e.x < 50) {
                     runOnJS(handleGoBack)();
                 }
             }
-
             if (isSwipeLeft && swipeToTab) {
                 runOnJS(handleNavigateTab)();
             }
-        }) : undefined; // KHÔNG ĐỊNH NGHĨA PAN GESTURE NẾU LÀ ANDROID
+        }) : undefined;
 
     const content = (
         <View style={styles.content}>{children}</View>
     );
 
-    const gestureContent = panGesture ? (
-        <GestureDetector gesture={panGesture}>
-            {content}
-        </GestureDetector>
+    const gestureContent = panGesture ? <GestureDetector gesture={panGesture}>{content}</GestureDetector> : content;
+
+    // height của header để tính keyboardVerticalOffset chính xác
+    const onHeaderLayout = (e: LayoutChangeEvent) => {
+        const h = e.nativeEvent.layout.height || 0;
+        setHeaderHeight(h);
+    };
+
+    // Nếu keyboardAware true thì bọc contentWrapper bằng KeyboardAvoidingView
+    const inner = keyboardAware ? (
+        <KeyboardAvoidingView
+            style={[styles.contentWrapper, style]}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={headerHeight + (unsafe ? 0 : insets.top) + 8} // +8 dư
+        >
+            {gestureContent}
+        </KeyboardAvoidingView>
     ) : (
-        content
+        <View style={[styles.contentWrapper, style]}>
+            {gestureContent}
+        </View>
     );
 
     return (
         <View style={[styles.container, { backgroundColor }]}>
             <StatusBar
                 barStyle={statusBarStyle}
-                backgroundColor={
-                    Platform.OS === 'android' ? statusBarColor : 'transparent'
-                }
+                backgroundColor={Platform.OS === 'android' ? statusBarColor : 'transparent'}
                 translucent={true}
             />
 
             {headerComponent ? (
                 <View
-                    style={[
-                        styles.headerWrapper,
-                        {
-                            paddingTop: headerPaddingTop,
-                            backgroundColor: statusBarColor,
-                        },
-                    ]}
+                    onLayout={onHeaderLayout}
+                    style={[styles.headerWrapper, { paddingTop: headerPaddingTop, backgroundColor: statusBarColor }]}
                 >
                     {headerComponent}
                 </View>
             ) : (
-                <View
-                    style={{
-                        height: headerSpacerHeight,
-                        backgroundColor: statusBarColor,
-                    }}
-                />
+                <View style={{ height: headerSpacerHeight, backgroundColor: statusBarColor }} />
             )}
 
-            <View style={[styles.contentWrapper, style]}>
-                {gestureContent}
-            </View>
+            {inner}
 
             {bottomComponent ? (
-                <View
-                    style={[
-                        styles.bottomWrapper,
-                        {
-                            paddingBottom: bottomPaddingBottom,
-                            backgroundColor: backgroundColor,
-                        },
-                    ]}
-                >
+                <View style={[styles.bottomWrapper, { paddingBottom: bottomPaddingBottom, backgroundColor }]}>
                     {bottomComponent}
                 </View>
             ) : (
-                <View
-                    style={{
-                        height: bottomSpacerHeight,
-                        backgroundColor: backgroundColor,
-                    }}
-                />
+                <View style={{ height: bottomSpacerHeight, backgroundColor }} />
             )}
         </View>
     );
@@ -173,7 +149,8 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
 const styles = createScaledSheet({
     container: {
         flex: 1,
-        overflow: 'hidden',
+        // remove overflow hidden to avoid clipping when KeyboardAvoidingView shifts content
+        // overflow: 'hidden',
     },
     contentWrapper: {
         flex: 1,

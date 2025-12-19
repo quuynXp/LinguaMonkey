@@ -16,5 +16,6 @@ public enum NotificationType {
     BADGE_UNLOCKED, 
     LESSON_REMINDER,
     SYSTEM,STREAK_REMINDER, 
-    STREAK_RESET
+    STREAK_RESET,
+    CHAT_MESSAGE
 }

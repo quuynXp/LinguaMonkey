@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 try:
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    MODEL_NAME = "gemini-1.5-flash"
+    MODEL_NAME = "gemini-2.5-flash"
 
     SYSTEM_INSTRUCTION = (
         "You are a strict content moderation and analysis AI for a language learning app. "

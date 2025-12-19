@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
 import java.util.Map;
 
 @Data
@@ -15,7 +14,10 @@ public class PreKeyBundleRequest {
     private int signedPreKeyId;
     private String signedPreKeyPublicKey;
     private String signedPreKeySignature;
-    private Map<Integer, String> oneTimePreKeys; 
-    private Integer oneTimePreKeyId; // Dùng khi Fetch
-    private String oneTimePreKeyPublicKey; // Dùng khi Fetch
+    private Map<Integer, String> oneTimePreKeys;
+    
+    private Integer oneTimePreKeyId;
+    private String oneTimePreKeyPublicKey;
+    
+    private String encryptedPrivateKeys;
 }

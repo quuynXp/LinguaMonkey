@@ -62,7 +62,8 @@ public class SecurityConfig {
                     "/api/v1/badge",
                     "/api/v1/certificates",
                     "/ws/**",
-                    "/api/v1/health"
+                    "/api/v1/health",
+                    "/api/v1/transactions/webhook"
                 ).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/users").permitAll() 
                 .requestMatchers(HttpMethod.GET, "/api/v1/users/*/profile").permitAll()

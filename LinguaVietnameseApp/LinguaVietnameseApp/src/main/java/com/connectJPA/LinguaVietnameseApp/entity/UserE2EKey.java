@@ -35,4 +35,7 @@ public class UserE2EKey {
 
     @Column(name = "last_prekey_bundle_upload")
     private LocalDateTime lastPreKeyBundleUpload;
+
+    @Column(name = "encrypted_private_keys", columnDefinition = "TEXT")
+    private String encryptedPrivateKeys;
 }

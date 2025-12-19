@@ -14,13 +14,10 @@ import { formatCurrency } from '../../utils/formatCurrency';
 const PAGE_SIZE = 10;
 const BASE_CURRENCY = 'USD';
 
-// Khai báo kiểu cho kết quả Query để đảm bảo TypeScript không bị lỗi khi lấy .data
-// Kiểu này mô phỏng lại cấu trúc trả về từ useTransactionHistory
 interface TransactionQueryResult {
   data: TransactionResponse[];
   pagination: {
     hasNext: boolean;
-    // Thêm các thuộc tính khác nếu cần
   };
 }
 
@@ -42,7 +39,6 @@ const WalletScreen = ({ navigation }: any) => {
     refetch: refetchWallet
   } = useWalletBalance(user?.userId);
 
-  // Ép kiểu kết quả query sang kiểu TransactionQueryResult để giải quyết lỗi
   const {
     data: historyQueryResult,
     isLoading: loadingHistory,
@@ -57,7 +53,6 @@ const WalletScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (historyQueryResult?.data) {
-      // Ép kiểu historyQueryResult.data thành TransactionResponse[] để TypeScript không báo lỗi
       const newTransactions = historyQueryResult.data as TransactionResponse[];
 
       if (page === 0) {
@@ -68,7 +63,6 @@ const WalletScreen = ({ navigation }: any) => {
     }
   }, [historyQueryResult, page]);
 
-  // Tương tự, ép kiểu cho historyQueryResult
   const hasNextPage = historyQueryResult?.pagination?.hasNext ?? false;
 
   const onRefresh = async () => {

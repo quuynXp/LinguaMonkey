@@ -274,9 +274,10 @@ public class UserServiceImpl implements UserService {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
             
-            String emailFilter = email.trim();
-            String fullnameFilter = fullname.trim();
-            String nicknameFilter = nickname.trim();
+            // FIX: Null-safe checking for filters
+            String emailFilter = email != null ? email.trim() : "";
+            String fullnameFilter = fullname != null ? fullname.trim() : "";
+            String nicknameFilter = nickname != null ? nickname.trim() : "";
 
             Page<User> users = userRepository.findByEmailContainingAndFullnameContainingAndNicknameContainingAndIsDeletedFalse(emailFilter, fullnameFilter, nicknameFilter, pageable);
             return users.map(this::mapUserToResponseWithAllDetails);

@@ -18,6 +18,13 @@ import java.util.UUID;
 @Repository
 public interface RoomRepository extends JpaRepository<Room, UUID> {
 
+    // FIX: Trả về List<Object[]> để tránh lỗi NonUniqueResultException khi Spring cố map nhiều dòng vào 1 Map object
+    @Query("SELECT r.roomId, COUNT(rm) FROM RoomMember rm " +
+           "JOIN rm.room r " +
+           "WHERE r.roomId IN :roomIds AND rm.isDeleted = false " +
+           "GROUP BY r.roomId")
+    List<Object[]> findMemberCountsByRoomIds(@Param("roomIds") List<UUID> roomIds);
+
     @Query("SELECT r FROM Room r WHERE " +
             "(COALESCE(:roomName, '') = '' OR (LOWER(r.roomName) LIKE LOWER(CONCAT('%', :roomName, '%')) OR r.roomCode LIKE :roomName)) AND " +
             "(:creatorId IS NULL OR r.creatorId = :creatorId) AND " +
@@ -63,8 +70,8 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     @Query("SELECT r FROM Room r WHERE r.purpose = :purpose AND r.roomType = :roomType AND r.isDeleted = false " +
             "AND (SELECT COUNT(rm) FROM RoomMember rm WHERE rm.room.roomId = r.roomId AND rm.isDeleted = false) < r.maxMembers")
     Page<Room> findAvailableRoomsByPurposeAndType(@Param("purpose") RoomPurpose purpose,
-                                                  @Param("roomType") RoomType roomType,
-                                                  Pageable pageable);
+                                                                  @Param("roomType") RoomType roomType,
+                                                                  Pageable pageable);
 
     @Query("SELECT r FROM Room r WHERE r.courseId = :courseId AND r.isDeleted = false")
     Optional<Room> findByCourseId(@Param("courseId") UUID courseId);

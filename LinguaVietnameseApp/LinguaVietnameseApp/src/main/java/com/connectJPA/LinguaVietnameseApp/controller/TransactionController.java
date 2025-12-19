@@ -3,16 +3,12 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.ApproveRefundRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.PaymentRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TransactionRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.request.WebhookRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.WithdrawRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RefundRequestResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.TransactionResponse;
 import com.connectJPA.LinguaVietnameseApp.service.TransactionService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -23,7 +19,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.view.RedirectView;
 
 import java.io.IOException;
 import java.util.Locale;
@@ -59,15 +54,18 @@ public class TransactionController {
         response.sendRedirect(appRedirectUrl);
     }
 
-    @Operation(summary = "Handle payment webhook")
+    @Operation(summary = "Handle payment webhook (Stripe)")
     @PostMapping("/webhook")
     public ResponseEntity<AppApiResponse<String>> handleWebhook(
-            @RequestBody WebhookRequest request,
+            @RequestBody String payload,
+            @RequestHeader("Stripe-Signature") String sigHeader,
             Locale locale) {
-        String result = transactionService.handleWebhook(request);
+        
+        String result = transactionService.handleWebhook(payload, sigHeader);
+        
         return ResponseEntity.ok(AppApiResponse.<String>builder()
                 .code(200)
-                .message(messageSource.getMessage("transaction.webhook.success", null, locale))
+                .message("Webhook processed")
                 .result(result)
                 .build());
     }

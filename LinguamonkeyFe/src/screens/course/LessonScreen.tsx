@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, StyleSheet, Modal, Animated, Easing, FlatList, Dimensions
+  ActivityIndicator, StyleSheet, Modal, Animated, FlatList, Dimensions
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useLessons } from "../../hooks/useLessons";
-import { useSkillLessons } from "../../hooks/useSkillLessons";
 import { useUserStore } from "../../stores/UserStore";
 import { LessonResponse, LessonQuestionResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -33,7 +32,11 @@ const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean 
 
     case QuestionType.ORDERING:
       if (!question.correctAnswer) return false;
-      return normalize(question.correctAnswer) === normalize(userRaw);
+      // FIX: Strip all whitespace to compare character sequence only.
+      // This prevents errors where "Word ." (user) does not match "Word." (db)
+      const cleanCorrect = normalize(question.correctAnswer).replace(/\s+/g, '');
+      const cleanUser = normalize(userRaw).replace(/\s+/g, '');
+      return cleanCorrect === cleanUser;
 
     case QuestionType.MATCHING:
       if (!question.correctAnswer) return false;
@@ -138,6 +141,9 @@ const LessonScreen = ({ navigation, route }: any) => {
     setShowSummary(false);
     setIsReviewMode(false);
 
+    // FIX: Reset serverScore so the UI calculates score based on current attempt
+    setServerScore(undefined);
+
     setActiveQuestions(originalQuestions);
 
     setCurrentQuestionIndex(0);
@@ -161,6 +167,10 @@ const LessonScreen = ({ navigation, route }: any) => {
 
     setShowSummary(false);
     setIsReviewMode(false);
+
+    // FIX: Reset serverScore for the new mini-session
+    setServerScore(undefined);
+
     setActiveQuestions(wrongQs);
 
     setCurrentQuestionIndex(0);
@@ -231,6 +241,8 @@ const LessonScreen = ({ navigation, route }: any) => {
         setEarnedExp(result.expEarned || 0);
         setEarnedCoins(result.coinsEarned || 0);
         setWrongQuestionIds(result.wrongQuestionIds || []);
+
+        // This will set the score for the summary
         setServerScore(result.percent);
 
         setShowSummary(true);
@@ -264,7 +276,10 @@ const LessonScreen = ({ navigation, route }: any) => {
   );
 
   const wrongQuestionsList = originalQuestions.filter(q => wrongQuestionIds.includes(q.lessonQuestionId));
-  const scorePercentage = Math.round(serverScore !== undefined ? serverScore : (correctCount / activeQuestions.length) * 100);
+
+  // Logic: Use serverScore ONLY if it's set (meaning test submitted), otherwise calculate from local state.
+  // Since we reset serverScore to undefined on retake, this will reflect current progress/result.
+  const scorePercentage = Math.round(serverScore !== undefined ? serverScore : (activeQuestions.length > 0 ? (correctCount / activeQuestions.length) * 100 : 0));
 
   if (isLoading && !activeQuestions.length) return <ActivityIndicator style={styles.center} size="large" color="#4F46E5" />;
   if (!isLoading && (!activeQuestions || activeQuestions.length === 0)) return <View style={styles.center}><Text>Empty Lesson</Text></View>;

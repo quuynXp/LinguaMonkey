@@ -11,7 +11,8 @@ import {
   ScrollView,
   Pressable,
   Animated,
-  Easing
+  Easing,
+  Alert
 } from 'react-native';
 import {
   RTCView,
@@ -53,6 +54,34 @@ const useParticipantName = (userId: string) => {
   const { data: profile } = useUserProfile(userId);
   return profile?.nickname || profile?.fullname || `User ${userId.slice(0, 4)}`;
 };
+
+const ToastNotification = React.memo(({ userId, type, onHide }: { userId: string, type: 'joined' | 'left', onHide: () => void }) => {
+  const name = useParticipantName(userId);
+  const { t } = useTranslation();
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.delay(2000),
+      Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true })
+    ]).start(() => onHide());
+  }, []);
+
+  const message = type === 'joined'
+    ? `${name} ${t('joined_room') || 'has joined the room'}`
+    : `${name} ${t('left_room') || 'has left the room'}`;
+
+  const bgColor = type === 'joined' ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+
+  return (
+    <Animated.View style={[styles.toastContainer, { opacity, backgroundColor: bgColor }]}>
+      <Text style={styles.toastText}>{message}</Text>
+    </Animated.View>
+  );
+});
+
+ToastNotification.displayName = 'ToastNotification';
 
 const FloatingReaction = React.memo(({ emoji, onComplete }: { emoji: string, onComplete: () => void }) => {
   const animValue = useRef(new Animated.Value(0)).current;
@@ -235,6 +264,7 @@ type SubtitleData = {
 };
 
 type ReactionItem = { id: string; emoji: string; };
+type NotificationItem = { id: string; userId: string; type: 'joined' | 'left' };
 
 const iceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -246,6 +276,7 @@ const WebRTCCallScreen = () => {
   const route = useRoute<RouteProp<WebRTCParams, 'WebRTCCall'>>();
   const navigation = useNavigation();
   const { roomId, videoCallId } = route.params;
+  const isEndingCall = useRef(false);
 
   const { user } = useUserStore();
   const accessToken = useTokenStore.getState().accessToken;
@@ -263,7 +294,6 @@ const WebRTCCallScreen = () => {
   const subtitleTimeoutRef = useRef<any>(null);
 
   const [isMicOn, setIsMicOn] = useState(callPreferences.micEnabled);
-  // FIX: Use ref to track mic state inside event listeners without dependency cycle
   const isMicOnRef = useRef(callPreferences.micEnabled);
 
   const [isCameraOn, setIsCameraOn] = useState(callPreferences.cameraEnabled);
@@ -271,6 +301,7 @@ const WebRTCCallScreen = () => {
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
   const [reactions, setReactions] = useState<ReactionItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   const [showSettings, setShowSettings] = useState(false);
   const [settingTab, setSettingTab] = useState<'subtitle' | 'participants'>('subtitle');
@@ -278,7 +309,6 @@ const WebRTCCallScreen = () => {
   const [fullSubtitle, setFullSubtitle] = useState<SubtitleData | null>(null);
   const [isViewAll, setIsViewAll] = useState(false);
 
-  // Sync state to ref
   useEffect(() => {
     isMicOnRef.current = isMicOn;
   }, [isMicOn]);
@@ -292,7 +322,7 @@ const WebRTCCallScreen = () => {
   }, [callPreferences.subtitleMode, callPreferences.micEnabled]);
 
   const audioOptions = useMemo(() => ({
-    sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: Platform.OS === 'android' ? 7 : 0, bufferSize: 4096, wavFile: 'temp.wav'
+    sampleRate: 16000, channels: 1, bitsPerSample: 16, audioSource: Platform.OS === 'android' ? 6 : 0, bufferSize: 4096, wavFile: 'temp.wav'
   }), []);
 
   const initSubtitleAudioStream = useCallback(async () => {
@@ -301,7 +331,6 @@ const WebRTCCallScreen = () => {
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
     }
 
-    // Use timeout to allow other streams to settle, but don't re-init constantly
     setTimeout(() => {
       if (isManuallyClosed.current) return;
       try {
@@ -309,18 +338,15 @@ const WebRTCCallScreen = () => {
         LiveAudioStream.init(audioOptions);
 
         LiveAudioStream.on('data', (base64Data: string) => {
-          // KEY FIX: Check Ref here instead of state closure. 
-          // Do not send data if mic is logically off, but keep stream running.
           if (wsAudio.current?.readyState === WebSocket.OPEN && isMicOnRef.current) {
             wsAudio.current.send(JSON.stringify({ audio: base64Data }));
           }
         });
 
-        // Always start stream once to hold microphone permission for WebRTC
         LiveAudioStream.start();
       } catch (e) { console.error("❌ Audio Init Error:", e); }
     }, 2000);
-  }, [audioOptions]); // Removed isMicOn from dependency to prevent re-init loop
+  }, [audioOptions]);
 
   const connectAudioSocket = useCallback(() => {
     if (!roomId || !accessToken || isManuallyClosed.current) return;
@@ -335,7 +361,6 @@ const WebRTCCallScreen = () => {
     wsAudio.current = ws;
 
     ws.onopen = () => {
-      // Init stream only once on connection open
       initSubtitleAudioStream();
       setTimeout(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -372,7 +397,32 @@ const WebRTCCallScreen = () => {
     } catch (e) { return null; }
   }, []);
 
+  const handleCallEnd = useCallback(() => {
+    isEndingCall.current = true;
+
+    if (wsSignal.current) wsSignal.current.close();
+    peerConnections.current.forEach(pc => pc.close());
+
+    if (videoCallId && user?.userId) {
+      updateCallStatus({ id: videoCallId, payload: { callerId: user.userId, status: VideoCallStatus.ENDED } });
+    }
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('TabApp' as never);
+    }
+  }, [videoCallId, user?.userId, navigation, updateCallStatus]);
+
+  const addNotification = useCallback((userId: string, type: 'joined' | 'left') => {
+    setNotifications(prev => [...prev, { id: Math.random().toString(36), userId, type }]);
+  }, []);
+
   const handleUserLeft = useCallback((userId: string) => {
+    if (isEndingCall.current) return;
+
+    addNotification(userId, 'left');
+
     if (peerConnections.current.has(userId)) {
       try {
         const pc = peerConnections.current.get(userId);
@@ -388,7 +438,19 @@ const WebRTCCallScreen = () => {
       }
       return prev;
     });
-  }, []);
+
+    if (peerConnections.current.size === 0) {
+      if (!isEndingCall.current) {
+        isEndingCall.current = true;
+        Alert.alert(
+          t('call_ended') || 'Call Ended',
+          t('call_ended_reason_alone') || 'You are the only one left in the room.',
+          [{ text: 'OK', onPress: handleCallEnd }],
+          { cancelable: false }
+        );
+      }
+    }
+  }, [addNotification, handleCallEnd, t]);
 
   const createPeerConnection = useCallback(async (partnerId: string, shouldCreateOffer: boolean) => {
     if (peerConnections.current.has(partnerId)) return peerConnections.current.get(partnerId);
@@ -455,6 +517,23 @@ const WebRTCCallScreen = () => {
       try {
         const data = JSON.parse(e.data);
 
+        if (data.type === 'FORCE_LEAVE') {
+          if (!isEndingCall.current) {
+            isEndingCall.current = true;
+            Alert.alert(
+              t('room_closed') || 'Room Closed',
+              data.reason || 'The room has been closed.',
+              [{ text: 'OK', onPress: handleCallEnd }],
+              { cancelable: false }
+            );
+          }
+          return;
+        }
+
+        if (data.type === 'JOIN_ROOM' && data.senderId && data.senderId !== String(user?.userId)) {
+          addNotification(data.senderId, 'joined');
+        }
+
         if (data.type === 'active_speaker_update' && data.activeSpeakerId) {
           setActiveSpeakerId(data.activeSpeakerId);
           return;
@@ -493,7 +572,7 @@ const WebRTCCallScreen = () => {
         }
       } catch (_) { }
     };
-  }, [roomId, accessToken, user?.userId, createPeerConnection, sendSignalingMessage, handleUserLeft]);
+  }, [roomId, accessToken, user?.userId, createPeerConnection, sendSignalingMessage, handleUserLeft, addNotification, handleCallEnd, t]);
 
   useEffect(() => { sendAudioConfig(); }, [callPreferences.subtitleMode, callPreferences.micEnabled, sendAudioConfig]);
 
@@ -529,34 +608,20 @@ const WebRTCCallScreen = () => {
   };
   const removeReaction = (id: string) => setReactions(prev => prev.filter(r => r.id !== id));
   const sendReaction = (emoji: string) => { addReaction(emoji); sendSignalingMessage({ type: 'REACTION' }, { emoji }); };
+  const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
 
   const toggleMic = () => {
     const newState = !isMicOn;
     setIsMicOn(newState);
-
-    // 1. Update preferences
     setCallPreferences({ micEnabled: newState });
-
-    // 2. Toggle WebRTC Audio Track (This is for the Call Audio)
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(t => {
-        t.enabled = newState;
-      });
+      localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = newState; });
     }
-
-    // 3. Notify Backend (for UI sync, etc.)
     if (wsAudio.current?.readyState === WebSocket.OPEN) {
       wsAudio.current.send(JSON.stringify({
-        config: {
-          subtitleMode: callPreferences.subtitleMode,
-          micEnabled: newState
-        }
+        config: { subtitleMode: callPreferences.subtitleMode, micEnabled: newState }
       }));
     }
-
-    // CRITICAL FIX: Do NOT call LiveAudioStream.stop() here.
-    // It kills the audio session for WebRTC too. 
-    // The Ref check in 'data' listener handles the muting for subtitles.
   };
 
   const toggleCamera = () => {
@@ -564,13 +629,6 @@ const WebRTCCallScreen = () => {
     setIsCameraOn(newState);
     setCallPreferences({ cameraEnabled: newState });
     localStreamRef.current?.getVideoTracks().forEach(t => t.enabled = newState);
-  };
-
-  const handleCallEnd = () => {
-    if (videoCallId && user?.userId) {
-      updateCallStatus({ id: videoCallId, payload: { callerId: user.userId, status: VideoCallStatus.ENDED } });
-    }
-    navigation.goBack();
   };
 
   const remoteStreamsArr = Array.from(remoteStreams.entries());
@@ -600,6 +658,13 @@ const WebRTCCallScreen = () => {
   return (
     <ScreenLayout>
       <View style={styles.container}>
+        {/* Notification Toast Overlay */}
+        <View style={styles.toastOverlay} pointerEvents="none">
+          {notifications.map(n => (
+            <ToastNotification key={n.id} userId={n.userId} type={n.type} onHide={() => removeNotification(n.id)} />
+          ))}
+        </View>
+
         <ScrollView contentContainerStyle={styles.scrollGrid}>
           <View style={[
             styles.gridWrapper,
@@ -784,7 +849,10 @@ const styles = createScaledSheet({
   reactionBtn: { padding: 8 },
   reactionText: { fontSize: 24 },
   reactionOverlay: { position: 'absolute', bottom: 150, left: 0, right: 0, alignItems: 'center', height: 400, justifyContent: 'flex-end', zIndex: 10 },
-  floatingEmoji: { fontSize: 40, position: 'absolute', bottom: 0 }
+  floatingEmoji: { fontSize: 40, position: 'absolute', bottom: 0 },
+  toastOverlay: { position: 'absolute', top: 50, left: 0, right: 0, alignItems: 'center', zIndex: 100 },
+  toastContainer: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, marginBottom: 8 },
+  toastText: { color: 'white', fontWeight: '600', fontSize: 14 }
 });
 
 export default WebRTCCallScreen;

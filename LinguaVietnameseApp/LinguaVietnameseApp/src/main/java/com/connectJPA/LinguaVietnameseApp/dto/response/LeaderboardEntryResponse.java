@@ -24,6 +24,7 @@ public class LeaderboardEntryResponse {
     private String avatarUrl;
     private int level;
     private int exp;
+    private int admire;
     private String gender;
     private Country country;
     private Integer rank;

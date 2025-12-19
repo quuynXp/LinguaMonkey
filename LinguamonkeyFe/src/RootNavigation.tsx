@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { View, AppState, BackHandler, Platform } from "react-native";
+import { View, AppState, BackHandler, Platform, Alert } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { RootNavigationRef, flushPendingActions, gotoTab } from "./utils/navigationRef";
@@ -19,6 +19,7 @@ import AuthStack from "./navigation/stack/AuthStack";
 import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
 import ChatBubble from "./components/chat/ChatBubble";
 import Toast from "react-native-toast-message";
+import eventBus from "./events/appEvents";
 
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -27,6 +28,7 @@ const RootNavigation = () => {
 
   const accessToken = useTokenStore((state) => state.accessToken);
   const initializeTokens = useTokenStore((state) => state.initializeTokens);
+  const clearTokens = useTokenStore((state) => state.clearTokens);
   const { setUser, setLocalNativeLanguage } = useUserStore();
   const { setAppIsActive, setCurrentAppScreen, initStompClient, disconnectStompClient } = useChatStore();
   const fetchLexiconMaster = useChatStore((state) => state.fetchLexiconMaster);
@@ -35,6 +37,32 @@ const RootNavigation = () => {
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
   const appState = useRef(AppState.currentState);
   const lastBackPressed = useRef<number>(0);
+
+  useEffect(() => {
+    const handleSessionExpired = async () => {
+      // Backup onboarding state before clearing tokens (in case clearTokens wipes all storage)
+      const hasOnboarding = await AsyncStorage.getItem("hasFinishedOnboarding");
+
+      Alert.alert(
+        "Phiên đăng nhập hết hạn",
+        "Tài khoản của bạn đã được đăng nhập trên một thiết bị khác. Vui lòng đăng nhập lại.",
+        [{
+          text: "OK", onPress: async () => {
+            await clearTokens();
+            if (hasOnboarding) {
+              await AsyncStorage.setItem("hasFinishedOnboarding", hasOnboarding);
+            }
+          }
+        }],
+        { cancelable: false }
+      );
+    };
+
+    eventBus.on("auth.session_expired", handleSessionExpired);
+    return () => {
+      eventBus.off("auth.session_expired", handleSessionExpired);
+    };
+  }, [clearTokens]);
 
   useEffect(() => {
     if (accessToken) {
@@ -134,26 +162,45 @@ const RootNavigation = () => {
       try {
         console.log("--- BOOT SEQUENCE START ---");
         setIsLoading(true);
-        await initializeTokens();
-        console.log(`[BOOT] Tokens Initialized. Current Token: ${useTokenStore.getState().accessToken ? 'PRESENT' : 'MISSING'}`);
+
+        // Check onboarding status independently
+        const hasFinishedOnboarding = await AsyncStorage.getItem("hasFinishedOnboarding");
+        if (hasFinishedOnboarding === "true") {
+          setInitialAuthParams({ skipToAuth: true });
+        } else {
+          setInitialAuthParams(undefined);
+        }
+
+        if (!accessToken) {
+          await initializeTokens();
+          const recheckToken = useTokenStore.getState().accessToken;
+          if (!recheckToken) {
+            setIsUserAdmin(false);
+            setInitialMainRoute("TabApp");
+            console.log("[BOOT] No token found. Stay at AuthStack.");
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        console.log(`[BOOT] Token detected. Verifying user session...`);
 
         const isHealthy = await waitForConnectivity();
         if (!mounted || !isHealthy) return;
 
-        let savedLanguage = await AsyncStorage.getItem("userLanguage");
+        let currentLocalLang = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
-        if (!savedLanguage) {
-          savedLanguage = locales[0].languageCode || "en";
-          await AsyncStorage.setItem("userLanguage", savedLanguage);
+        if (!currentLocalLang) {
+          currentLocalLang = locales[0].languageCode || "en";
+          await AsyncStorage.setItem("userLanguage", currentLocalLang);
         }
-        setLocalNativeLanguage(savedLanguage);
-        if (i18n.language !== savedLanguage) await i18n.changeLanguage(savedLanguage);
 
         const currentToken = useTokenStore.getState().accessToken;
         if (currentToken) {
           fetchLexiconMaster();
           const userIsAdmin = isAdmin(currentToken);
           setIsUserAdmin(userIsAdmin);
+
           const payload = decodeToken(currentToken);
 
           if (payload?.userId) {
@@ -165,11 +212,22 @@ const RootNavigation = () => {
 
               console.log(`[DEBUG] Raw hasFinishedSetup from BE: ${rawUser.hasFinishedSetup}`);
 
-              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: userIsAdmin ? ["ROLE_ADMIN"] : ["ROLE_USER"] }, savedLanguage);
+              const backendLang = rawUser.nativeLanguage;
+              if (backendLang && backendLang !== currentLocalLang) {
+                console.log(`[BOOT] Switching language to user preference: ${backendLang}`);
+                await i18n.changeLanguage(backendLang);
+                await AsyncStorage.setItem("userLanguage", backendLang);
+                currentLocalLang = backendLang;
+              } else {
+                if (i18n.language !== currentLocalLang) {
+                  await i18n.changeLanguage(currentLocalLang);
+                }
+              }
 
-              // Đọc giá trị từ Store ngay sau khi cập nhật (cần thiết nếu zustand sync chậm)
+              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: userIsAdmin ? ["ROLE_ADMIN"] : ["ROLE_USER"] }, currentLocalLang);
+              setLocalNativeLanguage(currentLocalLang);
+
               const hasSetupFinished = useUserStore.getState().hasFinishedSetup || false;
-
               console.log(`[DEBUG] Store hasFinishedSetup (after setUser): ${hasSetupFinished}`);
 
               notificationService.registerTokenToBackend();
@@ -186,7 +244,6 @@ const RootNavigation = () => {
 
               setInitialMainRoute(nextRoute);
               console.log(`[BOOT] DECISION: Setting Initial Route to ${nextRoute}`);
-
 
             } catch (userErr) {
               console.error("Fetch user failed", userErr);
@@ -205,7 +262,7 @@ const RootNavigation = () => {
     };
     boot();
     return () => { mounted = false; };
-  }, [initializeTokens, setUser, setLocalNativeLanguage, fetchLexiconMaster]);
+  }, [accessToken, initializeTokens, setUser, setLocalNativeLanguage, fetchLexiconMaster]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
